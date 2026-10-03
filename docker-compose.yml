@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: bcm-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: badminton_court_db
+      POSTGRES_USER: bcm_admin
+      POSTGRES_PASSWORD: 12345
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/migration.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bcm_admin -d badminton_court_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local
