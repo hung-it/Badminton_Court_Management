@@ -1,7 +1,7 @@
 -- =====================================================
--- DATABASE MIGRATION SCRIPT
+-- DATABASE MIGRATION SCRIPT (FIXED ORDER)
 -- Hệ thống Quản lý Sân Cầu Lông
--- Version: 1.0
+-- Version: 1.1
 -- Date: 2026-10-03
 -- =====================================================
 
@@ -116,24 +116,6 @@ CREATE TABLE booking_details (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Payment Transactions table
-CREATE TABLE payment_transactions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    booking_id UUID REFERENCES bookings(id) ON DELETE RESTRICT,
-    invoice_id UUID REFERENCES invoices(id) ON DELETE RESTRICT,
-    payment_method VARCHAR(50) NOT NULL CHECK (payment_method IN ('CASH', 'BANK_TRANSFER', 'VNPAY', 'MOMO')),
-    transaction_id VARCHAR(255),
-    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'REFUNDED')),
-    amount NUMERIC(10, 2) NOT NULL,
-    transaction_date TIMESTAMP,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    note TEXT,
-    CONSTRAINT chk_payment_target CHECK (
-        (booking_id IS NOT NULL AND invoice_id IS NULL) OR
-        (booking_id IS NULL AND invoice_id IS NOT NULL)
-    )
-);
-
 -- =====================================================
 -- 4. POS & PROMOTION MODULE
 -- =====================================================
@@ -193,17 +175,7 @@ CREATE TABLE discount_rules (
     CONSTRAINT chk_voucher_rule CHECK (rule_type != 'VOUCHER' OR voucher_code IS NOT NULL)
 );
 
--- Customer Voucher Usage tracking
-CREATE TABLE customer_voucher_usage (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
-    discount_rule_id UUID NOT NULL REFERENCES discount_rules(id) ON DELETE RESTRICT,
-    invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE RESTRICT,
-    used_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (customer_id, discount_rule_id, invoice_id)
-);
-
--- Invoices table
+-- Invoices table (MOVED UP - before payment_transactions and customer_voucher_usage)
 CREATE TABLE invoices (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     booking_id UUID REFERENCES bookings(id) ON DELETE RESTRICT,
@@ -231,6 +203,34 @@ CREATE TABLE invoice_details (
     unit_price NUMERIC(10, 2) NOT NULL,
     note TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Customer Voucher Usage tracking (MOVED DOWN - after invoices)
+CREATE TABLE customer_voucher_usage (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+    discount_rule_id UUID NOT NULL REFERENCES discount_rules(id) ON DELETE RESTRICT,
+    invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE RESTRICT,
+    used_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (customer_id, discount_rule_id, invoice_id)
+);
+
+-- Payment Transactions table (MOVED DOWN - after invoices)
+CREATE TABLE payment_transactions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    booking_id UUID REFERENCES bookings(id) ON DELETE RESTRICT,
+    invoice_id UUID REFERENCES invoices(id) ON DELETE RESTRICT,
+    payment_method VARCHAR(50) NOT NULL CHECK (payment_method IN ('CASH', 'BANK_TRANSFER', 'VNPAY', 'MOMO')),
+    transaction_id VARCHAR(255),
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'REFUNDED')),
+    amount NUMERIC(10, 2) NOT NULL,
+    transaction_date TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    note TEXT,
+    CONSTRAINT chk_payment_target CHECK (
+        (booking_id IS NOT NULL AND invoice_id IS NULL) OR
+        (booking_id IS NULL AND invoice_id IS NOT NULL)
+    )
 );
 
 -- =====================================================
