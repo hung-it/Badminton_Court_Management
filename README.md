@@ -1,270 +1,328 @@
-# 🏸 Hệ thống Đặt sân và Quản lý Câu lạc bộ Cầu lông (Badminton Court Management)
+# 🏸 Badminton Court Management System
 
-Đây là mã nguồn đồ án Hệ thống quản lý toàn diện dành cho các Câu lạc bộ Cầu lông, bao gồm **Web Application 2 Portals** (Customer Portal + Admin Portal) cho Khách hàng đặt sân và Quản trị viên điều hành.
+Hệ thống quản lý sân cầu lông toàn diện với booking online, POS, và quản lý kho.
 
-Hệ thống được thiết kế chặt chẽ ở cấp độ Cơ sở dữ liệu (PostgreSQL) nhằm giải quyết các bài toán thực tế như: **Chống trùng lịch đặt sân (DB Constraint + Pessimistic Lock)**, **Bảo toàn lịch sử giá (Snapshot Price)**, **Kiểm soát chống âm kho (Optimistic Locking)**, và **Hệ thống Khuyến mãi 3 tầng**.
+## 📋 Tổng Quan Dự Án
 
-## 🚀 Công nghệ sử dụng (Tech Stack)
+**Mục tiêu**: Xây dựng hệ thống quản lý sân cầu lông với các tính năng:
+- 🎯 Đặt sân online với anti-double-booking
+- 💰 POS system với 3-tier promotion
+- 📦 Quản lý kho hàng và nhà cung cấp
+- 👥 Phân quyền (Admin, Staff, Customer)
+- 💳 Tích hợp thanh toán VNPay/MoMo
 
-### Backend
-- **Framework:** Spring Boot 3.2+ (RESTful API, Spring Security, Spring Data JPA)
-- **Java Version:** 17+ (LTS)
-- **ORM:** Hibernate 6.x (Jakarta Persistence)
-- **Validation:** Jakarta Validation (Bean Validation 3.0)
-- **Database:** PostgreSQL 14+ (Unique Constraints, Partial Index, Row-level Locking)
-- **Payment Gateway:** VNPay/MoMo (Webhook với signature verification + idempotent handling)
-
-### Frontend
-- **Web App:** ReactJS 18+ với Vite (Single Page Application)
-  - **Customer Portal** (`/`): Trang công khai cho khách hàng đặt sân, xem lịch sử (responsive mobile-first)
-  - **Admin Portal** (`/admin`): Trang quản trị nội bộ cho Staff/Manager (POS, báo cáo, quản lý)
-  - **Routing:** React Router v6
-  - **State Management:** React Context API / Zustand (lightweight)
-  - **UI Components:** Tailwind CSS / shadcn/ui
-  - **Real-time updates:** Polling (5s) hoặc WebSocket (STOMP) cho POS
-
-## 📂 Cấu trúc Dự án
-Dự án được chia thành 2 phân hệ chính + tài liệu thiết kế:
-
-```text
-Badminton_Court_Management/
-├── backend/          # Mã nguồn API Server (Spring Boot)
-├── web-app/          # Mã nguồn Web Application (ReactJS - 2 Portals)
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── customer/       # Customer Portal (/, /booking, /my-bookings)
-│   │   │   └── admin/          # Admin Portal (/admin/*)
-│   │   ├── components/
-│   │   ├── services/           # Axios API calls
-│   │   └── routes/             # React Router config
-│   └── ...
-└── picture/          # Chứa toàn bộ tài liệu thiết kế (UML, DB, ERD)
-```
-
-## 📚 Tài liệu Thiết kế Hệ thống
-
-Toàn bộ tài liệu phân tích thiết kế được viết dưới định dạng chuẩn UML (PlantUML/Mermaid) để dễ dàng theo dõi và bảo trì. Bạn có thể xem trực tiếp các file trên GitHub hoặc copy code dán vào [PlantText](https://www.planttext.com/):
-
-### 📋 Core Documentation (6 files - BẮT BUỘC ĐỌC)
-1. **[⭐ Upgrade Summary](docs/UPGRADE-SUMMARY.md)**: 🎉 **BẮT ĐẦU TỪ ĐÂY** - Tóm tắt nâng cấp database, checklist hoàn thành, next steps.
-2. **[📝 CHANGELOG](docs/CHANGELOG.md)**: 🆕 **v1.1.0** - Các thay đổi mới nhất (fixes từ team review).
-3. **[Database & ERD](docs/database.md)**: Chi tiết cấu trúc 18 bảng, ERD, constraints, indexes.
-4. **[🗄️ Database Migration SQL](docs/database-migration.sql)**: Script DDL hoàn chỉnh để tạo database.
-5. **[Promotion System](docs/promotion-flow-advanced.md)**: 🎁 Hệ thống khuyến mãi 3 tầng (PRODUCT/INVOICE_TOTAL/VOUCHER).
-6. **[Payment & Invoice Flow](docs/payment-invoice-flow.md)**: Luồng thanh toán (Online booking, Walk-in, NO_SHOW).
-
-### 🔍 Technical Deep Dive (2 files)
-7. **[Design Review](docs/design-review-final.md)**: 📋 Review tổng thể, quyết định thiết kế, tradeoffs.
-8. **[Technical Considerations](docs/technical-considerations.md)**: ⚠️ Locking strategies, Payment webhook, Jakarta EE migration.
-
-### 📐 UML Diagrams (3 files)
-9. **[Use Case](docs/usecase.md)**: Phân quyền 3 Actor (Customer, Staff, Admin).
-10. **[Sequence](docs/sequence.md)**: 5 luồng nghiệp vụ cốt lõi.
-11. **[Activity](docs/activity.md)**: Điều kiện rẽ nhánh logic.
-
-## 👥 Tổ chức Team & Workflow (Cắt dọc tính năng)
-Dự án áp dụng mô hình làm việc **Vertical Slicing** (Mỗi người ôm Full-stack 1 tính năng) và sử dụng **Git Flow rút gọn**:
-- Tuyệt đối không commit trực tiếp vào `main`.
-- Code được gom về nhánh `develop`.
-- Mỗi thành viên tự tạo nhánh tính năng: `feature/<tên-module>`.
-
-| Thành viên | Phụ trách Module Chính | Nhánh (Branch) | Workload |
-| :--- | :--- | :--- | :---: |
-| **Thành viên 1 (Leader)** | Foundation + Auth Core (JWT, Spring Security) | `feature/foundation-and-auth` | 7/10 |
-| **Thành viên 2** | Master Data + **Hệ thống Khuyến mãi 3 tầng** | `feature/master-data-and-promotions` | 7/10 |
-| **Thành viên 3** | Booking Engine + User Management | `feature/booking-and-users` | 7/10 |
-| **Thành viên 4** | POS + Nhập kho + Báo cáo Doanh thu | `feature/pos-and-analytics` | 7/10 |
-
-📄 **Chi tiết phân công:** Xem file [team_task_allocation.md](../team_task_allocation.md)
-
-## 🛠 Hướng dẫn Cài đặt & Khởi chạy (Local)
-
-### Yêu cầu Hệ thống
-- **Java:** JDK 17+ (LTS)
-- **Node.js:** v18+ (LTS)
-- **PostgreSQL:** 14+
-- **Maven:** 3.8+
-- **Git:** 2.30+
-
-### Bước 1: Clone Repository
-```bash
-git clone https://github.com/hung-it/Badminton_Court_Management.git
-cd Badminton_Court_Management
-```
-
-### Bước 2: Cài đặt Database
-```bash
-# Tạo database
-psql -U postgres
-CREATE DATABASE badminton_court_db;
-
-# Import schema migration
-\c badminton_court_db
-\i docs/database-migration.sql
-```
-
-### Bước 3: Khởi chạy Backend
-```bash
-cd backend
-
-# Cấu hình database (application.properties hoặc application.yml)
-# spring.datasource.url=jdbc:postgresql://localhost:5432/badminton_court_db
-# spring.datasource.username=postgres
-# spring.datasource.password=your_password
-
-# Build và chạy
-mvn clean install
-mvn spring-boot:run
-
-# Backend chạy tại: http://localhost:8080
-```
-
-### Bước 4: Khởi chạy Web App
-```bash
-cd web-app
-npm install
-npm run dev
-
-# Web App chạy tại: http://localhost:5173 (Vite)
-# Customer Portal: http://localhost:5173/
-# Admin Portal: http://localhost:5173/admin
-```
+**Team**: 4 thành viên, Sprint-based development (4 tuần)
 
 ---
 
-## ⚠️ Lưu Ý Kỹ Thuật Quan Trọng
+## 🏗️ Kiến Trúc Hệ Thống
 
-### 1. Chống Trùng Lịch Đặt Sân
-**Không phải** Optimistic Locking - Sử dụng **DB Constraint + Pessimistic Lock**:
-```sql
--- Unique constraint ở DB level
-ALTER TABLE booking_details
-ADD CONSTRAINT uq_booking_slot 
-UNIQUE (booking_date, court_id, time_slot_id);
+```
+Badminton_Court_Management/
+├── backend/              # Spring Boot REST API
+├── web-app/             # React Customer Portal (TODO)
+├── web-admin/           # React Admin Dashboard (TODO)
+├── docs/                # Documentation & ERD
+├── db/                  # Database migration scripts
+└── docker-compose.yml   # PostgreSQL container
 ```
 
-```java
-// Pessimistic lock trong JPA
-@Lock(LockModeType.PESSIMISTIC_WRITE)
-@Query("SELECT c FROM Court c WHERE c.id = :id")
-Optional<Court> findByIdForUpdate(@Param("id") UUID id);
+### Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend | Spring Boot 3.2.5 + Java 21 |
+| Frontend | React 18 + Vite (TODO) |
+| Database | PostgreSQL 15 |
+| Security | Spring Security + JWT |
+| API Docs | Swagger/OpenAPI 3 |
+| Container | Docker + Docker Compose |
+
+---
+
+## 🚀 Quick Start
+
+### 1️⃣ Prerequisites
+```bash
+# Check installations
+java -version    # Java 21.0.12.1
+mvn -version     # Maven 3.9+
+docker --version # Docker 20+
 ```
 
-**Lý do:** Booking conflict cần fail fast ở DB level, không thể retry như inventory.
+### 2️⃣ Start Database
+```bash
+docker-compose up -d
 
-### 2. Chống Âm Kho (Products)
-Sử dụng **Optimistic Locking** với `@Version`:
-```java
-@Entity
-@Table(name = "products")
-public class Product {
-    @Version
-    private Integer version;  // JPA tự động tăng
-    private Integer stockQuantity;
+# Verify
+docker ps
+# Expected: Container 'bcm-postgres' running
+```
+
+### 3️⃣ Run Backend
+```bash
+cd backend
+mvn spring-boot:run
+```
+
+Backend: http://localhost:8080/api
+
+Swagger UI: http://localhost:8080/api/swagger-ui.html
+
+### 4️⃣ Test Health Check
+```bash
+curl http://localhost:8080/api/health
+```
+
+Expected response:
+```json
+{
+  "success": true,
+  "message": "System is healthy",
+  "data": {
+    "status": "UP",
+    "service": "Badminton Court Management API",
+    "version": "1.0.0"
+  }
 }
 ```
 
-**Lý do:** Conflict ít xảy ra, có thể retry khi bán hàng.
+---
 
-### 3. Spring Boot 3.x - Jakarta EE
-⚠️ **Bắt buộc** dùng `jakarta.*` thay vì `javax.*`:
+## 📊 Database Design
+
+### Statistics
+- **18 bảng** với quan hệ rõ ràng
+- **ERD diagram** trong `docs/database-erd.png`
+- **Migration script** trong `db/migration.sql`
+
+### Key Features
+✅ **Anti-corruption mechanisms**
+- Chống trùng lịch booking (CHECK constraints)
+- Chống âm kho (stock >= 0)
+- XOR payment constraint (chỉ 1 phương thức thanh toán)
+
+✅ **Snapshot pricing**
+- Giữ lịch sử giá khi booking/invoice được tạo
+- Đổi giá hiện tại không ảnh hưởng đơn cũ
+
+✅ **3-tier Promotion System**
+- PRODUCT: Giảm giá sản phẩm
+- INVOICE_TOTAL: Giảm tổng đơn
+- VOUCHER: Mã giảm giá cho khách hàng
+
+### Database Schema
+Chi tiết: [docs/database.md](docs/database.md)
+
+---
+
+## 👥 Team Structure
+
+| Member | Module | Responsibilities |
+|--------|--------|------------------|
+| **Thành viên 1** (Leader) | Foundation & Auth | Spring Boot setup, JWT, User/Role, Security |
+| **Thành viên 2** | Court & Booking | Court, TimeSlot, Booking, Anti-double-booking |
+| **Thành viên 3** | POS & Promotions | Product, Category, Invoice, Promotion logic |
+| **Thành viên 4** | Inventory & Suppliers | Supplier, ImportOrder, Stock tracking |
+
+Workload: **7-10 tasks/member** (cân bằng)
+
+---
+
+## 📅 Sprint Planning
+
+### ✅ Sprint 1 - Foundation (Week 1) - **COMPLETED**
+- [x] Database design & ERD
+- [x] PostgreSQL setup (Docker)
+- [x] Spring Boot project structure
+- [x] Base infrastructure (BaseEntity, ApiResponse, Exception Handling)
+- [x] Swagger/OpenAPI documentation
+- [x] CORS & Security skeleton
+- [x] Health check endpoints
+
+### ⬜ Sprint 2 - Core Entities (Week 2) - **IN PROGRESS**
+- [ ] JWT Authentication implementation
+- [ ] All entity classes (18 entities)
+- [ ] Repository layer (JPA)
+- [ ] Basic CRUD services
+
+### ⬜ Sprint 3 - Business Logic (Week 3)
+- [ ] Anti-double-booking logic
+- [ ] 3-tier promotion calculation
+- [ ] Stock tracking & alerts
+- [ ] Payment webhooks (VNPay/MoMo)
+
+### ⬜ Sprint 4 - Integration & Testing (Week 4)
+- [ ] Frontend-backend integration
+- [ ] End-to-end testing
+- [ ] Performance optimization
+- [ ] Deployment preparation
+
+---
+
+## 🔧 Development Workflow
+
+### Git Branches
+```
+main              # Production-ready code
+└── develop       # Integration branch
+    ├── feature/foundation-and-auth      (TV1)
+    ├── feature/court-and-booking        (TV2)
+    ├── feature/pos-and-promotions       (TV3)
+    └── feature/inventory-and-suppliers  (TV4)
+```
+
+### Work Process
+1. Checkout feature branch từ `develop`
+2. Code & test locally
+3. Commit với message rõ ràng
+4. Push lên remote
+5. Create PR về `develop`
+6. Review & merge
+
+---
+
+## 📚 Documentation
+
+| Document | Purpose | Location |
+|----------|---------|----------|
+| Database Schema | Thiết kế CSDL | `docs/database.md` |
+| ERD Diagram | Sơ đồ quan hệ | `docs/database-erd.png` |
+| Migration Script | SQL setup | `db/migration.sql` |
+| Works To Do | Task breakdown | `docs/Works to do.md` |
+| Backend README | Backend setup | `backend/README.md` |
+| API Changelog | Version history | `docs/CHANGELOG.md` |
+
+---
+
+## 🛠️ Backend Infrastructure (Current)
+
+### ✅ Core Components
+
+**1. BaseEntity** - Audit fields cho tất cả entities
 ```java
-// ✅ ĐÚNG
-import jakarta.persistence.*;
-import jakarta.validation.constraints.*;
-
-// ❌ SAI (Spring Boot 2.x)
-import javax.persistence.*;
+@MappedSuperclass
+public abstract class BaseEntity {
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+}
 ```
 
-### 4. Payment Webhook Security
-3 tầng bảo vệ bắt buộc:
-- ✅ Verify signature từ VNPay/MoMo
-- ✅ Idempotent (check duplicate transaction)
-- ✅ Timeout handling (cron job expire pending bookings sau 15 phút)
-
-Chi tiết: Xem [technical-considerations.md](picture/technical-considerations.md)
-
-### 5. Real-time Sync cho POS
-**Đề xuất cho đồ án:** Polling 5 giây (đơn giản, đủ dùng)
-```javascript
-// Web App - Admin Portal - CourtAvailability component
-setInterval(async () => {
-  const res = await fetch('/api/courts/availability');
-  setCourts(await res.json());
-}, 5000);
+**2. ApiResponse<T>** - Standardized API response
+```json
+{
+  "success": true,
+  "message": "...",
+  "data": { ... },
+  "timestamp": "2026-10-03T..."
+}
 ```
 
-**Nâng cao:** WebSocket (STOMP) nếu muốn latency < 100ms.
+**3. GlobalExceptionHandler** - Centralized error handling
+- `ResourceNotFoundException` → 404
+- `BadRequestException` → 400
+- `ConflictException` → 409
+- Generic exceptions → 500
 
-### 6. Hệ thống Khuyến mãi 3 tầng
-**3 loại Discount Rules:**
-- **PRODUCT:** Giảm giá sản phẩm cụ thể (ví dụ: Nước Aquafina giảm 15%)
-- **INVOICE_TOTAL:** Giảm theo tổng hóa đơn (ví dụ: Hóa đơn ≥ 500k giảm 50k)
-- **VOUCHER:** Mã giảm giá giới hạn số lần dùng (ví dụ: VIP20 giảm 20%, mỗi khách dùng 1 lần)
+**4. Security Configuration**
+- CORS: Allow `localhost:5173` (frontend dev server)
+- Public endpoints: Swagger, Health check
+- Protected endpoints: Business APIs (TODO: JWT)
 
-Chi tiết: Xem [promotion-flow-advanced.md](picture/promotion-flow-advanced.md)
+**5. Swagger/OpenAPI**
+- Interactive API testing
+- JWT Bearer token support (TODO)
+- Request/Response examples
 
 ---
 
-## 🌐 Kiến trúc Web App (2 Portals)
+## 🧪 Testing
 
+### Manual Testing
+```bash
+# Health check
+curl http://localhost:8080/api/health
+
+# Swagger UI
+open http://localhost:8080/api/swagger-ui.html
 ```
-┌────────────────────────────────────────────┐
-│   Web App (ReactJS + Vite + React Router)  │
-├────────────────────────────────────────────┤
-│  📱 CUSTOMER PORTAL (/)                    │
-│  ├─ /                 Trang chủ            │
-│  ├─ /courts           Danh sách sân        │
-│  ├─ /booking          Đặt sân (Time-slot)  │
-│  ├─ /login            Đăng nhập            │
-│  ├─ /register         Đăng ký              │
-│  ├─ /my-bookings      Vé của tôi           │
-│  └─ /profile          Profile cá nhân      │
-├────────────────────────────────────────────┤
-│  🖥️ ADMIN PORTAL (/admin)                  │
-│  ├─ /admin/login      Đăng nhập staff      │
-│  ├─ /admin/dashboard  Tổng quan            │
-│  ├─ /admin/courts     Quản lý sân          │
-│  ├─ /admin/products   Quản lý sản phẩm     │
-│  ├─ /admin/promotions Quản lý khuyến mãi   │
-│  ├─ /admin/staff      Quản lý nhân viên    │
-│  ├─ /admin/bookings   Calendar view        │
-│  ├─ /admin/pos        POS bán hàng         │
-│  ├─ /admin/checkout   Check-out trả sân    │
-│  └─ /admin/reports    Báo cáo doanh thu    │
-└────────────────────────────────────────────┘
-         ↓ Axios (REST API)
-┌────────────────────────────────────────────┐
-│  Backend (Spring Boot 3.2 + PostgreSQL)    │
-│  http://localhost:8080/api                 │
-└────────────────────────────────────────────┘
-```
+
+### Automated Testing (TODO)
+- [ ] Unit tests (JUnit 5 + Mockito)
+- [ ] Integration tests (TestContainers)
+- [ ] API tests (REST Assured)
 
 ---
 
-## 📖 Tài Liệu Tham Khảo
+## 🐛 Common Issues & Solutions
 
-### 🎯 Bắt đầu từ đây
-- **[⭐ UPGRADE-SUMMARY.md](picture/UPGRADE-SUMMARY.md)**: Tổng quan nâng cấp, checklist, next steps
+### 1. Port 8080 already in use
+```bash
+# Windows
+netstat -ano | findstr :8080
+taskkill /PID <PID> /F
+```
 
-### 📋 Core Documentation (BẮT BUỘC ĐỌC)
-- **[Database Schema](picture/database.md)**: ERD với 18 bảng, constraints, indexes
-- **[Promotion System](picture/promotion-flow-advanced.md)**: Hệ thống khuyến mãi 3 tầng với discount rules
-- **[Payment & Invoice Flow](picture/payment-invoice-flow.md)**: Luồng nghiệp vụ chi tiết (Online booking → Check-in → Mua hàng)
+### 2. Database connection failed
+```bash
+docker-compose restart
+docker logs bcm-postgres
+```
 
-### 🔍 Technical Deep Dive
-- **[Design Review](picture/design-review-final.md)**: Review các quyết định thiết kế và tradeoffs
-- **[Technical Considerations](picture/technical-considerations.md)**: ⚠️ **Đọc trước khi code** - Locking strategies, Payment webhook, Jakarta EE
+### 3. Maven compile error
+```bash
+# Check Java version
+java -version  # Must be 21
 
-### 📐 UML Diagrams
-- **[Use Case](picture/usecase.md)**: Phân quyền 3 Actor (Customer, Staff, Admin)
-- **[Sequence](picture/sequence.md)**: 5 luồng nghiệp vụ cốt lõi
-- **[Activity](picture/activity.md)**: Điều kiện rẽ nhánh logic
+# Clean rebuild
+mvn clean compile
+```
 
-### 👥 Team Management
-- **[Team Task Allocation](../team_task_allocation.md)**: Phân công chi tiết 4 thành viên, lộ trình 4 sprints
+### 4. Lombok not working
+- IntelliJ: Install "Lombok" plugin + Enable annotation processing
+- Eclipse: Install from https://projectlombok.org/
 
 ---
 
-*Đồ án Môn học - Hệ thống Quản lý Sân Cầu Lông (2026).*
+## 📞 Resources
+
+- **Swagger UI**: http://localhost:8080/api/swagger-ui.html
+- **Database**: `localhost:5432` (user: `bcm_admin`, pass: `12345`)
+- **Team Leader**: Thành viên 1
+- **Documentation**: `docs/` folder
+
+---
+
+## 🎯 Next Steps
+
+### For Team Lead (Thành viên 1)
+1. ✅ Setup backend skeleton - **DONE**
+2. ⬜ Push to `develop` branch
+3. ⬜ Create feature branch `feature/foundation-and-auth`
+4. ⬜ Implement JWT authentication
+5. ⬜ Create User, Role entities
+6. ⬜ Notify team to start their modules
+
+### For Other Members
+1. ⬜ Pull latest `develop` branch
+2. ⬜ Create your feature branch
+3. ⬜ Start implementing entities using BaseEntity
+4. ⬜ Follow ApiResponse format for all endpoints
+
+---
+
+## ✅ Current Status
+
+**Foundation Layer**: 🟢 COMPLETE
+- Spring Boot project structure
+- Database running (PostgreSQL)
+- Base infrastructure classes
+- API documentation (Swagger)
+- Development-ready environment
+
+**Next Priority**: JWT Authentication & Entity Implementation
+
+---
+
+## 📄 License
+MIT License - BCM Development Team © 2026
