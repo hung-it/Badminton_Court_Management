@@ -1,0 +1,97 @@
+# ======================================
+# APPLICATION CONFIGURATION
+# Badminton Court Management System
+# ======================================
+
+spring:
+  application:
+    name: badminton-court-management
+
+  # ====================
+  # Database Configuration
+  # ====================
+  datasource:
+    url: jdbc:postgresql://localhost:5432/badminton_court_db
+    username: bcm_admin
+    password: 12345
+    driver-class-name: org.postgresql.Driver
+
+    # HikariCP (Connection Pool)
+    hikari:
+      pool-name: BCM-HikariPool
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  # ====================
+  # JPA / Hibernate Configuration
+  # ====================
+  jpa:
+    hibernate:
+      ddl-auto: validate  # validate: Chỉ kiểm tra, KHÔNG tự động tạo/sửa table
+    show-sql: true        # In SQL ra console (dev only)
+    properties:
+      hibernate:
+        format_sql: true  # Format SQL cho dễ đọc
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          batch_size: 20  # Batch insert/update
+        order_inserts: true
+        order_updates: true
+    open-in-view: false   # Tránh lazy loading issue
+
+  # ====================
+  # SQL Init (Không dùng vì đã có migration.sql)
+  # ====================
+  sql:
+    init:
+      mode: never
+
+# ====================
+# Server Configuration
+# ====================
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+  error:
+    include-message: always
+    include-binding-errors: always
+    include-stacktrace: on_param
+    include-exception: false
+
+# ====================
+# JWT Configuration
+# ====================
+jwt:
+  secret: bcm-secret-key-change-this-in-production-to-a-very-long-random-string-at-least-256-bits
+  access-token-expiration: 3600000    # 1 hour (in milliseconds)
+  refresh-token-expiration: 604800000 # 7 days (in milliseconds)
+
+# ====================
+# Logging Configuration
+# ====================
+logging:
+  level:
+    root: INFO
+    com.bcm: DEBUG
+    org.springframework.web: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+# ====================
+# Springdoc OpenAPI (Swagger)
+# ====================
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    operations-sorter: method
+    tags-sorter: alpha
