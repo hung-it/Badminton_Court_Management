@@ -1,6 +1,6 @@
 package com.bcm.controller;
 
-import com.bcm.dto.ApiResponse;
+import com.bcm.dto.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,7 +33,7 @@ public class HealthController {
         healthInfo.put("version", "1.0.0");
         healthInfo.put("database", "PostgreSQL - Connected");
 
-        return ApiResponse.success(healthInfo, "System is healthy");
+        return ApiResponse.success("System is healthy", healthInfo);
     }
 
     @GetMapping("/ping")
@@ -42,6 +42,6 @@ public class HealthController {
         description = "Minimal endpoint for uptime monitoring"
     )
     public ApiResponse<String> ping() {
-        return ApiResponse.success("pong", "API is responding");
+        return ApiResponse.success("API is responding", "pong");
     }
 }
