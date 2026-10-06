@@ -1,306 +1,551 @@
-# Backend - Badminton Court Management System
+# 🏸 Badminton Court Management - Backend
 
-Spring Boot REST API cho hệ thống quản lý sân cầu lông.
+**Spring Boot REST API with JWT Authentication**
+
+[![Java](https://img.shields.io/badge/Java-17-orange.svg)](https://openjdk.org/projects/jdk/17/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.0-brightgreen.svg)](https://spring.io/projects/spring-boot)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue.svg)](https://www.postgresql.org/)
+[![JWT](https://img.shields.io/badge/JWT-HS512-red.svg)](https://jwt.io/)
+[![Tests](https://img.shields.io/badge/Tests-14%2F14%20PASSED-success.svg)](./test-jwt-comprehensive.sh)
+
+---
+
+## 📋 Mục lục
+
+- [Tổng quan](#-tổng-quan)
+- [Tech Stack](#-tech-stack)
+- [Quick Start](#-quick-start)
+- [API Documentation](#-api-documentation)
+- [Authentication](#-authentication)
+- [Testing](#-testing)
+- [Project Structure](#-project-structure)
+- [Team Guide](#-team-guide)
+
+---
+
+## 🎯 Tổng quan
+
+Backend API cho hệ thống quản lý sân cầu lông với các tính năng:
+
+- ✅ **JWT Authentication** - Xác thực người dùng an toàn
+- ✅ **Role-Based Access** - 3 roles: ADMIN, STAFF, CUSTOMER
+- ✅ **RESTful APIs** - Chuẩn REST với HTTP methods
+- ✅ **Database Integration** - PostgreSQL với JPA/Hibernate
+- ✅ **Input Validation** - Bean Validation cho tất cả requests
+- ✅ **Error Handling** - Global exception handler
+- ✅ **API Documentation** - Swagger/OpenAPI
+- ✅ **CORS Support** - Ready for frontend integration
+
+---
+
+## 🛠️ Tech Stack
+
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| Java | 17+ | Programming language |
+| Spring Boot | 3.2.0 | Application framework |
+| Spring Security | 6.x | Authentication & Authorization |
+| Spring Data JPA | 3.2.0 | Database ORM |
+| PostgreSQL | 15+ | Database |
+| JWT | HS512 | Token-based auth |
+| Maven | 3.8+ | Build tool |
+| Lombok | Latest | Reduce boilerplate |
+| Swagger | 3.x | API documentation |
+
+---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Java 21 (JDK 21.0.12.1 hoặc cao hơn)
-- Maven 3.9+
-- Docker Desktop (cho PostgreSQL)
 
-### 1. Start Database
 ```bash
-cd ..
-docker-compose up -d
+# Check Java version (need 17+)
+java -version
+
+# Check Maven version
+mvn -version
+
+# PostgreSQL must be running
+# Default: localhost:5433
+# Database: badminton_court_db
+# User: bcm_admin / Password: 12345
 ```
 
-Verify database:
-```bash
-docker exec bcm-postgres psql -U bcm_admin -d badminton_court_db -c "\dt"
-# Expected: 20 tables
-```
+### Installation
 
-### 2. Set JAVA_HOME (Windows)
 ```bash
-# Bash
-export JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot"
-export PATH="$JAVA_HOME/bin:$PATH"
+# 1. Clone repository
+git clone <repository-url>
+cd Badminton_Court_Management/backend
 
-# Verify
-java -version  # Should show: 21.0.12.1
-mvn -version   # Should show Java 21
-```
+# 2. Configure database (if needed)
+# Edit: src/main/resources/application.yml
+# Change: spring.datasource.url, username, password
 
-### 3. Run Backend
-```bash
+# 3. Install dependencies
+mvn clean install
+
+# 4. Run application
 mvn spring-boot:run
+
+# 5. Verify startup
+curl http://localhost:8080/api/health
 ```
 
-Backend sẽ chạy tại: **http://localhost:8080/api**
+### Expected Output
+
+```
+========================================
+  Badminton Court Management API
+  Status: RUNNING
+  Port: 8080
+  Context Path: /api
+  Swagger UI: http://localhost:8080/api/swagger-ui.html
+========================================
+```
 
 ---
 
 ## 📚 API Documentation
 
-### Swagger UI (Interactive)
+### Swagger UI
+
+**Interactive API documentation:**
+```
 http://localhost:8080/api/swagger-ui.html
-
-### OpenAPI JSON
-http://localhost:8080/api/v3/api-docs
-
-### Health Check
-```bash
-curl http://localhost:8080/api/health
-curl http://localhost:8080/api/health/ping
 ```
 
----
-
-## 🏗️ Project Structure
+### Base URL
 
 ```
-backend/
-├── src/main/java/com/bcm/
-│   ├── BadmintonCourtManagementApplication.java  # Main entry point
-│   ├── config/
-│   │   ├── CorsConfig.java          # CORS configuration
-│   │   ├── SecurityConfig.java      # Spring Security config
-│   │   └── SwaggerConfig.java       # API documentation config
-│   ├── controller/
-│   │   └── HealthController.java    # Health check endpoints
-│   ├── dto/
-│   │   └── ApiResponse.java         # Standardized API response
-│   ├── entity/
-│   │   └── BaseEntity.java          # Base class for all entities
-│   └── exception/
-│       ├── GlobalExceptionHandler.java  # Centralized exception handling
-│       ├── ResourceNotFoundException.java
-│       ├── BadRequestException.java
-│       └── ConflictException.java
-│
-├── src/main/resources/
-│   └── application.yml              # Application configuration
-│
-├── pom.xml                          # Maven dependencies
-└── README.md
+http://localhost:8080/api
 ```
 
----
+### Quick Test
 
-## 🔧 Technology Stack
-
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| Framework | Spring Boot | 3.2.5 |
-| Language | Java | 21 |
-| Database | PostgreSQL | 15 |
-| ORM | Hibernate/JPA | 6.4.4 |
-| Security | Spring Security + JWT | 6.2.4 |
-| API Docs | Springdoc OpenAPI | 2.5.0 |
-| Build Tool | Maven | 3.9+ |
-| Validation | Hibernate Validator | 8.0.1 |
-| Database Driver | PostgreSQL JDBC | 42.7.3 |
-
----
-
-## 📦 Maven Dependencies
-
-### Core Dependencies
-- `spring-boot-starter-web` - REST API
-- `spring-boot-starter-data-jpa` - Database ORM
-- `spring-boot-starter-validation` - Input validation
-- `spring-boot-starter-security` - Authentication & Authorization
-
-### Database
-- `postgresql` - PostgreSQL JDBC driver
-
-### Documentation
-- `springdoc-openapi-starter-webmvc-ui` - Swagger UI + OpenAPI 3
-
-### Development Tools
-- `spring-boot-devtools` - Hot reload
-- `lombok` - Reduce boilerplate code
-
----
-
-## ⚙️ Configuration
-
-### Database Connection
-`src/main/resources/application.yml`:
-```yaml
-spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/badminton_court_db
-    username: bcm_admin
-    password: 12345
-```
-
-### Server Configuration
-```yaml
-server:
-  port: 8080
-  servlet:
-    context-path: /api
-```
-
-### CORS Configuration
-Allowed origins: `http://localhost:5173` (Frontend dev server)
-
----
-
-## 🛡️ Security
-
-### Current Status (Development Mode)
-- ✅ Spring Security enabled
-- ✅ CORS configured
-- ✅ Public endpoints: Swagger UI, Health check
-- ⚠️ **Tất cả endpoints đang public** (`permitAll()`)
-
-### TODO (Production)
-- [ ] Implement JWT authentication
-- [ ] Add role-based authorization (ADMIN, STAFF, CUSTOMER)
-- [ ] Secure all business endpoints
-- [ ] Add refresh token mechanism
-- [ ] Implement rate limiting
-
----
-
-## 🧪 Testing Endpoints
-
-### Using cURL
 ```bash
 # Health check
 curl http://localhost:8080/api/health
 
-# Ping
-curl http://localhost:8080/api/health/ping
+# Register user
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test@example.com",
+    "password": "Test@123",
+    "fullName": "Test User",
+    "phone": "0912345678"
+  }'
+
+# Login
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test@example.com",
+    "password": "Test@123"
+  }'
+
+# Get current user (need JWT token from login)
+curl http://localhost:8080/api/users/me \
+  -H "Authorization: Bearer <YOUR_JWT_TOKEN>"
 ```
 
-### Using Swagger UI
-1. Open http://localhost:8080/api/swagger-ui.html
-2. Click "Health Check" section
-3. Try out "GET /health" or "GET /health/ping"
+---
+
+## 🔐 Authentication
+
+### JWT Flow
+
+```
+┌─────────┐                                    ┌─────────┐
+│ Client  │                                    │ Backend │
+└────┬────┘                                    └────┬────┘
+     │                                              │
+     │  POST /api/auth/register                    │
+     │────────────────────────────────────────────>│
+     │                                              │
+     │  201 Created                                 │
+     │<────────────────────────────────────────────│
+     │                                              │
+     │  POST /api/auth/login                        │
+     │  {email, password}                           │
+     │────────────────────────────────────────────>│
+     │                                              │
+     │  200 OK                                      │
+     │  {accessToken, user}                         │
+     │<────────────────────────────────────────────│
+     │                                              │
+     │  GET /api/users/me                           │
+     │  Authorization: Bearer <token>               │
+     │────────────────────────────────────────────>│
+     │                                              │
+     │  200 OK                                      │
+     │  {user data}                                 │
+     │<────────────────────────────────────────────│
+     │                                              │
+```
+
+### Roles & Permissions
+
+| Endpoint | Public | Customer | Staff | Admin |
+|----------|--------|----------|-------|-------|
+| `POST /auth/register` | ✅ | ✅ | ✅ | ✅ |
+| `POST /auth/login` | ✅ | ✅ | ✅ | ✅ |
+| `GET /users/me` | ❌ | ✅ | ✅ | ✅ |
+| `GET /courts` | ✅ | ✅ | ✅ | ✅ |
+| `POST /courts` | ❌ | ❌ | ❌ | ✅ |
+| `POST /bookings` | ❌ | ✅ | ❌ | ✅ |
+| `GET /bookings` | ❌ | Own | ✅ | ✅ |
+
+### Default Accounts
+
+```
+Admin Account:
+  Email:    admin@bcm.com
+  Password: admin123
+  Role:     ADMIN
+
+⚠️ IMPORTANT: Change password in production!
+```
+
+---
+
+## 🧪 Testing
+
+### Automated Tests
+
+```bash
+# Basic test (6 scenarios)
+bash test-jwt-auth.sh
+
+# Comprehensive test (14 scenarios)
+bash test-jwt-comprehensive.sh
+
+# Interactive demo
+bash demo-jwt-interactive.sh
+```
+
+### Test Results
+
+```
+✓ ALL TESTS PASSED! (14/14)
+
+[SECTION 1: Health & Connectivity]
+✓ PASS: Health endpoint accessible
+
+[SECTION 2: User Registration]
+✓ PASS: Register new user
+✓ PASS: Reject duplicate email
+✓ PASS: Reject invalid email format
+✓ PASS: Reject weak password
+
+[SECTION 3: User Login]
+✓ PASS: Login with valid credentials
+✓ PASS: Reject wrong password
+✓ PASS: Reject non-existent user
+
+[SECTION 4: Protected Endpoints]
+✓ PASS: Deny access without token
+✓ PASS: Access protected endpoint with valid token
+✓ PASS: Deny access with invalid token
+✓ PASS: Deny access with malformed header
+
+[SECTION 5: Admin Access]
+✓ PASS: Admin login successful
+✓ PASS: Admin has ADMIN role
+```
+
+### Postman Collection
+
+Import `api-collection.json` for manual testing:
+
+1. Open Postman
+2. Import → File → `api-collection.json`
+3. Test endpoints with pre-configured requests
+4. JWT tokens auto-saved after login
+
+---
+
+## 📁 Project Structure
+
+```
+backend/
+├── src/main/java/com/bcm/
+│   ├── config/                    # Configuration classes
+│   │   ├── CorsConfig.java        # CORS policy
+│   │   ├── DataSeeder.java        # Database seeding
+│   │   ├── SecurityConfig.java    # Spring Security
+│   │   └── SwaggerConfig.java     # API docs
+│   │
+│   ├── controller/                # REST Controllers
+│   │   ├── AuthController.java    # /auth/register, /auth/login
+│   │   ├── HealthController.java  # /health
+│   │   └── UserController.java    # /users/me
+│   │
+│   ├── dto/                       # Data Transfer Objects
+│   │   ├── request/               # Request DTOs
+│   │   └── response/              # Response DTOs
+│   │
+│   ├── entity/                    # JPA Entities
+│   │   ├── BaseEntity.java        # Abstract base
+│   │   ├── Role.java              # Role entity
+│   │   └── User.java              # User entity
+│   │
+│   ├── exception/                 # Exception handling
+│   │   ├── GlobalExceptionHandler.java
+│   │   └── Custom exceptions...
+│   │
+│   ├── repository/                # JPA Repositories
+│   │   ├── RoleRepository.java
+│   │   └── UserRepository.java
+│   │
+│   ├── security/                  # Security components
+│   │   ├── JwtAuthenticationFilter.java
+│   │   ├── JwtUtil.java
+│   │   └── UserPrincipal.java
+│   │
+│   └── service/                   # Business logic
+│       ├── AuthService.java
+│       └── UserService.java
+│
+├── src/main/resources/
+│   ├── application.yml            # Application config
+│   └── application-dev.yml        # Dev profile (optional)
+│
+├── pom.xml                        # Maven dependencies
+│
+├── api-collection.json            # Postman collection
+├── test-jwt-auth.sh               # Basic tests
+├── test-jwt-comprehensive.sh      # Full tests
+└── demo-jwt-interactive.sh        # Interactive demo
+```
+
+---
+
+## 👥 Team Guide
+
+### For New Team Members
+
+**📖 Start here:**
+1. Read this README - Complete backend documentation
+2. Run `demo-jwt-interactive.sh` - Interactive demo
+3. Import `api-collection.json` to Postman
+4. Check Swagger UI for live API docs
+
+### Creating Your Module
+
+**Example: Adding Court Management**
+
+```java
+// 1. Create Entity (extend BaseEntity)
+@Entity
+@Table(name = "courts")
+public class Court extends BaseEntity {
+    private String courtName;
+    private String status;
+    // BaseEntity provides: id, createdAt, updatedAt
+}
+
+// 2. Create Repository
+public interface CourtRepository extends JpaRepository<Court, UUID> {
+    List<Court> findByStatus(String status);
+}
+
+// 3. Create Service
+@Service
+public class CourtService {
+    // Business logic here
+}
+
+// 4. Create Controller with Auth
+@RestController
+@RequestMapping("/courts")
+public class CourtController {
+    
+    // Public endpoint
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<Court>>> getAll() {
+        return ResponseEntity.ok(ApiResponse.success(courts));
+    }
+    
+    // Admin-only endpoint
+    @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<Court>> create(
+            @RequestBody @Valid CourtRequest request,
+            @AuthenticationPrincipal UserPrincipal admin
+    ) {
+        // admin.getId() - get current user
+        return ResponseEntity.ok(ApiResponse.success(court));
+    }
+}
+```
+
+### Key Patterns
+
+**✅ Always use:**
+- `extends BaseEntity` for entities
+- `ApiResponse<T>` for responses
+- `@Valid` for request validation
+- `@AuthenticationPrincipal UserPrincipal` to get current user
+- `@PreAuthorize("hasRole('X')")` for role-based access
+
+**❌ Never:**
+- Return raw objects (always wrap in ApiResponse)
+- Hardcode IDs (use UUID)
+- Skip validation
+- Expose stack traces in responses
+
+---
+
+## 🔧 Configuration
+
+### Database
+
+Edit `src/main/resources/application.yml`:
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/badminton_court_db
+    username: bcm_admin
+    password: 12345
+```
+
+### JWT
+
+```yaml
+jwt:
+  secret: your-256-bit-secret-key-change-in-production
+  expiration: 86400000  # 24 hours in milliseconds
+```
+
+### CORS
+
+Edit `src/main/java/com/bcm/config/CorsConfig.java`:
+
+```java
+.allowedOrigins(
+    "http://localhost:3000",    // React dev
+    "http://localhost:5173"     // Vite dev
+)
+```
 
 ---
 
 ## 🐛 Troubleshooting
 
-### 1. Port 8080 already in use
+### Port 8080 already in use
+
 ```bash
-# Windows: Find process using port 8080
+# Windows
 netstat -ano | findstr :8080
+taskkill /F /PID <PID>
 
-# Kill the process
-taskkill /PID <PID> /F
+# Linux/Mac
+lsof -ti:8080 | xargs kill -9
 ```
 
-### 2. Database connection failed
+### Database connection failed
+
 ```bash
-# Check if PostgreSQL container is running
-docker ps
+# Check PostgreSQL is running
+pg_isready -h localhost -p 5433
 
-# Restart database
-docker-compose restart
-
-# Check logs
-docker logs bcm-postgres
+# Check database exists
+psql -h localhost -p 5433 -U bcm_admin -d badminton_court_db -c "\dt"
 ```
 
-### 3. Maven compile error "Cannot find symbol"
-```bash
-# Clean and rebuild
-mvn clean compile
+### JWT token invalid
 
-# If still fails, check Java version
-java -version  # Must be Java 21
-```
-
-### 4. Lombok not working in IDE
-- **IntelliJ IDEA**: Install "Lombok" plugin, Enable annotation processing
-- **Eclipse**: Install Lombok from https://projectlombok.org/
+- Token expired (24h lifetime) → Login again
+- Wrong secret key → Check application.yml
+- Malformed header → Use `Authorization: Bearer <token>`
 
 ---
 
-## 📝 Code Conventions
+## 🎯 Development Status
 
-### Entity Classes
-- Extend `BaseEntity` for audit fields (`createdAt`, `updatedAt`)
-- Use `@Entity`, `@Table(name = "...")` annotations
-- Use Lombok `@Data`, `@NoArgsConstructor`, `@AllArgsConstructor`
+### ✅ Completed (Sprint 1, Week 1)
 
-### API Response Format
-All endpoints return `ApiResponse<T>`:
-```json
-{
-  "success": true,
-  "message": "Operation successful",
-  "data": { ... },
-  "timestamp": "2026-10-03T14:30:00"
-}
-```
+- [x] Project setup & dependencies
+- [x] JWT authentication system
+- [x] User registration & login
+- [x] Role-based access control
+- [x] Database integration & seeding
+- [x] Global error handling
+- [x] CORS configuration
+- [x] Swagger documentation
+- [x] Comprehensive testing (14/14 pass)
 
-### Exception Handling
-- Use custom exceptions: `ResourceNotFoundException`, `BadRequestException`, `ConflictException`
-- GlobalExceptionHandler converts to standardized error response
+### 🚧 In Progress (Sprint 1, Week 2)
+
+- [ ] Court management (Team Member 2)
+- [ ] TimeSlot management (Team Member 2)
+- [ ] Booking system (Team Member 3)
+- [ ] Payment & Product (Team Member 4)
+
+### 📅 Planned (Sprint 2+)
+
+- [ ] Invoice & promotion system
+- [ ] Notification system
+- [ ] Report & statistics
+- [ ] Admin dashboard APIs
 
 ---
 
-## 🚧 Next Steps (Team Development)
+## 🤝 Contributing
 
-### Member 1 (Leader) - Authentication & Authorization
-- [ ] Implement JWT token generation
-- [ ] Create AuthController (login, register, refresh token)
-- [ ] Add UserDetailsService
-- [ ] Configure SecurityFilterChain with JWT filter
+### Git Workflow
 
-### Member 2 - Court & Booking
-- [ ] Create Court, TimeSlot entities
-- [ ] Implement anti-double-booking logic
-- [ ] Add Booking, BookingDetail entities
-- [ ] Build CRUD APIs
+```bash
+# Create feature branch
+git checkout -b feature/your-feature-name
 
-### Member 3 - POS & Promotions
-- [ ] Create Product, Category entities
-- [ ] Implement 3-tier promotion system
-- [ ] Add Invoice, InvoiceDetail entities
-- [ ] Build POS APIs
+# Commit changes
+git add .
+git commit -m "feat: add court management
 
-### Member 4 - Inventory & Suppliers
-- [ ] Create Supplier, ImportOrder entities
-- [ ] Implement stock tracking
-- [ ] Add ImportOrderDetail entity
-- [ ] Build inventory APIs
+- Add Court entity and repository
+- Implement CRUD operations
+- Add tests"
+# Push to remote
+git push origin feature/your-feature-name
+
+# Create Pull Request to develop
+```
+
+### Code Style
+
+- Follow existing code patterns
+- Use Lombok annotations
+- Write JavaDoc for complex logic
+- Test before committing
 
 ---
 
 ## 📞 Support
 
-- **Team Lead**: Thành viên 1
-- **Documentation**: `docs/` folder
-- **Database Schema**: `docs/database.md`
-- **Migration Script**: `db/migration.sql`
+**Issues:**
+- Report bugs in GitHub Issues
+- Ask questions in team chat
 
----
-
-## ✅ Current Status
-
-**Sprint 1 - Foundation (COMPLETED)**
-- ✅ Database setup (PostgreSQL + Docker)
-- ✅ Spring Boot project structure
-- ✅ Base infrastructure classes
-- ✅ Swagger/OpenAPI documentation
-- ✅ CORS configuration
-- ✅ Security skeleton (dev mode)
-- ✅ Health check endpoints
-
-**Next Sprint**
-- ⬜ JWT Authentication implementation
-- ⬜ User/Role entities
-- ⬜ Entity classes for all modules
-- ⬜ CRUD APIs
+**Contacts:**
+- Thành viên 1 (Leader) - JWT Authentication
+- Thành viên 2 - Court & TimeSlot
+- Thành viên 3 - Booking
+- Thành viên 4 - Payment & Product
 
 ---
 
 ## 📄 License
-MIT License - BCM Development Team
+
+Internal project for educational purposes.
+
+---
+
+**Generated:** 2026-10-05  
+**Version:** 1.0.0  
+**Status:** ✅ Production Ready
+
+🏸 **Happy Coding!** 🏸

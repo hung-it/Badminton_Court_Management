@@ -35,7 +35,7 @@ spring:
   # Database Configuration
   # ====================
   datasource:
-    url: jdbc:postgresql://localhost:5432/badminton_court_db
+    url: jdbc:postgresql://localhost:5433/badminton_court_db
     username: bcm_admin
     password: 12345
     driver-class-name: org.postgresql.Driver
@@ -90,7 +90,7 @@ server:
 # JWT Configuration
 # ====================
 jwt:
-  secret: bcm-secret-key-change-this-in-production-to-a-very-long-random-string-at-least-256-bits
+  secret: ${JWT_SECRET:dGhpc2lzYXZlcnlzZWN1cmVzZWNyZXRrZXlmb3JiYWRtaW50b25jb3VydG1hbmFnZW1lbnRzeXN0ZW0xMjM0NTY3ODkw}
   access-token-expiration: 3600000    # 1 hour (in milliseconds)
   refresh-token-expiration: 604800000 # 7 days (in milliseconds)
 

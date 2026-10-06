@@ -27,7 +27,7 @@ docker-compose up -d
 
 ```yaml
 Host: localhost
-Port: 5432
+Port: 5433
 Database: badminton_court_db
 Username: bcm_admin
 Password: 12345
