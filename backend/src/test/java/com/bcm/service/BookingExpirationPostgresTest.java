@@ -54,6 +54,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.hikari.connection-init-sql=SET statement_timeout = '15s'"
 })
 @AutoConfigureMockMvc
+@org.springframework.context.annotation.Import(com.bcm.service.BookingWebTestConfiguration.class)
 @EnabledIfEnvironmentVariable(named = "BCM_TEST_DB_URL", matches = "jdbc:postgresql:.*")
 class BookingExpirationPostgresTest {
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 10, 5, 12, 0);
@@ -94,7 +95,7 @@ class BookingExpirationPostgresTest {
         courtId = UUID.randomUUID();
         slotId = UUID.randomUUID();
         dateOffset = 0;
-        jdbc.update("INSERT INTO users(id,email,password) VALUES (?,?,?)", userId, userId + "@expiration.test", "test-only");
+        jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,?,'Booking fixture','0900000000')", userId, userId + "@expiration.test", "test-only");
         jdbc.update("INSERT INTO customers(id,user_id,full_name,phone) VALUES (?,?,?,?)",
                 customerId, userId, "Expiration test", "0900000000");
         jdbc.update("INSERT INTO courts(id,court_number,name,base_price) VALUES (?, -501, 'Expiration test', 10.00)", courtId);

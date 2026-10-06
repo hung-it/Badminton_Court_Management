@@ -1,27 +1,22 @@
 package com.bcm.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import lombok.AccessLevel;
+import jakarta.persistence.*;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
-import org.hibernate.annotations.Immutable;
+import lombok.Setter;
 
-import java.util.UUID;
-
-/**
- * Read-only identity reference to customers; writes belong to its owning module.
- */
+/** Customer identity and profile; user and customer IDs are distinct. */
 @Entity
 @Table(name = "customers")
-@Immutable
 @Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Customer {
-
-    @Id
-    @Column(name = "id", nullable = false, updatable = false)
-    private UUID id;
+@Setter
+public class Customer extends BaseEntity {
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false, unique = true)
+    private User user;
+    @Column(name = "full_name", nullable = false)
+    private String fullName;
+    @Column(name = "phone", nullable = false, length = 20)
+    private String phone;
+    @Column(name = "address", columnDefinition = "text")
+    private String address;
 }

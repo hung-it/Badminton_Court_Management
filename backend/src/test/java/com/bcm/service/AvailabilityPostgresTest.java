@@ -46,6 +46,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest(properties = "spring.jpa.properties.hibernate.generate_statistics=true")
 @AutoConfigureMockMvc
+@org.springframework.context.annotation.Import(com.bcm.service.BookingWebTestConfiguration.class)
 @Transactional
 @EnabledIfEnvironmentVariable(named = "BCM_TEST_DB_URL", matches = "jdbc:postgresql:.*")
 class AvailabilityPostgresTest {
@@ -86,7 +87,7 @@ class AvailabilityPostgresTest {
     void fixtures() {
         UUID userId = UUID.randomUUID();
         customerId = UUID.randomUUID();
-        jdbc.update("INSERT INTO users (id, email, password) VALUES (?, ?, ?)",
+        jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,?,'Booking fixture','0900000000')",
                 userId, userId + "@availability.test", "test-only");
         jdbc.update("INSERT INTO customers (id, user_id, full_name, phone) VALUES (?, ?, ?, ?)",
                 customerId, userId, "Availability customer", "0900000000");
@@ -268,14 +269,14 @@ class AvailabilityPostgresTest {
     }
 
     @Test
-    void documentsOnlyImplementedAvailabilityOperationAsPublic() throws Exception {
+    void documentsAvailabilityUnderCurrentOwnerAuthenticationPolicy() throws Exception {
         mvc.perform(get("/api/api-docs").contextPath("/api"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/availability'].get.parameters[0].name").value("date"))
                 .andExpect(jsonPath("$.paths['/availability'].get.parameters[0].required").value(true))
                 .andExpect(jsonPath("$.paths['/availability'].get.parameters[1].name").value("courtId"))
                 .andExpect(jsonPath("$.paths['/availability'].get.parameters[1].required").value(false))
-                .andExpect(jsonPath("$.paths['/availability'].get.security").isEmpty())
+                .andExpect(jsonPath("$.paths['/availability'].get.security[0]['Bearer Authentication']").isArray())
                 .andExpect(jsonPath("$.paths['/availability'].post").doesNotExist());
     }
 

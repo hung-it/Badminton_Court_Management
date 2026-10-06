@@ -71,7 +71,7 @@ class BookingMappingPostgresTest {
         staffId = UUID.randomUUID();
         courtId = UUID.randomUUID();
         timeSlotId = UUID.randomUUID();
-        jdbc.update("INSERT INTO users (id, email, password) VALUES (?, ?, ?)",
+        jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,?,'Booking fixture','0900000000')",
                 userId, userId + "@mapping.test", "test-only");
         jdbc.update("INSERT INTO customers (id, user_id, full_name, phone) VALUES (?, ?, ?, ?)",
                 customerId, userId, "Mapping customer", "0900000000");

@@ -45,6 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.hikari.connection-init-sql=SET statement_timeout = '15s'"
 })
 @AutoConfigureMockMvc
+@org.springframework.context.annotation.Import(com.bcm.service.BookingWebTestConfiguration.class)
 @EnabledIfEnvironmentVariable(named = "BCM_TEST_DB_URL", matches = "jdbc:postgresql:.*")
 class BookingConcurrencyPostgresTest {
     private static final LocalDate DATE = LocalDate.of(2020, 2, 29);
@@ -78,7 +79,7 @@ class BookingConcurrencyPostgresTest {
         courtA = ids.get(0);
         courtB = ids.get(1);
         slotId = UUID.randomUUID();
-        jdbc.update("INSERT INTO users(id,email,password) VALUES (?,?,?)", userId, userId + "@concurrency.test", "test-only");
+        jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,?,'Booking fixture','0900000000')", userId, userId + "@concurrency.test", "test-only");
         jdbc.update("INSERT INTO customers(id,user_id,full_name,phone) VALUES (?,?,?,?)",
                 customerId, userId, "Concurrency test", "0900000000");
         jdbc.update("INSERT INTO courts(id,court_number,name,base_price) VALUES (?, -401, 'Concurrency A', 10.05)", courtA);

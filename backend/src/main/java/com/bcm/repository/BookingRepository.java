@@ -2,6 +2,9 @@ package com.bcm.repository;
 
 import com.bcm.entity.Booking;
 import com.bcm.entity.BookingStatus;
+import com.bcm.dto.response.BookingSummaryResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -15,6 +18,19 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
+    @Query(value = """
+            select new com.bcm.dto.response.BookingSummaryResponse(
+                b.id, b.customer.id, b.status, b.courtFee, b.expiresAt, b.createdAt, b.updatedAt)
+            from Booking b where b.customer.id = :customerId
+              and (:status is null or b.status = :status)
+            order by b.createdAt desc, b.id desc
+            """, countQuery = """
+            select count(b) from Booking b where b.customer.id = :customerId
+              and (:status is null or b.status = :status)
+            """)
+    Page<BookingSummaryResponse> findHistory(@Param("customerId") UUID customerId,
+                                           @Param("status") BookingStatus status, Pageable pageable);
+
     @Query("""
             select b.id from Booking b
             where b.status = :status and b.expiresAt is not null and b.expiresAt <= :now

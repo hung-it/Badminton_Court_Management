@@ -11,6 +11,13 @@ import java.util.List;
 import java.util.UUID;
 
 public interface BookingDetailRepository extends JpaRepository<BookingDetail, UUID> {
+    @Query("""
+            select d from BookingDetail d join fetch d.court join fetch d.timeSlot
+            where d.booking.id = :bookingId
+            order by d.bookingDate, d.court.id, d.timeSlot.id, d.id
+            """)
+    List<BookingDetail> findHistoryDetails(@Param("bookingId") UUID bookingId);
+
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("delete from BookingDetail d where d.booking.id = :bookingId")

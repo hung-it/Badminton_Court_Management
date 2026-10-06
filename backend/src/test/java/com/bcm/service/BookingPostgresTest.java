@@ -56,6 +56,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest(properties = "booking.hold-duration=PT7M")
 @AutoConfigureMockMvc
+@org.springframework.context.annotation.Import(com.bcm.service.BookingWebTestConfiguration.class)
 @EnabledIfEnvironmentVariable(named = "BCM_TEST_DB_URL", matches = "jdbc:postgresql:.*")
 class BookingPostgresTest {
     private static final LocalDate DATE = LocalDate.of(2020, 2, 29);
@@ -90,7 +91,7 @@ class BookingPostgresTest {
         customerId = UUID.randomUUID();
         courtId = UUID.randomUUID();
         slotId = UUID.randomUUID();
-        jdbc.update("INSERT INTO users(id,email,password) VALUES (?,?,?)", userId, userId + "@booking.test", "test-only");
+        jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,?,'Booking fixture','0900000000')", userId, userId + "@booking.test", "test-only");
         jdbc.update("INSERT INTO customers(id,user_id,full_name,phone) VALUES (?,?,?,?)",
                 customerId, userId, "Booking test", "0900000000");
         jdbc.update("INSERT INTO courts(id,court_number,name,base_price) VALUES (?, -301, 'Booking test', 10.05)", courtId);
