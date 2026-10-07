@@ -3,6 +3,7 @@ package com.bcm.entity;
 import com.bcm.repository.BookingDetailRepository;
 import com.bcm.repository.BookingRepository;
 import com.bcm.repository.PaymentTransactionRepository;
+import com.bcm.repository.RoleRepository;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -59,6 +60,9 @@ class BookingMappingPostgresTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private RoleRepository roles;
+
     private UUID customerId;
     private UUID staffId;
     private UUID courtId;
@@ -84,6 +88,41 @@ class BookingMappingPostgresTest {
         jdbc.update("INSERT INTO time_slots (id, start_time, end_time, price_multiplier) VALUES (?, ?, ?, ?)",
                 timeSlotId, java.sql.Time.valueOf("10:00:00"), java.sql.Time.valueOf("11:00:00"),
                 new BigDecimal("1.25"));
+    }
+
+    @Test
+    void looksUpSeededRolesWithOnlySchemaBackedPersistentAttributes() {
+        assertThat(entityManager.getMetamodel().entity(Role.class).getAttributes())
+                .extracting(attribute -> attribute.getName())
+                .containsExactlyInAnyOrder("id", "roleName", "createdAt", "users");
+        for (String name : new String[]{"ADMIN", "STAFF", "CUSTOMER"}) {
+            Role role = roles.findByRoleName(name).orElseThrow();
+            assertThat(role.getId()).isNotNull();
+            assertThat(role.getRoleName()).isEqualTo(name);
+            assertThat(role.getCreatedAt()).isNotNull();
+        }
+        assertThat(roles.findByRoleName("MISSING_ROLE")).isEmpty();
+    }
+
+    @Test
+    void roundTripsRoleWithGeneratedUuidAndCreationTimestamp() {
+        Role role = roles.saveAndFlush(new Role("TEST_" + UUID.randomUUID()));
+        UUID id = role.getId();
+        LocalDateTime createdAt = role.getCreatedAt();
+        assertThat(id).isNotNull();
+        assertThat(createdAt).isNotNull();
+        entityManager.clear();
+
+        Role loaded = roles.findByRoleName(role.getRoleName()).orElseThrow();
+        assertThat(loaded.getId()).isEqualTo(id);
+        assertThat(loaded.getCreatedAt()).isEqualTo(jdbc.queryForObject(
+                "SELECT created_at FROM roles WHERE id=?", LocalDateTime.class, id));
+        loaded.setRoleName("RENAMED_" + UUID.randomUUID());
+        roles.saveAndFlush(loaded);
+        entityManager.clear();
+        Role renamed = roles.findByRoleName(loaded.getRoleName()).orElseThrow();
+        assertThat(renamed.getId()).isEqualTo(id);
+        assertThat(renamed.getCreatedAt()).isEqualTo(loaded.getCreatedAt());
     }
 
     @Test

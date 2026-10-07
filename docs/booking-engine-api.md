@@ -7,8 +7,8 @@ Swagger UI: `/api/swagger-ui.html`. Controller paths do not contain `/api`.
 
 The owner JWT filter authenticates a DB-backed UserPrincipal. CurrentCustomerService
 uses its trusted users.id to query customers.user_id and returns the distinct
-customers.id. Only authenticated CUSTOMER authorities may use history/detail;
-ADMIN/STAFF have no invented unrestricted Booking history policy.
+customers.id. Only authenticated CUSTOMER authorities may use history/detail,
+create bookings or initiate payments. No ADMIN/STAFF override is granted.
 
 GET /bookings uses the trusted customer when customerId is absent. A matching
 customerId remains accepted; a foreign one returns 403. Detail checks ownership
@@ -22,23 +22,33 @@ It now commits User, CUSTOMER role association and Customer profile in one
 transaction. Customer insert failure rolls everything back; duplicate email is
 409. No ADMIN/STAFF registration endpoint was added.
 
-POST /bookings and payment initiation still accept domain IDs without customer
-ownership checks; this remains a separate authorization limitation. Access/refresh
-token purpose separation is also unchanged and remains an Auth limitation.
+POST /bookings retains required customerId as a consistency assertion: it must
+match the trusted customer profile or returns 403 before court locks or writes.
+The persisted owner comes from the trusted customer ID, not the request identity.
+POST /bookings/{bookingId}/payments checks that same customer against the owner
+of the existing locked Booking before creating or reusing a payment attempt.
+Foreign bookings return 403 without payment artifacts; missing bookings return
+404. Configuration validation follows ownership, before any attempt is persisted.
+Initiation rechecks ownership and eligibility before and after provider work.
+Access/refresh token purpose separation remains an unchanged Auth limitation.
 
 ## Web API
 
 Normal APIs return `ApiResponse<T>` with success/message/data/timestamp; errors
-use the existing ApiResponse error envelope. Missing/invalid UUID/status/numeric
+handled by MVC use the existing ApiResponse error envelope. All five application
+operations require authentication; anonymous requests currently return 403 from
+the security filter and may have no JSON envelope. This is not a documented 401
+contract. History/detail and both write operations enforce CUSTOMER ownership.
+Missing/invalid UUID/status/numeric
 query parameters return 400. Booking status values are case-sensitive schema enums.
 
 | Method and path (relative to base) | Inputs | Responses |
 | --- | --- | --- |
-| GET `/availability` | Required date YYYY-MM-DD; optional courtId | 200 grid; 400 invalid/missing input; 404 filtered court unknown/ineligible |
-| POST `/bookings` | customerId; nonempty details with bookingDate/courtId/timeSlotId | 201 booking; 400 invalid/ineligible/overflow; 404 reference missing; 409 occupied slot/constraint |
+| GET `/availability` | Required date YYYY-MM-DD; optional courtId | 200 grid; 400 invalid/missing input; 403 unauthenticated; 404 filtered court unknown/ineligible |
+| POST `/bookings` | Own customerId; nonempty details with bookingDate/courtId/timeSlotId | 201 booking; 400 invalid/ineligible/overflow; 403 identity/customerId mismatch; 404 reference missing; 409 occupied slot/constraint |
 | GET `/bookings` | Optional own customerId; page=0; size=20 (1..100); optional status | 200 owned paginated headers; 400 validation; 403 identity/mismatch |
 | GET `/bookings/{bookingId}` | Booking UUID | 200 owned header/details/payments; 400 UUID; 403 foreign/identity; 404 missing header |
-| POST `/bookings/{bookingId}/payments` | paymentMethod VNPAY or MOMO | 201 attempt/initiation; 400 ineligible/disabled/input; 404 booking; 409 method conflict; 502 provider failure; 503 config/contract unavailable |
+| POST `/bookings/{bookingId}/payments` | Own booking; paymentMethod VNPAY or MOMO | 201 attempt/initiation; 400 ineligible/disabled/input; 403 identity/foreign booking; 404 booking; 409 method conflict; 502 provider failure; 503 config/contract unavailable |
 | GET `/payments/vnpay/return` | Signed VNPay return query fields | 200 verified display information; 400 unverifiable; 503 config unavailable |
 
 Availability is based on persisted booking_details, regardless of header status
@@ -47,6 +57,12 @@ in stable UUID order, snapshots `base_price * price_multiplier` using BigDecimal
 HALF_UP scale 2 per detail and sums persisted snapshots. Price/status/expiry are
 server-controlled; unknown JSON input fields cannot override them. Header/details
 commit atomically. PENDING hold duration is configurable; past dates remain allowed.
+
+Availability returns date, courtId/courtNumber/name and slots containing
+timeSlotId/startTime/endTime/priceMultiplier/available. MAINTENANCE, CLOSED and
+soft-deleted courts are omitted; filtering one returns 404. No price quote or
+basePrice is exposed by this contract. Selectable slots use the available boolean;
+only successful booking creation reserves them and returns authoritative prices.
 
 ### History and payment display
 
@@ -139,14 +155,44 @@ late code: application mapping uses 99 with a domain reason, which can trigger r
 
 ## Migration review
 
-Java maps db/migration.sql; no migration or mapped entity field was added in Phase 6.
+Current mappings use the committed db/migration.sql. The Auth handoff expanded
+Customer from an ID reference to a profile mapped through BaseEntity; its audit
+columns, including deleted_at, exist in the current migration. Schema was not changed
+by that handoff or this API completeness audit.
 
 | Mapping | Review |
 | --- | --- |
 | Booking | Exactly id/customer_id/status/court_fee/expires_at/created_by/updated_by/created_at/updated_at; no BaseEntity/deleted_at. PENDING requires expires_at. Six statuses match CHECK. Staff audit IDs reference staffs, not users. |
 | BookingDetail | Exactly id/booking_id/court_id/time_slot_id/booking_date/price/created_at; no updated_at/deleted_at. Relations match FKs. uq_booking_slot remains final guard. |
 | PaymentTransaction | Exactly id/booking_id/invoice_id/payment_method/transaction_id/status/amount/transaction_date/created_at/note; no added timestamps/statuses. XOR target remains DB guard. Four methods/statuses match CHECK. Nullable transaction_id globally unique when non-null. |
-| References | Reused minimal Customer/Staff/Invoice identity mappings and existing read-only Court/TimeSlot fields. No owner entity/CRUD redesign. |
+| References | Customer maps user_id/full_name/phone/address plus BaseEntity id/created_at/updated_at/deleted_at. Staff/Invoice remain minimal ID references; Court/TimeSlot remain read-only subsets. No Court/TimeSlot/Invoice CRUD was added. |
+
+## Current Member 3 HTTP inventory
+
+Exactly eight operations cover the required HTTP surface. Paths below include
+the context path once. Every operation has Swagger summary/request/response and
+security coverage; callback operations override application bearer security.
+Normal response types below are wrapped in ApiResponse, except VNPay IPN and MoMo IPN.
+
+| Method / actual route | Controller -> service | Request | Response | Security | Principal test coverage |
+| --- | --- | --- | --- | --- | --- |
+| GET /api/availability | AvailabilityController -> AvailabilityService | date; optional courtId | AvailabilityResponse | Authenticated | AvailabilityPostgresTest |
+| POST /api/bookings | BookingController -> BookingService | CreateBookingRequest | BookingResponse | CUSTOMER; customerId must match trusted profile | BookingPostgresTest; BookingConcurrencyPostgresTest; BookingWriteAuthorizationPostgresTest |
+| GET /api/bookings | BookingController -> BookingHistoryService | optional own customerId/status; page/size | BookingHistoryResponse | CUSTOMER; CurrentCustomerService | BookingHistoryPostgresTest; CustomerAuthPostgresTest |
+| GET /api/bookings/{bookingId} | BookingController -> BookingHistoryService | bookingId | BookingHistoryDetailResponse (including payment statuses/history) | CUSTOMER; owner only | BookingHistoryPostgresTest |
+| POST /api/bookings/{bookingId}/payments | PaymentAttemptController -> PaymentInitiationService -> PaymentAttemptService/VnPayGateway/MoMoGateway | bookingId; CreatePaymentAttemptRequest | PaymentAttemptResponse | CUSTOMER; owner required for new/reused attempts | PaymentAttemptPostgresTest; PaymentInitiationPostgresTest; BookingWriteAuthorizationPostgresTest; VnPayGatewayTest; MoMoGatewayTest |
+| GET /api/payments/vnpay/ipn | PaymentCallbackController -> PaymentCallbackService -> PaymentCallbackTransactionService | signed VNPay query fields | VnPayIpnAcknowledgment | Public; HMAC-SHA512 verification | VnPayIpnVerifierTest; PaymentCallbackControllerTest; PaymentCallbackPostgresTest; PaymentCallbackConcurrencyPostgresTest |
+| POST /api/payments/momo/ipn | PaymentCallbackController -> PaymentCallbackService -> PaymentCallbackTransactionService | signed provider JSON (JsonNode) | Empty response | Public; HMAC-SHA256 verification | MoMoIpnVerifierTest; PaymentCallbackControllerTest; PaymentCallbackPostgresTest; PaymentCallbackConcurrencyPostgresTest |
+| GET /api/payments/vnpay/return | VnPayReturnController -> VnPayIpnVerifier | signed VNPay query fields | PaymentNotification (display only) | Public; checksum verification | VnPayIpnVerifierTest; PaymentCallbackControllerTest; CustomerAuthPostgresTest |
+
+Hold expiration is provided by BookingExpirationJob/BookingExpirationService,
+not a client mutation API; BookingExpirationPostgresTest covers atomic release.
+Pricing and pessimistic locking belong to the existing POST /bookings workflow.
+MoMo initiation foundation is present; its documented checkout blocker remains.
+No required endpoint is missing. Separate provider initiation, /bookings/me,
+/my-bookings and payment-history endpoints would duplicate existing contracts.
+Cancel/reschedule/refund/check-in/no-show/admin CRUD/CASH/BANK_TRANSFER initiation,
+Court/TimeSlot CRUD and POS/Invoice/revenue APIs are not required by Member 3 scope.
 
 History queries use customer_id/created_at and booking_id filtering compatible with
 existing idx_bookings_customer_created, idx_payments_booking and detail FK/query
@@ -209,5 +255,51 @@ customer identity are 3 for a history page and 4 for detail. Schema is unchanged
 
 No real sandbox requests were run; MoMo initiation ambiguity, late-payment
 reconciliation/refund and global transaction_id uniqueness remain limitations.
-POST booking and payment initiation ownership and token-purpose separation remain
-outside this completion. Test container stopped; no automatic staging/commit/push.
+At that historical checkpoint, POST ownership and token-purpose separation were
+outside completion. POST ownership is now enforced as specified in the current
+Auth boundary above; token-purpose separation remains unchanged.
+Test container stopped at that checkpoint; no automatic staging/commit/push.
+
+## Member 3 API completeness audit — 2026-10-08
+
+All eight required operations exist; no duplicate or new endpoint was added.
+Added missing Swagger 403 responses for availability, booking creation and payment
+initiation. Expanded the OpenAPI regression and added a real filter-chain test for
+anonymous rejection across all five application operations. Business services,
+security configuration, entities and migration were not changed by this audit.
+
+Java 17.0.20.1, Maven 3.10.0, PostgreSQL 15.19. Targeted
+`mvn -o -f backend/pom.xml -Dtest=AvailabilityPostgresTest,BookingHistoryPostgresTest,CustomerAuthPostgresTest,PaymentInitiationPostgresTest,PaymentCallbackControllerTest test`:
+129 tests PASS. Full `mvn -o -f backend/pom.xml verify`: BUILD SUCCESS, 426 tests,
+0 failures/errors/skipped. Dedicated bcm_api_audit_test at localhost:55437 was
+initialized from the entire unchanged current migration, including all six Role
+columns; no test-only table-column alteration was used. Application DB was separate.
+
+Docker backend rebuilt successfully. Swagger UI and API docs returned HTTP 200;
+runtime OpenAPI contains all eight operations with the expected response contracts.
+No real VNPay/MoMo network request was made. Phase 6 remains complete;
+Phase 7 remains unimplemented.
+
+## Customer write authorization hardening — 2026-10-08
+
+The existing POST booking and POST booking payment routes now enforce the same
+CurrentCustomerService boundary as history/detail. No route, request shape,
+schema, entity, SecurityConfig or callback behavior changed. Create checks the
+customerId assertion before Court locks; payment checks the locked Booking owner
+before new/reused attempts and before configuration validation. Provider work
+remains outside DB lifecycle locks, with authorized eligibility rechecks.
+
+BookingWriteAuthorizationPostgresTest uses real JWTs, DB-backed principals and
+distinct users.id/customers.id fixtures against PostgreSQL. Its 10 tests pass;
+the requested lifecycle/concurrency/history/callback regressions pass (208 tests).
+Full `mvn -B -f backend/pom.xml verify` under Java 17.0.20.1 and PostgreSQL 15.19:
+BUILD SUCCESS, 436 tests, 0 failures, 0 errors, 0 skipped. Legacy lifecycle suites
+use their fixture customer at the identity boundary; ownership tests do not mock
+that boundary or disable the real security filter chain.
+
+Rebuilt Docker image also passed real HTTP smoke on port 8081 with the dedicated
+test DB: own create/payment/retry 201, foreign create/payment/reuse 403 without
+payment artifacts. VNPay signing was local with test-only configuration; no
+provider network request was made. Temporary test fixtures were cleaned up;
+application master data was not changed. Phase 1–6 remain complete; no Phase 7,
+automatic commit or push.

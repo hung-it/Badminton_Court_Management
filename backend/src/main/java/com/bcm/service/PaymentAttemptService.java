@@ -11,6 +11,8 @@ import com.bcm.exception.DuplicateResourceException;
 import com.bcm.exception.ResourceNotFoundException;
 import com.bcm.repository.BookingRepository;
 import com.bcm.repository.PaymentTransactionRepository;
+import com.bcm.security.CurrentCustomerService;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,34 +27,43 @@ public class PaymentAttemptService {
     private final PaymentTransactionRepository payments;
     private final PaymentGatewayPreparation gateway;
     private final Clock clock;
+    private final CurrentCustomerService currentCustomer;
 
     public PaymentAttemptService(BookingRepository bookings, PaymentTransactionRepository payments,
                                  PaymentGatewayPreparation gateway,
-                                 @Qualifier("bookingExpirationClock") Clock clock) {
+                                 @Qualifier("bookingExpirationClock") Clock clock,
+                                 CurrentCustomerService currentCustomer) {
         this.bookings = bookings;
         this.payments = payments;
         this.gateway = gateway;
         this.clock = clock;
+        this.currentCustomer = currentCustomer;
     }
 
     @Transactional
     public PaymentAttemptResponse createAttempt(UUID bookingId, CreatePaymentAttemptRequest request) {
-        return createOrReuse(bookingId, request, false);
+        return createOrReuse(bookingId, request, false, () -> { });
     }
 
     @Transactional
-    public PaymentAttemptResponse createOrReuseAttempt(UUID bookingId, CreatePaymentAttemptRequest request) {
-        return createOrReuse(bookingId, request, true);
+    public PaymentAttemptResponse createOrReuseAttempt(UUID bookingId, CreatePaymentAttemptRequest request,
+                                                       Runnable validateConfiguration) {
+        return createOrReuse(bookingId, request, true, validateConfiguration);
     }
 
-    private PaymentAttemptResponse createOrReuse(UUID bookingId, CreatePaymentAttemptRequest request, boolean reuse) {
+    private PaymentAttemptResponse createOrReuse(UUID bookingId, CreatePaymentAttemptRequest request, boolean reuse,
+                                                Runnable validateConfiguration) {
         if (bookingId == null || request == null) {
             throw new BadRequestException("Booking ID and payment method are required");
         }
         gateway.validateMethod(request.getPaymentMethod());
+        UUID trustedCustomerId = currentCustomer.requireCustomerId();
         // Reuse the existing Booking row lock without changing expiration's query or lock order.
         var booking = bookings.findByIdForExpiration(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
+        requireOwner(booking, trustedCustomerId);
+        // Configuration validation is local only, before persistence and after ownership.
+        validateConfiguration.run();
         requireEligible(booking);
         if (reuse) {
             var pending = payments.findFirstByBookingIdAndStatusOrderByCreatedAtAscIdAsc(bookingId, PaymentStatus.PENDING);
@@ -80,11 +91,13 @@ public class PaymentAttemptService {
 
     @Transactional
     public PaymentAttemptResponse recheckForInitiation(UUID attemptId) {
+        UUID trustedCustomerId = currentCustomer.requireCustomerId();
         // Read only the target ID before locking; load the payment's current state AFTER the Booking lock.
         UUID bookingId = payments.findBookingIdForInitiation(attemptId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking payment attempt not found"));
         var booking = bookings.findByIdForExpiration(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
+        requireOwner(booking, trustedCustomerId);
         requireEligible(booking);
         var payment = payments.findById(attemptId)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment attempt not found"));
@@ -92,6 +105,12 @@ public class PaymentAttemptService {
             throw new BadRequestException("Payment attempt must be PENDING and target a booking");
         }
         return response(payment, booking);
+    }
+
+    private void requireOwner(Booking booking, UUID trustedCustomerId) {
+        if (!booking.getCustomer().getId().equals(trustedCustomerId)) {
+            throw new AccessDeniedException("Booking not owned");
+        }
     }
 
     private void requireEligible(Booking booking) {

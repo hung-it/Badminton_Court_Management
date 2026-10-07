@@ -7,6 +7,8 @@ import com.bcm.exception.BadRequestException;
 import com.bcm.exception.DuplicateResourceException;
 import com.bcm.exception.ResourceNotFoundException;
 import com.bcm.repository.*;
+import com.bcm.security.CurrentCustomerService;
+import org.springframework.security.access.AccessDeniedException;
 import jakarta.validation.Validator;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -33,17 +35,20 @@ public class BookingService {
     private final TimeSlotRepository timeSlots;
     private final Validator validator;
     private final Duration holdDuration;
+    private final CurrentCustomerService currentCustomer;
 
     public BookingService(BookingRepository bookings, BookingDetailRepository details,
                           CustomerRepository customers, CourtRepository courts,
                           TimeSlotRepository timeSlots, Validator validator,
-                          @Value("${booking.hold-duration}") String holdDuration) {
+                          @Value("${booking.hold-duration}") String holdDuration,
+                          CurrentCustomerService currentCustomer) {
         this.bookings = bookings;
         this.details = details;
         this.customers = customers;
         this.courts = courts;
         this.timeSlots = timeSlots;
         this.validator = validator;
+        this.currentCustomer = currentCustomer;
         this.holdDuration = Duration.parse(holdDuration);
         if (this.holdDuration.isZero() || this.holdDuration.isNegative()) {
             throw new IllegalArgumentException("booking.hold-duration must be positive");
@@ -58,6 +63,10 @@ public class BookingService {
         if (!validator.validate(request).isEmpty()) {
             throw new BadRequestException("customerId and at least one complete booking detail are required");
         }
+        UUID trustedCustomerId = currentCustomer.requireCustomerId();
+        if (!trustedCustomerId.equals(request.getCustomerId())) {
+            throw new AccessDeniedException("Customer mismatch");
+        }
         var requestedSlots = new HashSet<SlotKey>();
         for (var item : request.getDetails()) {
             if (!requestedSlots.add(new SlotKey(item.getBookingDate(), item.getCourtId(), item.getTimeSlotId()))) {
@@ -71,9 +80,8 @@ public class BookingService {
         var courtById = courts.findAllForBookingWithLock(courtIds)
                 .stream().collect(Collectors.toMap(Court::getId, Function.identity()));
         // No Court is loaded before this lock query; validation below uses the locked state.
-        // Domain reference only; Auth must supply/authorize this identity when integrated.
-        Customer customer = customers.findById(request.getCustomerId())
-                .orElseThrow(() -> new ResourceNotFoundException("Customer not found: " + request.getCustomerId()));
+        Customer customer = customers.findById(trustedCustomerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Customer not found: " + trustedCustomerId));
         var slotById = timeSlots.findAllById(request.getDetails().stream()
                         .map(CreateBookingRequest.Detail::getTimeSlotId).distinct().toList())
                 .stream().collect(Collectors.toMap(TimeSlot::getId, Function.identity()));

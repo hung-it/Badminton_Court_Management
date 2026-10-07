@@ -17,7 +17,7 @@ import java.util.UUID;
 @AllArgsConstructor
 public class CreateBookingRequest {
     @NotNull
-    @Schema(description = "Temporary customers.id input; does not prove authentication or ownership")
+    @Schema(description = "Own customers.id consistency assertion; must match the authenticated CUSTOMER profile or return 403")
     private UUID customerId;
 
     @NotEmpty

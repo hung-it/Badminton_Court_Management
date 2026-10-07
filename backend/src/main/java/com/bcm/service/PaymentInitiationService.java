@@ -24,8 +24,8 @@ public class PaymentInitiationService {
         if (request == null) { throw new BadRequestException("Payment method is required"); }
         preparation.validateMethod(request.getPaymentMethod());
         boolean isMomo = request.getPaymentMethod() == PaymentMethod.MOMO;
-        if (isMomo) { momo.validateConfiguration(); } else { vnpay.validateConfiguration(); }
-        var created = attempts.createOrReuseAttempt(bookingId, request); // transaction commits here, via proxy
+        var created = attempts.createOrReuseAttempt(bookingId, request,
+                isMomo ? momo::validateConfiguration : vnpay::validateConfiguration); // commits here, via proxy
         var checked = attempts.recheckForInitiation(created.paymentAttemptId()); // short lock, released before provider work
         PaymentAttemptResponse.GatewayPreparation checkout;
         if (isMomo) {

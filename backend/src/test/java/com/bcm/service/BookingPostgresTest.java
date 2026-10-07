@@ -82,6 +82,9 @@ class BookingPostgresTest {
 
     private UUID userId;
     private UUID customerId;
+    // Lifecycle/concurrency regression fixture; real JWT ownership is covered separately.
+    @org.springframework.boot.test.mock.mockito.MockBean
+    private com.bcm.security.CurrentCustomerService currentCustomer;
     private UUID courtId;
     private UUID slotId;
 
@@ -89,6 +92,7 @@ class BookingPostgresTest {
     void fixtures() {
         userId = UUID.randomUUID();
         customerId = UUID.randomUUID();
+        org.mockito.Mockito.when(currentCustomer.requireCustomerId()).thenReturn(customerId);
         courtId = UUID.randomUUID();
         slotId = UUID.randomUUID();
         jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,?,'Booking fixture','0900000000')", userId, userId + "@booking.test", "test-only");
@@ -164,10 +168,10 @@ class BookingPostgresTest {
     }
 
     @Test
-    void rejectsUnknownCustomerAndDoesNotTreatUserIdAsCustomerId() {
+    void rejectsUntrustedCustomerAndDoesNotTreatUserIdAsCustomerId() {
         for (UUID id : List.of(UUID.randomUUID(), userId)) {
             assertThatThrownBy(() -> service.createBooking(new CreateBookingRequest(id, List.of(detail(DATE)))))
-                    .isInstanceOf(ResourceNotFoundException.class);
+                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
         }
         assertCounts(0, 0);
     }
@@ -325,7 +329,7 @@ class BookingPostgresTest {
     void apiReportsReferenceValidationAndPersistenceErrors() throws Exception {
         mvc.perform(post("/api/bookings").contextPath("/api").contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new CreateBookingRequest(UUID.randomUUID(), List.of(detail(DATE))))))
-                .andExpect(status().isNotFound()).andExpect(jsonPath("$.success").value(false));
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.success").value(false));
         mvc.perform(post("/api/bookings").contextPath("/api").contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(request(detail(DATE), detail(DATE)))))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.success").value(false));
@@ -338,13 +342,13 @@ class BookingPostgresTest {
     }
 
     @Test
-    void openApiDocumentsCreateAndIdentityLimitation() throws Exception {
+    void openApiDocumentsCreateAndCustomerOwnership() throws Exception {
         mvc.perform(get("/api/api-docs").contextPath("/api"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/bookings'].post.responses['201']").exists())
                 .andExpect(jsonPath("$.paths['/bookings'].post.responses['409']").exists())
                 .andExpect(jsonPath("$.paths['/bookings'].post.description").value(
-                        org.hamcrest.Matchers.containsString("not proof of identity/ownership")))
+                        org.hamcrest.Matchers.containsString("mismatch returns 403 before court locks")))
                 .andExpect(jsonPath("$.components.schemas.CreateBookingRequest.properties.courtFee").doesNotExist())
                 .andExpect(jsonPath("$.components.schemas.CreateBookingRequest.properties.expiresAt").doesNotExist());
     }

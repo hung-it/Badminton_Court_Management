@@ -33,6 +33,7 @@ public class AvailabilityController {
                     + "An existing booking detail always occupies its slot. Past dates are allowed. "
                     + "Courts are ordered by court number; slots by start time, end time and ID.")
     @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Authentication required; anonymous requests are rejected by the security filter", content = @io.swagger.v3.oas.annotations.media.Content),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Availability grid"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Missing or invalid date, or invalid court UUID", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = ApiResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Filtered court does not exist or is not eligible for lookup", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = ApiResponse.class)))

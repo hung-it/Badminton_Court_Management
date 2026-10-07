@@ -42,17 +42,14 @@ public class DataSeeder implements CommandLineRunner {
 
             Role adminRole = Role.builder()
                     .roleName("ADMIN")
-                    .description("Administrator with full access")
                     .build();
 
             Role staffRole = Role.builder()
                     .roleName("STAFF")
-                    .description("Staff member managing bookings and courts")
                     .build();
 
             Role customerRole = Role.builder()
                     .roleName("CUSTOMER")
-                    .description("Regular customer making bookings")
                     .build();
 
             roleRepository.save(adminRole);

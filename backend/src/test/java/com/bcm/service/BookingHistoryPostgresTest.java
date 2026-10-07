@@ -23,6 +23,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.hibernate.resource.jdbc.spi.StatementInspector;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -39,6 +40,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /** Committed fixtures and real read-only service transactions, no outer test transaction. */
@@ -317,6 +319,10 @@ class BookingHistoryPostgresTest {
             assertThat(operation.path("security").isEmpty()).isTrue();
         }
         assertThat(operations).allSatisfy(op -> assertThat(op.path("security").get(0).has("Bearer Authentication")).isTrue());
+        assertThat(operations).allSatisfy(op -> {
+            assertThat(op.path("summary").asText()).isNotBlank();
+            assertThat(op.path("responses").has("403")).isTrue();
+        });
         assertThat(paths.path("/availability").path("get").path("responses").fieldNames())
                 .toIterable().contains("200", "400", "404");
         assertThat(paths.path("/bookings").path("post").path("responses").fieldNames())
@@ -372,6 +378,21 @@ class BookingHistoryPostgresTest {
         mvc.perform(get("/api/bookings/" + id).contextPath("/api")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous()))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    void everyApplicationBookingOperationRejectsAnonymousRequestsBeforeBusinessValidation() throws Exception {
+        var anonymous = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous();
+        for (var request : List.of(
+                get("/api/availability"),
+                get("/api/bookings"),
+                get("/api/bookings/" + UUID.randomUUID()),
+                post("/api/bookings").contentType(MediaType.APPLICATION_JSON).content("{}"),
+                post("/api/bookings/" + UUID.randomUUID() + "/payments")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))) {
+            mvc.perform(request.contextPath("/api").with(anonymous))
+                    .andExpect(status().isForbidden()).andExpect(jsonPath("$.data").doesNotExist());
+        }
     }
 
     @Test

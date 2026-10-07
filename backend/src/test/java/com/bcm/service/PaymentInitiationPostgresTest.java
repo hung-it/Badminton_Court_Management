@@ -95,6 +95,9 @@ class PaymentInitiationPostgresTest {
     @MockBean(name = "bookingPaymentHttpClient") private HttpClient http;
     private UUID userId;
     private UUID customerId;
+    // Lifecycle/concurrency regression fixture; real JWT ownership is covered separately.
+    @org.springframework.boot.test.mock.mockito.MockBean
+    private com.bcm.security.CurrentCustomerService currentCustomer;
     private UUID bookingId;
 
     @BeforeEach
@@ -108,6 +111,7 @@ class PaymentInitiationPostgresTest {
         when(clock.instant()).thenReturn(NOW.atZone(zone).toInstant());
         userId = UUID.randomUUID();
         customerId = UUID.randomUUID();
+        org.mockito.Mockito.when(currentCustomer.requireCustomerId()).thenReturn(customerId);
         bookingId = UUID.randomUUID();
         jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,?,'Booking fixture','0900000000')", userId, userId + "@initiation.test", "test-only");
         jdbc.update("INSERT INTO customers(id,user_id,full_name,phone) VALUES (?,?,?,?)", customerId, userId, "Initiation", "0900000000");

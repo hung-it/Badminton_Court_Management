@@ -78,6 +78,11 @@ class CustomerAuthPostgresTest {
                 .containsEntry("address", "Test address");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM customers WHERE user_id=?", Integer.class, userId)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=? AND r.role_name='CUSTOMER'", Integer.class, userId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT created_at FROM user_roles WHERE user_id=?", java.time.LocalDateTime.class, userId)).isNotNull();
+        var principal = principals.loadUserByUsername(email);
+        assertThat(principal).isInstanceOf(com.bcm.security.UserPrincipal.class);
+        assertThat(principal.getAuthorities()).extracting(authority -> authority.getAuthority())
+                .containsExactly("ROLE_CUSTOMER");
         String token = mapper.readTree(response).path("data").path("accessToken").asText();
         mvc.perform(get("/api/bookings").contextPath("/api").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.content").isEmpty());

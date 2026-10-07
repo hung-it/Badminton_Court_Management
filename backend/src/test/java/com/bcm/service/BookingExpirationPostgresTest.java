@@ -182,6 +182,9 @@ class BookingExpirationPostgresTest {
         var request = new CreateBookingRequest(customerId,
                 List.of(new CreateBookingRequest.Detail(DATE, courtId, slotId)));
         var result = mvc.perform(post("/api/bookings").contextPath("/api").contentType(MediaType.APPLICATION_JSON)
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(
+                                new com.bcm.security.UserPrincipal(userId.toString(), userId + "@expiration.test", "test-only",
+                                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_CUSTOMER")), true)))
                         .content(mapper.writeValueAsString(request)))
                 .andExpect(status().isCreated()).andReturn();
         UUID newId = UUID.fromString(mapper.readTree(result.getResponse().getContentAsString())

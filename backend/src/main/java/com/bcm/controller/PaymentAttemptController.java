@@ -36,8 +36,9 @@ public class PaymentAttemptController {
                     + "artifacts are withheld pending official Create Payment response-signature clarification. "
                     + "Gateway artifacts are runtime only. Initiation leaves payment and booking PENDING. "
                     + "Client IP is request remote address; forwarded headers are not trusted. "
-                    + "Customer ownership is not integrated: bookingId is not proof of identity/ownership.")
+                    + "Authenticated CUSTOMER ownership is required before creating or reusing an attempt; foreign bookings return 403.")
     @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "CUSTOMER identity required or foreign booking; anonymous requests are rejected by the security filter", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = ApiResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "PENDING attempt committed/reused; VNPay checkout URL or MoMo checkout blocker returned"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid/disabled method, invalid input or ineligible booking", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = ApiResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Booking not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = ApiResponse.class))),

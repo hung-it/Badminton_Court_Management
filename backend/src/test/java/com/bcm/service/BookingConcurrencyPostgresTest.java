@@ -66,6 +66,9 @@ class BookingConcurrencyPostgresTest {
 
     private UUID userId;
     private UUID customerId;
+    // Lifecycle/concurrency regression fixture; real JWT ownership is covered separately.
+    @org.springframework.boot.test.mock.mockito.MockBean
+    private com.bcm.security.CurrentCustomerService currentCustomer;
     private UUID courtA;
     private UUID courtB;
     private UUID slotId;
@@ -74,6 +77,7 @@ class BookingConcurrencyPostgresTest {
     void fixtures() {
         userId = UUID.randomUUID();
         customerId = UUID.randomUUID();
+        org.mockito.Mockito.when(currentCustomer.requireCustomerId()).thenReturn(customerId);
         var ids = List.of(UUID.randomUUID(), UUID.randomUUID()).stream()
                 .sorted(Comparator.comparing(UUID::toString)).toList();
         courtA = ids.get(0);

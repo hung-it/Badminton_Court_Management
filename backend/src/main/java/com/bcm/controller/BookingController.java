@@ -77,10 +77,11 @@ public class BookingController {
                     + "Expiry uses configured hold duration. Past dates are allowed. "
                     + "Only customerId and details (bookingDate, courtId, timeSlotId) are accepted inputs; "
                     + "unknown JSON fields are ignored and cannot override price, status or expiry. "
-                    + "Customer ownership is not integrated: customerId is a customers.id reference, not proof of identity/ownership. "
+                    + "Authenticated CUSTOMER ownership is required: customerId must match the trusted customers.id; mismatch returns 403 before court locks. "
                     + "Court rows are locked in UUID order and occupied slots are re-checked before insert. "
                     + "Existing details block regardless of booking status/expiry; the unique slot index is the final safeguard.")
     @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "CUSTOMER identity required or customerId mismatch; anonymous requests are rejected by the security filter", content = @io.swagger.v3.oas.annotations.media.Content(schema = @Schema(implementation = ApiResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Booking created"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid input, duplicate tuple, ineligible court or price overflow", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = ApiResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Customer, court or time slot not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = ApiResponse.class))),
