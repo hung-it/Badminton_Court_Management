@@ -47,11 +47,3 @@ Thumbs.db
 application-local.yml
 application-dev.yml
 application-prod.yml
-
-# ==========================================
-# Local planing documents
-# ==========================================
-/AGENTS.md
-/SKILL.md
-/plans.md
-/prompts.md
