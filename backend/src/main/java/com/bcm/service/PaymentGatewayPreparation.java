@@ -17,8 +17,8 @@ public class PaymentGatewayPreparation {
     private final BookingPaymentConfig config;
 
     public void validateMethod(PaymentMethod method) {
-        if (method != PaymentMethod.VNPAY && method != PaymentMethod.MOMO) {
-            throw new BadRequestException("Online booking payment requires VNPAY or MOMO");
+        if (method != PaymentMethod.VNPAY) {
+            throw new BadRequestException("Online booking payment supports VNPAY only");
         }
         if (config.getEnabledMethods() == null || !config.getEnabledMethods().contains(method)) {
             throw new BadRequestException("Payment method is disabled");
@@ -28,7 +28,7 @@ public class PaymentGatewayPreparation {
     public GatewayPreparation prepare(PaymentMethod method, UUID attemptId, BigDecimal amount) {
         validateMethod(method);
         // Merchant reference is internal correlation, never a gateway transaction_id.
-        // This is not a common VNPay/MoMo wire protocol; adapters require official provider contracts.
+        // VNPay wire signing belongs to VnPayGateway after this service transaction.
         return new GatewayPreparation(method, attemptId.toString(), amount, false);
     }
 }

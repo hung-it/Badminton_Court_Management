@@ -48,7 +48,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /** Dedicated existing PostgreSQL/schema; committed fixtures and independent worker transactions. */
 @SpringBootTest(properties = {
-        "booking.payment.enabled-methods=VNPAY,MOMO",
+        "booking.payment.enabled-methods=VNPAY",
         "spring.datasource.hikari.connection-init-sql=SET statement_timeout = '15s'"
 })
 @AutoConfigureMockMvc
@@ -108,7 +108,7 @@ class PaymentAttemptPostgresTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"VNPAY", "MOMO"})
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void createsOnlyServerAuthoritativePendingBookingPayment(PaymentMethod method) throws Exception {
         var before = jdbc.queryForMap("SELECT * FROM bookings WHERE id = ?", bookingId);
         // These extra fields are not DTO inputs and must never control persistence or gateway preparation.
@@ -165,7 +165,7 @@ class PaymentAttemptPostgresTest {
     void rejectsDeadlineBeforeAndExactlyNowWithoutExpiringBooking(int seconds) throws Exception {
         jdbc.update("UPDATE bookings SET expires_at = ? WHERE id = ?", NOW.plusSeconds(seconds), bookingId);
         var before = jdbc.queryForMap("SELECT * FROM bookings WHERE id = ?", bookingId);
-        assertThat(perform(PaymentMethod.MOMO)).isEqualTo(400);
+        assertThat(perform(PaymentMethod.VNPAY)).isEqualTo(400);
         assertCount(0);
         assertThat(jdbc.queryForMap("SELECT * FROM bookings WHERE id = ?", bookingId)).isEqualTo(before);
     }
@@ -181,7 +181,7 @@ class PaymentAttemptPostgresTest {
 
     @Test
     void validatesDirectServiceInputs() {
-        assertThatThrownBy(() -> service.createAttempt(null, new CreatePaymentAttemptRequest(PaymentMethod.MOMO)))
+        assertThatThrownBy(() -> service.createAttempt(null, new CreatePaymentAttemptRequest(PaymentMethod.VNPAY)))
                 .isInstanceOf(BadRequestException.class);
         assertThatThrownBy(() -> service.createAttempt(bookingId, null)).isInstanceOf(BadRequestException.class);
         assertThatThrownBy(() -> service.createAttempt(bookingId, new CreatePaymentAttemptRequest(null)))
@@ -190,7 +190,7 @@ class PaymentAttemptPostgresTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"VNPAY", "MOMO"})
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void rejectsExistingPendingEvenAcrossProvidersAndWithGatewayTransactionId(PaymentMethod method) throws Exception {
         UUID existing = seedPayment(PaymentStatus.PENDING);
         jdbc.update("UPDATE payment_transactions SET transaction_id = ? WHERE id = ?", UUID.randomUUID().toString(), existing);
@@ -206,13 +206,13 @@ class PaymentAttemptPostgresTest {
     void existingNonPendingHistoryIsNotMutatedOrTreatedAsBookingPaymentResult(PaymentStatus state) throws Exception {
         UUID history = seedPayment(state);
         var before = jdbc.queryForMap("SELECT * FROM payment_transactions WHERE id = ?", history);
-        assertThat(perform(PaymentMethod.MOMO)).isEqualTo(201);
+        assertThat(perform(PaymentMethod.VNPAY)).isEqualTo(201);
         assertCount(2);
         assertThat(jdbc.queryForMap("SELECT * FROM payment_transactions WHERE id = ?", history)).isEqualTo(before);
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"VNPAY", "MOMO"})
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void concurrentRequestsCreateExactlyOnePendingAttempt(PaymentMethod second) throws Exception {
         var workers = Executors.newFixedThreadPool(2);
         var ready = new CountDownLatch(2);
@@ -250,7 +250,7 @@ class PaymentAttemptPostgresTest {
             holder.setAutoCommit(false);
             try {
                 lockBooking(holder);
-                var result = worker.submit(() -> perform(PaymentMethod.MOMO));
+                var result = worker.submit(() -> perform(PaymentMethod.VNPAY));
                 awaitBookingWaiters(1);
                 if (change.equals("CLOCK")) {
                     setTime(NOW.plusMinutes(5));
@@ -280,7 +280,7 @@ class PaymentAttemptPostgresTest {
         var before = jdbc.queryForMap("SELECT * FROM payment_transactions WHERE booking_id = ?", bookingId);
         setTime(NOW.plusMinutes(5));
         assertThat(expiration.expireBooking(bookingId)).isTrue();
-        assertThat(perform(PaymentMethod.MOMO)).isEqualTo(400);
+        assertThat(perform(PaymentMethod.VNPAY)).isEqualTo(400);
         assertThat(jdbc.queryForMap("SELECT * FROM payment_transactions WHERE booking_id = ?", bookingId)).isEqualTo(before);
         assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id = ?", String.class, bookingId)).isEqualTo("EXPIRED");
     }

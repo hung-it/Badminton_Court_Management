@@ -217,7 +217,7 @@ class BookingMappingPostgresTest {
         jdbc.update("""
                 INSERT INTO invoices (id, customer_id, payment_method, total_amount)
                 VALUES (?, ?, ?, ?)
-                """, invoiceId, customerId, "CASH", new BigDecimal("154320.98"));
+                """, invoiceId, customerId, "VNPAY", new BigDecimal("154320.98"));
         PaymentTransaction payment = newPayment();
         payment.setInvoice(entityManager.getReference(Invoice.class, invoiceId));
         payment.setStatus(status);

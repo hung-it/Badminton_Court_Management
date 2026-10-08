@@ -11,21 +11,12 @@ booking:
   expiration-check-interval: ${BOOKING_EXPIRATION_CHECK_INTERVAL:PT30S}
   payment:
     # Provider availability also requires valid sandbox configuration.
-    enabled-methods: ${BOOKING_PAYMENT_ENABLED_METHODS:VNPAY,MOMO}
+    enabled-methods: ${BOOKING_PAYMENT_ENABLED_METHODS:VNPAY}
     vnpay:
       payment-url: ${BOOKING_VNPAY_PAYMENT_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
       tmn-code: ${BOOKING_VNPAY_TMN_CODE:}
       hash-secret: ${BOOKING_VNPAY_HASH_SECRET:}
       return-url: ${BOOKING_VNPAY_RETURN_URL:}
-    momo:
-      create-payment-url: ${BOOKING_MOMO_CREATE_PAYMENT_URL:https://test-payment.momo.vn/v2/gateway/api/create}
-      partner-code: ${BOOKING_MOMO_PARTNER_CODE:}
-      access-key: ${BOOKING_MOMO_ACCESS_KEY:}
-      secret-key: ${BOOKING_MOMO_SECRET_KEY:}
-      redirect-url: ${BOOKING_MOMO_REDIRECT_URL:}
-      ipn-url: ${BOOKING_MOMO_IPN_URL:}
-      connect-timeout: ${BOOKING_MOMO_CONNECT_TIMEOUT:PT5S}
-      request-timeout: ${BOOKING_MOMO_REQUEST_TIMEOUT:PT30S}
 
 spring:
   application:

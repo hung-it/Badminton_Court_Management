@@ -3,7 +3,6 @@ package com.bcm.service;
 import com.bcm.config.BookingPaymentConfig;
 import com.bcm.entity.PaymentMethod;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,7 +15,6 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.mock.mockito.SpyBean;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -56,12 +54,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * pg_stat_activity confirms actual contention; latches control ordering, timeouts only diagnose failures.
  */
 @SpringBootTest(properties = {
-        "booking.payment.enabled-methods=VNPAY,MOMO",
+        "booking.payment.enabled-methods=VNPAY",
         "booking.payment.vnpay.tmn-code=TEST1234",
         "booking.payment.vnpay.hash-secret=unit-test-secret",
-        "booking.payment.momo.partner-code=TESTPARTNER",
-        "booking.payment.momo.access-key=unit-test-access",
-        "booking.payment.momo.secret-key=unit-test-secret",
         "spring.datasource.hikari.connection-init-sql=SET statement_timeout = '15s'"
 })
 @AutoConfigureMockMvc
@@ -153,7 +148,7 @@ class PaymentCallbackConcurrencyPostgresTest {
         jdbc.update("DELETE FROM users WHERE id=?", user);
     }
 
-    private record Payload(PaymentMethod method, Map<String, String> query, ObjectNode json) { }
+    private record Payload(PaymentMethod method, Map<String, String> query) { }
     private record Ack(int httpStatus, String code, String message, String body) { }
     private record Snapshot(Map<String, Object> booking, Map<String, Object> payment, List<Map<String, Object>> details) { }
     private static class Gate {
@@ -170,35 +165,23 @@ class PaymentCallbackConcurrencyPostgresTest {
 
     private Payload payload(int index, PaymentMethod method, String transactionId) {
         jdbc.update("UPDATE payment_transactions SET payment_method=? WHERE id=?", method.name(), payments[index]);
-        if (method == PaymentMethod.VNPAY) {
-            var fields = PaymentCallbackFixtures.vnpay(payments[index], config);
-            fields.put("vnp_Amount", "1000000"); fields.put("vnp_TransactionNo", transactionId); sign(fields, config);
-            return new Payload(method, fields, null);
-        }
-        var body = PaymentCallbackFixtures.momo(payments[index], config);
-        body.put("transId", Long.parseLong(transactionId)); sign(body, config);
-        return new Payload(method, null, body);
+        var fields = PaymentCallbackFixtures.vnpay(payments[index], config);
+        fields.put("vnp_Amount", "1000000"); fields.put("vnp_TransactionNo", transactionId); sign(fields, config);
+        return new Payload(method, fields);
     }
 
     private Ack callback(Payload payload) throws Exception {
-        if (payload.method == PaymentMethod.VNPAY) {
-            var request = get("/api/payments/vnpay/ipn").contextPath("/api"); payload.query.forEach(request::param);
-            var response = mvc.perform(request).andReturn().getResponse();
-            assertThat(response.getStatus()).isEqualTo(200);
-            var body = mapper.readTree(response.getContentAsString());
-            assertThat(body.size()).isEqualTo(2);
-            assertThat(body.has("RspCode") && body.has("Message")).isTrue();
-            return new Ack(response.getStatus(), body.path("RspCode").asText(), body.path("Message").asText(), response.getContentAsString());
-        }
-        var response = mvc.perform(post("/api/payments/momo/ipn").contextPath("/api")
-                .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(payload.json))).andReturn().getResponse();
-        assertThat(response.getContentAsString()).isEmpty();
-        return new Ack(response.getStatus(), null, null, response.getContentAsString());
+        var request = get("/api/payments/vnpay/ipn").contextPath("/api"); payload.query.forEach(request::param);
+        var response = mvc.perform(request).andReturn().getResponse();
+        assertThat(response.getStatus()).isEqualTo(200);
+        var body = mapper.readTree(response.getContentAsString());
+        assertThat(body.size()).isEqualTo(2);
+        assertThat(body.has("RspCode") && body.has("Message")).isTrue();
+        return new Ack(response.getStatus(), body.path("RspCode").asText(), body.path("Message").asText(), response.getContentAsString());
     }
 
     private void assertHandled(Ack ack, PaymentMethod method, String vnpayCode) {
-        if (method == PaymentMethod.VNPAY) { assertThat(ack.code).isEqualTo(vnpayCode); }
-        else { assertThat(ack.httpStatus).isEqualTo(204); }
+        assertThat(ack.code).isEqualTo(vnpayCode);
     }
     private Snapshot snapshot(int index) {
         return new Snapshot(jdbc.queryForMap("SELECT * FROM bookings WHERE id=?", bookings[index]),
@@ -264,12 +247,11 @@ class PaymentCallbackConcurrencyPostgresTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"VNPAY", "MOMO"})
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void concurrentDuplicateHasOneSettlementThenReplayAndTenDeliveriesDoNotChangeRows(PaymentMethod method) throws Exception {
         var payload = payload(0, method, "14226112"); var before = snapshot(0);
         var acks = raceSameBooking(payload, payload);
-        if (method == PaymentMethod.VNPAY) { assertThat(acks).extracting(Ack::code).containsExactlyInAnyOrder("00", "02"); }
-        else { assertThat(acks).extracting(Ack::httpStatus).containsOnly(204); }
+        assertThat(acks).extracting(Ack::code).containsExactlyInAnyOrder("00", "02");
         assertThat(callbackOutcomes).containsExactlyInAnyOrder(SUCCESS, ALREADY_CONFIRMED);
         assertSettled(0, "14226112"); var settled = snapshot(0);
         assertThat(settled.details).isEqualTo(before.details);
@@ -280,23 +262,22 @@ class PaymentCallbackConcurrencyPostgresTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"VNPAY", "MOMO"})
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void concurrentConflictingTransactionIdsDoNotOverwriteWinner(PaymentMethod method) throws Exception {
         var first = payload(0, method, "14226112"); var second = payload(0, method, "14226113");
         var acks = raceSameBooking(first, second);
-        if (method == PaymentMethod.VNPAY) { assertThat(acks).extracting(Ack::code).containsExactlyInAnyOrder("00", "99"); }
-        else { assertThat(acks).extracting(Ack::httpStatus).containsOnly(204); }
+        assertThat(acks).extracting(Ack::code).containsExactlyInAnyOrder("00", "99");
         assertThat(callbackOutcomes).containsExactlyInAnyOrder(SUCCESS, CONFLICT);
         var settled = snapshot(0); String id = (String) settled.payment.get("transaction_id");
         assertThat(id).isIn("14226112", "14226113"); assertSettled(0, id);
         var conflicting = id.equals("14226112") ? second : first;
         var ack = callback(conflicting); assertHandled(ack, method, "99");
-        if (method == PaymentMethod.VNPAY) { assertThat(ack.message).isEqualTo("Conflicting payment confirmation"); }
+        assertThat(ack.message).isEqualTo("Conflicting payment confirmation");
         assertThat(snapshot(0)).isEqualTo(settled);
     }
 
     @ParameterizedTest
-    @CsvSource({"VNPAY,VNPAY", "MOMO,MOMO", "VNPAY,MOMO"})
+    @CsvSource({"VNPAY,VNPAY"})
     void globallyUniqueTransactionIdRaceCommitsOneOwnerAndRollsBackLoser(PaymentMethod firstMethod, PaymentMethod secondMethod) throws Exception {
         var first = payload(0, firstMethod, "14226112"); var second = payload(1, secondMethod, "14226112");
         var beforeLoser = snapshot(1); var beforeWinner = snapshot(0);
@@ -311,7 +292,7 @@ class PaymentCallbackConcurrencyPostgresTest {
             callbackGate.release.countDown();
             assertHandled(winner.get(20, TimeUnit.SECONDS), firstMethod, "00");
             var rejected = loser.get(20, TimeUnit.SECONDS); assertHandled(rejected, secondMethod, "99");
-            if (secondMethod == PaymentMethod.VNPAY) { assertThat(rejected.message).isEqualTo("Transaction ID belongs to another payment"); }
+            assertThat(rejected.message).isEqualTo("Transaction ID belongs to another payment");
             assertSettled(0, "14226112"); assertThat(snapshot(1)).isEqualTo(beforeLoser);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE transaction_id='14226112'", Integer.class)).isEqualTo(1);
             var winnerState = snapshot(0);
@@ -321,7 +302,7 @@ class PaymentCallbackConcurrencyPostgresTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"VNPAY", "MOMO"})
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void callbackLockWinsThenStaleExpirationCandidateCannotDeletePaidDetails(PaymentMethod method) throws Exception {
         var payload = payload(0, method, "14226112"); var before = snapshot(0);
         var workers = Executors.newFixedThreadPool(2); callbackGate = new Gate(payments[0]);
@@ -339,7 +320,7 @@ class PaymentCallbackConcurrencyPostgresTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"VNPAY", "MOMO"})
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void expirationLockWinsAndCallbackCannotReviveOrRecreateSlots(PaymentMethod method) throws Exception {
         var payload = payload(0, method, "14226112"); var before = snapshot(0);
         instant.set(NOW.plusMinutes(5).atZone(clock.getZone()).toInstant());
@@ -351,7 +332,7 @@ class PaymentCallbackConcurrencyPostgresTest {
             assertThat(paid.isDone() || expired.isDone()).isFalse(); expirationGate.release.countDown();
             assertThat(expired.get(20, TimeUnit.SECONDS)).isTrue();
             var ack = paid.get(20, TimeUnit.SECONDS); assertHandled(ack, method, "99");
-            if (method == PaymentMethod.VNPAY) { assertThat(ack.message).isEqualTo("Booking expired or payment deadline passed"); }
+            assertThat(ack.message).isEqualTo("Booking expired or payment deadline passed");
             var after = snapshot(0); assertThat(after.booking).containsEntry("status", "EXPIRED");
             assertThat(after.payment).isEqualTo(before.payment); assertThat(after.details).isEmpty();
             assertThat(callbackOutcomes).containsExactly(LATE_EXPIRED); assertSlotAvailability(0, true);
@@ -359,7 +340,7 @@ class PaymentCallbackConcurrencyPostgresTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"VNPAY", "MOMO"})
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void callbackArrivesBeforeDeadlineButDecidesAfterWaitingAtExactDeadline(PaymentMethod method) throws Exception {
         var payload = payload(0, method, "14226112"); var before = snapshot(0);
         var workers = Executors.newSingleThreadExecutor();
@@ -376,7 +357,7 @@ class PaymentCallbackConcurrencyPostgresTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"VNPAY", "MOMO"})
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void paymentRowLockIsAcquiredAfterBookingAndExpirationWaitsWithoutDeadlock(PaymentMethod method) throws Exception {
         var payload = payload(0, method, "14226112");
         var workers = Executors.newFixedThreadPool(2);
@@ -401,29 +382,26 @@ class PaymentCallbackConcurrencyPostgresTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"VNPAY", "MOMO"})
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void invalidSignatureReturnsWhileLifecycleRowIsLocked(PaymentMethod method) throws Exception {
         var payload = payload(0, method, "14226112"); var before = snapshot(0);
-        if (method == PaymentMethod.VNPAY) { payload.query.put("vnp_Amount", "1"); }
-        else { payload.json.put("amount", 1L); }
+        payload.query.put("vnp_Amount", "1");
         var workers = Executors.newSingleThreadExecutor();
         try (Connection holder = dataSource.getConnection()) {
             lockBooking(holder, 0);
             try {
                 var ack = workers.submit(() -> callback(payload)).get(5, TimeUnit.SECONDS);
-                if (method == PaymentMethod.VNPAY) { assertThat(ack.code).isEqualTo("97"); }
-                else { assertThat(ack.httpStatus).isEqualTo(400); }
+                assertThat(ack.code).isEqualTo("97");
                 assertThat(callbackPids).isEmpty(); assertThat(snapshot(0)).isEqualTo(before);
             } finally { holder.rollback(); shutdown(workers); }
         }
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"VNPAY", "MOMO"})
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void failureRacingWithUncommittedSuccessAndAfterCommitNeverDowngrades(PaymentMethod method) throws Exception {
         var success = payload(0, method, "14226112"); var failure = payload(0, method, "14226112");
-        if (method == PaymentMethod.VNPAY) { failure.query.put("vnp_ResponseCode", "01"); sign(failure.query, config); }
-        else { failure.json.put("resultCode", 9000); sign(failure.json, config); }
+        failure.query.put("vnp_ResponseCode", "01"); sign(failure.query, config);
         var workers = Executors.newFixedThreadPool(2); callbackGate = new Gate(payments[0]);
         try {
             var paid = workers.submit(() -> callback(success)); callbackGate.awaitHeld();
@@ -436,25 +414,16 @@ class PaymentCallbackConcurrencyPostgresTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"VNPAY,amount", "MOMO,amount", "VNPAY,merchant", "MOMO,merchant", "VNPAY,reference", "MOMO,reference"})
+    @CsvSource({"VNPAY,amount", "VNPAY,merchant", "VNPAY,reference"})
     void authenticatedConflictingAmountMerchantOrCorrelationCannotChangeConfirmedRows(PaymentMethod method, String conflict) throws Exception {
         var payload = payload(0, method, "14226112"); assertHandled(callback(payload), method, "00"); var settled = snapshot(0);
-        if (method == PaymentMethod.VNPAY) {
-            switch (conflict) {
-                case "amount" -> payload.query.put("vnp_Amount", "1000001");
-                case "merchant" -> payload.query.put("vnp_TmnCode", "OTHER123");
-                case "reference" -> payload.query.put("vnp_TxnRef", UUID.randomUUID().toString().replace("-", ""));
-            }
-            sign(payload.query, config);
-            assertThat(callback(payload).code).isEqualTo(conflict.equals("amount") ? "04" : conflict.equals("reference") ? "01" : "99");
-        } else {
-            switch (conflict) {
-                case "amount" -> payload.json.put("amount", 10001L);
-                case "merchant" -> payload.json.put("partnerCode", "OTHERPARTNER");
-                case "reference" -> payload.json.put("requestId", UUID.randomUUID().toString());
-            }
-            sign(payload.json, config); assertThat(callback(payload).httpStatus).isEqualTo(400);
+        switch (conflict) {
+            case "amount" -> payload.query.put("vnp_Amount", "1000001");
+            case "merchant" -> payload.query.put("vnp_TmnCode", "OTHER123");
+            case "reference" -> payload.query.put("vnp_TxnRef", UUID.randomUUID().toString().replace("-", ""));
         }
+        sign(payload.query, config);
+        assertThat(callback(payload).code).isEqualTo(conflict.equals("amount") ? "04" : conflict.equals("reference") ? "01" : "99");
         assertThat(snapshot(0)).isEqualTo(settled);
     }
 

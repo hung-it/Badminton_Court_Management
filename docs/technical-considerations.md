@@ -271,7 +271,7 @@ mvn dependency:tree | grep javax
 
 ---
 
-## 3. Payment Gateway (VNPay/MoMo) - Webhook Handler Chặt Chẽ
+## 3. Payment Gateway (VNPay Sandbox) - Webhook Handler Chặt Chẽ
 
 ### 🔐 Security Checklist
 

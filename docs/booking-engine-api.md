@@ -3,6 +3,9 @@
 Local base URL: `http://localhost:8080/api`. OpenAPI: `/api/api-docs`;
 Swagger UI: `/api/swagger-ui.html`. Controller paths do not contain `/api`.
 
+Booking Engine currently supports VNPay Sandbox as its only online payment gateway.
+The current project decision supersedes the original multi-provider assignment.
+
 ## Auth boundary
 
 The owner JWT filter authenticates a DB-backed UserPrincipal. CurrentCustomerService
@@ -48,7 +51,7 @@ query parameters return 400. Booking status values are case-sensitive schema enu
 | POST `/bookings` | Own customerId; nonempty details with bookingDate/courtId/timeSlotId | 201 booking; 400 invalid/ineligible/overflow; 403 identity/customerId mismatch; 404 reference missing; 409 occupied slot/constraint |
 | GET `/bookings` | Optional own customerId; page=0; size=20 (1..100); optional status | 200 owned paginated headers; 400 validation; 403 identity/mismatch |
 | GET `/bookings/{bookingId}` | Booking UUID | 200 owned header/details/payments; 400 UUID; 403 foreign/identity; 404 missing header |
-| POST `/bookings/{bookingId}/payments` | Own booking; paymentMethod VNPAY or MOMO | 201 attempt/initiation; 400 ineligible/disabled/input; 403 identity/foreign booking; 404 booking; 409 method conflict; 502 provider failure; 503 config/contract unavailable |
+| POST `/bookings/{bookingId}/payments` | Own booking; paymentMethod VNPAY only | 201 attempt/initiation; 400 unsupported/ineligible/disabled/input; 403 identity/foreign booking; 404 booking; 409 attempt/target conflict; 502 provider failure; 503 config/contract unavailable |
 | GET `/payments/vnpay/return` | Signed VNPay return query fields | 200 verified display information; 400 unverifiable; 503 config unavailable |
 
 Availability is based on persisted booking_details, regardless of header status
@@ -79,10 +82,9 @@ Detail includes the same header fields and:
   snapshots; names/numbers/times use current owner master data, not historic copies.
 - `payments`: paymentAttemptId/paymentMethod/paymentStatus/amount/transactionId/transactionDate/createdAt.
   Sorted by createdAt DESC then paymentAttemptId DESC. Exposes every booking-target
-  row, including CASH/BANK_TRANSFER history if present, without adding those payment
-  initiation flows. Invoice-target rows are excluded even if their invoice refers to
+  VNPay row. Invoice-target rows are excluded even if their invoice refers to
   this booking. Payment status is read directly, never inferred from booking status.
-  Nullable transaction ID/date are preserved; MoMo date remains null.
+  Nullable transaction ID/date are preserved, including historical records.
 
 Existing booking without payments returns `payments: []`, not 404. Expiration
 preserves header/courtFee/payment history and deletes details atomically; history
@@ -97,9 +99,12 @@ size, with Court/TimeSlot fetched in the detail query. No global LAZY mappings c
 
 ### Initiation and browser return limitations
 
-VNPay sandbox checkout is signed when configuration is valid. MoMo request/client
-foundation exists but Create Payment RESPONSE signature ambiguity remains unresolved;
-checkoutReady=false, artifacts withheld. All attempts remain PENDING at initiation.
+VNPay Sandbox checkout is signed when configuration is valid. Initiation accepts
+only VNPAY. Missing/unknown methods return 400 using the existing ApiResponse
+contract before persistence. Enum, request schema and database CHECKs allow VNPAY only.
+Config defaults to VNPAY. All attempts remain
+PENDING at initiation. Existing checkout response fields remain backward-compatible;
+unused QR/deeplink/blocker artifacts stay null.
 Browser return verifies/displays provider data only, performs no DB reads/writes and
 cannot mark Payment SUCCESS or Booking PAID. Local return URL remains
 `http://localhost:8080/api/payments/vnpay/return`.
@@ -108,7 +113,7 @@ cannot mark Payment SUCCESS or Booking PAID. Local return URL remains
 
 These endpoints do not use ApiResponse and require cryptographic verification.
 No provider network request is needed during callbacks or normal deterministic tests.
-Security explicitly permits GET /payments/vnpay/ipn, POST /payments/momo/ipn and
+Security explicitly permits GET /payments/vnpay/ipn and
 GET /payments/vnpay/return without application JWT. Signatures remain the provider
 trust boundary. Public project docs use /api-docs/**, /swagger-ui.html and
 /swagger-ui/** (relative to context /api), consistent with the existing dev docs
@@ -119,24 +124,18 @@ security, while customer operations declare it.
 | Endpoint | Response contract |
 | --- | --- |
 | GET `/payments/vnpay/ipn` | HTTP 200 JSON `{RspCode, Message}`: 00 handled success/non-success, 01 unknown, 02 confirmed replay, 04 amount mismatch, 97 checksum, 99 conflict/late/nonpayable/system failure |
-| POST `/payments/momo/ipn` | HTTP 204, empty body for safely handled valid notifications including duplicate/late/conflict; defensive invalid data/signature/amount 400, unknown target/provider 404, config 503, unhandled system failure 500, all empty |
 
 VNPay verifies HMAC-SHA512, exact attempt/provider/merchant and amount x100; success
 requires ResponseCode=00 AND TransactionStatus=00. Actual transaction ID is
 TransactionNo; optional PayDate is strictly parsed in GMT+7, never replaced with
-server time on parse failure. MoMo verifies HMAC-SHA256 with explicit signed order:
-accessKey (config), amount, extraData, message, orderId, orderInfo, orderType,
-partnerCode, payType, requestId, responseTime, resultCode, transId. Payload includes
-signature; numeric fields must be JSON integers, orderType=momo_wallet. Exact
-orderId=requestId=attempt UUID; resultCode=0 is success, transId is preserved exactly.
-responseTime is not mapped to a payment timestamp.
+server time on parse failure.
 
-Both providers lock Booking then Payment, re-check deadline after lock and commit
+VNPay callbacks lock Booking then Payment, re-check deadline after lock and commit
 SUCCESS + PAID atomically. Expiration locks Booking only. Exact replay does not
 overwrite metadata; conflicting replay or global transaction-ID uniqueness failure
 cannot partially settle. Late success never revives EXPIRED or restores details;
 there is no durable late-payment evidence/refund/reconciliation in this scope.
-MoMo 204 acknowledges transport handling, not settlement. VNPay has no dedicated
+VNPay has no dedicated
 late code: application mapping uses 99 with a domain reason, which can trigger retries.
 
 ## Existing coverage inventory (reused, not duplicated)
@@ -149,8 +148,8 @@ late code: application mapping uses 99 with a domain reason, which can trigger r
 | Exact deadline, PAID preserved | BookingExpirationPostgresTest.expiresBeforeAndExactlyAtDeadline; neverChangesNonPendingBookingsOrTheirDetails |
 | EXPIRED + delete atomic, header/payment/fee preserved | BookingExpirationPostgresTest.deletesEveryDetailButPreservesHeaderAmountsAuditAndPaymentHistoryAndRerunIsSafe; deleteFailureRollsBackAlreadyExecutedStatusUpdate |
 | Release/availability/rebook same tuple | BookingExpirationPostgresTest.releaseChangesAvailabilityAndAllowsPostBookingOnSameTuple |
-| Callback authenticity/amount and sequential replay | VnPayIpnVerifierTest; MoMoIpnVerifierTest; PaymentCallbackPostgresTest; PaymentCallbackControllerTest |
-| Concurrent duplicate, unique-ID rollback, both expiration race winners | PaymentCallbackConcurrencyPostgresTest (26 real PostgreSQL cases) |
+| Callback authenticity/amount and sequential replay | VnPayIpnVerifierTest; PaymentCallbackPostgresTest; PaymentCallbackControllerTest |
+| Concurrent duplicate, unique-ID rollback, both expiration race winners | PaymentCallbackConcurrencyPostgresTest (all VNPay PostgreSQL race cases retained) |
 | History/read-only/pagination/payment XOR/no N+1/OpenAPI | BookingHistoryPostgresTest (Phase 6 additions) |
 
 ## Migration review
@@ -164,15 +163,15 @@ by that handoff or this API completeness audit.
 | --- | --- |
 | Booking | Exactly id/customer_id/status/court_fee/expires_at/created_by/updated_by/created_at/updated_at; no BaseEntity/deleted_at. PENDING requires expires_at. Six statuses match CHECK. Staff audit IDs reference staffs, not users. |
 | BookingDetail | Exactly id/booking_id/court_id/time_slot_id/booking_date/price/created_at; no updated_at/deleted_at. Relations match FKs. uq_booking_slot remains final guard. |
-| PaymentTransaction | Exactly id/booking_id/invoice_id/payment_method/transaction_id/status/amount/transaction_date/created_at/note; no added timestamps/statuses. XOR target remains DB guard. Four methods/statuses match CHECK. Nullable transaction_id globally unique when non-null. |
+| PaymentTransaction | Exactly id/booking_id/invoice_id/payment_method/transaction_id/status/amount/transaction_date/created_at/note; no added timestamps/statuses. XOR target remains DB guard. VNPAY method and four statuses match CHECK. Nullable transaction_id globally unique when non-null. |
 | References | Customer maps user_id/full_name/phone/address plus BaseEntity id/created_at/updated_at/deleted_at. Staff/Invoice remain minimal ID references; Court/TimeSlot remain read-only subsets. No Court/TimeSlot/Invoice CRUD was added. |
 
 ## Current Member 3 HTTP inventory
 
-Exactly eight operations cover the required HTTP surface. Paths below include
+Exactly seven operations cover the required HTTP surface. Paths below include
 the context path once. Every operation has Swagger summary/request/response and
 security coverage; callback operations override application bearer security.
-Normal response types below are wrapped in ApiResponse, except VNPay IPN and MoMo IPN.
+Normal response types below are wrapped in ApiResponse, except VNPay IPN.
 
 | Method / actual route | Controller -> service | Request | Response | Security | Principal test coverage |
 | --- | --- | --- | --- | --- | --- |
@@ -180,15 +179,14 @@ Normal response types below are wrapped in ApiResponse, except VNPay IPN and MoM
 | POST /api/bookings | BookingController -> BookingService | CreateBookingRequest | BookingResponse | CUSTOMER; customerId must match trusted profile | BookingPostgresTest; BookingConcurrencyPostgresTest; BookingWriteAuthorizationPostgresTest |
 | GET /api/bookings | BookingController -> BookingHistoryService | optional own customerId/status; page/size | BookingHistoryResponse | CUSTOMER; CurrentCustomerService | BookingHistoryPostgresTest; CustomerAuthPostgresTest |
 | GET /api/bookings/{bookingId} | BookingController -> BookingHistoryService | bookingId | BookingHistoryDetailResponse (including payment statuses/history) | CUSTOMER; owner only | BookingHistoryPostgresTest |
-| POST /api/bookings/{bookingId}/payments | PaymentAttemptController -> PaymentInitiationService -> PaymentAttemptService/VnPayGateway/MoMoGateway | bookingId; CreatePaymentAttemptRequest | PaymentAttemptResponse | CUSTOMER; owner required for new/reused attempts | PaymentAttemptPostgresTest; PaymentInitiationPostgresTest; BookingWriteAuthorizationPostgresTest; VnPayGatewayTest; MoMoGatewayTest |
+| POST /api/bookings/{bookingId}/payments | PaymentAttemptController -> PaymentInitiationService -> PaymentAttemptService/VnPayGateway | bookingId; CreatePaymentAttemptRequest | PaymentAttemptResponse | CUSTOMER; owner required for new/reused attempts | PaymentAttemptPostgresTest; PaymentInitiationPostgresTest; BookingWriteAuthorizationPostgresTest; VnPayGatewayTest |
 | GET /api/payments/vnpay/ipn | PaymentCallbackController -> PaymentCallbackService -> PaymentCallbackTransactionService | signed VNPay query fields | VnPayIpnAcknowledgment | Public; HMAC-SHA512 verification | VnPayIpnVerifierTest; PaymentCallbackControllerTest; PaymentCallbackPostgresTest; PaymentCallbackConcurrencyPostgresTest |
-| POST /api/payments/momo/ipn | PaymentCallbackController -> PaymentCallbackService -> PaymentCallbackTransactionService | signed provider JSON (JsonNode) | Empty response | Public; HMAC-SHA256 verification | MoMoIpnVerifierTest; PaymentCallbackControllerTest; PaymentCallbackPostgresTest; PaymentCallbackConcurrencyPostgresTest |
 | GET /api/payments/vnpay/return | VnPayReturnController -> VnPayIpnVerifier | signed VNPay query fields | PaymentNotification (display only) | Public; checksum verification | VnPayIpnVerifierTest; PaymentCallbackControllerTest; CustomerAuthPostgresTest |
 
 Hold expiration is provided by BookingExpirationJob/BookingExpirationService,
 not a client mutation API; BookingExpirationPostgresTest covers atomic release.
 Pricing and pessimistic locking belong to the existing POST /bookings workflow.
-MoMo initiation foundation is present; its documented checkout blocker remains.
+VNPay Sandbox is the only online initiation/callback provider.
 No required endpoint is missing. Separate provider initiation, /bookings/me,
 /my-bookings and payment-history endpoints would duplicate existing contracts.
 Cancel/reschedule/refund/check-in/no-show/admin CRUD/CASH/BANK_TRANSFER initiation,
@@ -198,108 +196,25 @@ History queries use customer_id/created_at and booking_id filtering compatible w
 existing idx_bookings_customer_created, idx_payments_booking and detail FK/query
 paths. No new index, new status, fake transaction ID or Invoice payment API.
 
-## Pre-pull verification checkpoint
+## VNPay-only schema decision
 
-`mvn -f backend/pom.xml verify`: BUILD SUCCESS, **400 tests, 0 failures, 0 errors,
-0 skipped** on PostgreSQL **15.19**, JDK 17.0.20.1 and Maven 3.10.0. Includes the
-375 existing tests plus 25 BookingHistoryPostgresTest cases. Targeted history/OpenAPI
-suite also passed. Dedicated PostgreSQL test database uses the original migration;
-test container is stopped after verification. No real sandbox request or merchant
-credential is required. Ownership is not included in the PASS claim.
+PaymentMethod and payment-method CHECKs on invoices/payment_transactions allow VNPAY only.
+Existing local/dev databases containing removed payment methods may need recreation from
+current db/migration.sql. Application data is never automatically reset.
+Phase 1–6 remain complete with VNPay Sandbox as the sole provider; Phase 7 remains unimplemented.
 
-## Historical post-pull reconciliation verification
+## Current verification — 2026-10-08
 
-Baseline source was recovered from inspected WIP stash commit `a5d7e8a`, parent
-`14bff6f`, and compared method-by-method with the current merge `8de264c`.
-Only Booking-specific diffs were applied: two history GET handlers, paginated
-header projection, detail fetch query, booking-target payment query, callback
-PESSIMISTIC_WRITE query and lost API error schemas. No stash pop, wholesale revert,
-Auth/schema restoration, customer resolver or ownership check was performed.
-
-Tests now insert the current User schema's password_hash/full_name/phone columns
-and use authenticated UserPrincipal request fixtures through the existing owner
-filter chain. Two additional compatibility tests prove anonymous history/detail
-requests are rejected and the actual owner JWT filter authenticates a database
-user. They do not prove customer ownership. No filters are disabled or routes opened.
-
-Compile `mvn -f backend/pom.xml -DskipTests compile`: BUILD SUCCESS.
-Targeted suites in requested order: **387 PASS**. Full
-`mvn -f backend/pom.xml verify`: BUILD SUCCESS, **402 tests, 0 failures, 0 errors,
-0 skipped**. Difference from the 400-test checkpoint is the two compatibility tests.
-PostgreSQL **15.19**, separate `bcm_reconciliation_test` database initialized from
-the current unchanged migration; the old test database was preserved. Includes
-all 400 previous Booking checks, with fixtures/OpenAPI assertions adapted to the
-current Auth policy. Test container stopped after verification.
-
-Auth-owned source, SecurityConfig, JWT code, owner entities, pom.xml, application.yml,
-migration, plans.md and prompts.md remain untouched. Phase 6 history ownership
-remains `[ ]`, pending trusted users.id -> customers.id resolution from the owner.
-Provider IPN/Return and configured API docs public-route coordination is still an
-external Security integration blocker; successful handler regression tests do not
-claim that unauthenticated real provider requests can reach the handlers today.
-
-## Phase 6 Auth handoff - final verification
-
-Phase 6 ownership is now complete through CurrentCustomerService and the existing
-owner JWT principal, as described in the current Auth boundary section above.
-Historical initial/reconciliation sections record the earlier blocked checkpoints.
-
-Compile and full `mvn -f backend/pom.xml verify`: **BUILD SUCCESS**, **423 tests,
-0 failures, 0 errors, 0 skipped**, PostgreSQL **15.19**. Baseline 402 increased by
-4 history ownership/JWT cases, 12 Auth registration/security PostgreSQL cases and
-5 resolver unit cases. Targeted ownership/OpenAPI/gateway: 98 PASS; targeted
-Booking/payment/callback regressions: 310 PASS. Real Customer constraint failure
-proves registration rollback; provider routes reach signature verification without
-application JWT, and Booking routes remain protected. Query bounds including
-customer identity are 3 for a history page and 4 for detail. Schema is unchanged.
-
-No real sandbox requests were run; MoMo initiation ambiguity, late-payment
-reconciliation/refund and global transaction_id uniqueness remain limitations.
-At that historical checkpoint, POST ownership and token-purpose separation were
-outside completion. POST ownership is now enforced as specified in the current
-Auth boundary above; token-purpose separation remains unchanged.
-Test container stopped at that checkpoint; no automatic staging/commit/push.
-
-## Member 3 API completeness audit — 2026-10-08
-
-All eight required operations exist; no duplicate or new endpoint was added.
-Added missing Swagger 403 responses for availability, booking creation and payment
-initiation. Expanded the OpenAPI regression and added a real filter-chain test for
-anonymous rejection across all five application operations. Business services,
-security configuration, entities and migration were not changed by this audit.
-
-Java 17.0.20.1, Maven 3.10.0, PostgreSQL 15.19. Targeted
-`mvn -o -f backend/pom.xml -Dtest=AvailabilityPostgresTest,BookingHistoryPostgresTest,CustomerAuthPostgresTest,PaymentInitiationPostgresTest,PaymentCallbackControllerTest test`:
-129 tests PASS. Full `mvn -o -f backend/pom.xml verify`: BUILD SUCCESS, 426 tests,
-0 failures/errors/skipped. Dedicated bcm_api_audit_test at localhost:55437 was
-initialized from the entire unchanged current migration, including all six Role
-columns; no test-only table-column alteration was used. Application DB was separate.
-
-Docker backend rebuilt successfully. Swagger UI and API docs returned HTTP 200;
-runtime OpenAPI contains all eight operations with the expected response contracts.
-No real VNPay/MoMo network request was made. Phase 6 remains complete;
-Phase 7 remains unimplemented.
-
-## Customer write authorization hardening — 2026-10-08
-
-The existing POST booking and POST booking payment routes now enforce the same
-CurrentCustomerService boundary as history/detail. No route, request shape,
-schema, entity, SecurityConfig or callback behavior changed. Create checks the
-customerId assertion before Court locks; payment checks the locked Booking owner
-before new/reused attempts and before configuration validation. Provider work
-remains outside DB lifecycle locks, with authorized eligibility rechecks.
-
-BookingWriteAuthorizationPostgresTest uses real JWTs, DB-backed principals and
-distinct users.id/customers.id fixtures against PostgreSQL. Its 10 tests pass;
-the requested lifecycle/concurrency/history/callback regressions pass (208 tests).
-Full `mvn -B -f backend/pom.xml verify` under Java 17.0.20.1 and PostgreSQL 15.19:
-BUILD SUCCESS, 436 tests, 0 failures, 0 errors, 0 skipped. Legacy lifecycle suites
-use their fixture customer at the identity boundary; ownership tests do not mock
-that boundary or disable the real security filter chain.
-
-Rebuilt Docker image also passed real HTTP smoke on port 8081 with the dedicated
-test DB: own create/payment/retry 201, foreign create/payment/reuse 403 without
-payment artifacts. VNPay signing was local with test-only configuration; no
-provider network request was made. Temporary test fixtures were cleaned up;
-application master data was not changed. Phase 1–6 remain complete; no Phase 7,
-automatic commit or push.
+Java 17.0.20.1, Maven 3.10.0, PostgreSQL 15.19; dedicated test database initialized
+from the current migration. Targeted fourteen-suite regression: 246 tests PASS.
+Full `mvn -B -f backend/pom.xml verify`: BUILD SUCCESS, 297 tests,
+0 failures, 0 errors, 0 skipped. Enum/schema scope reduction removed nine additional
+legacy-method invocations from the preceding 306-test checkpoint; VNPay lifecycle,
+identity, callback, concurrency and browser Return coverage is preserved.
+Both payment-method CHECKs permit only VNPAY; a removed-method insert was rejected
+in the disposable database and the entire probe transaction rolled back.
+Docker backend rebuilt using `.env.example`, without reading private `.env`.
+Swagger HTTP 200, OpenAPI HTTP 200: exactly seven Member 3 operations, and VNPAY
+as the sole payment method in request/response/history schemas. Backend restart count
+is zero; application PostgreSQL remains healthy and was not restarted or modified.
+No real payment-provider request, commit, push or Phase 7 implementation.

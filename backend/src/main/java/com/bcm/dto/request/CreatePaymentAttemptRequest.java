@@ -12,6 +12,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class CreatePaymentAttemptRequest {
     @NotNull
-    @Schema(allowableValues = {"VNPAY", "MOMO"})
+    @Schema(type = "string", allowableValues = {"VNPAY"}, description = "VNPay Sandbox is the only payment method")
     private PaymentMethod paymentMethod;
 }

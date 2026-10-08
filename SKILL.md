@@ -78,8 +78,8 @@ description: Implement và review Booking Engine của Thành viên 3 theo schem
 
 ## Payment và idempotency
 
-- Persist vào `payment_transactions`; method chỉ `CASH`, `BANK_TRANSFER`, `VNPAY`, `MOMO`;
-  status chỉ `PENDING`, `SUCCESS`, `FAILED`, `REFUNDED`; online scope là VNPay/MoMo.
+- Persist vào `payment_transactions`; method chỉ `VNPAY`;
+  status chỉ `PENDING`, `SUCCESS`, `FAILED`, `REFUNDED`; online scope chỉ là VNPay Sandbox.
 - Tạo payment `PENDING` cho booking còn hạn; amount lấy từ `court_fee` phía server.
 - Callback/IPN/webhook: verify signature/checksum, đối chiếu target/method/amount
   và status gateway trước mutation; return URL của trình duyệt không chứng minh đã thanh toán.

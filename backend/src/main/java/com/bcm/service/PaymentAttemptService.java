@@ -69,13 +69,13 @@ public class PaymentAttemptService {
             var pending = payments.findFirstByBookingIdAndStatusOrderByCreatedAtAscIdAsc(bookingId, PaymentStatus.PENDING);
             if (pending.isPresent()) {
                 var existing = pending.get();
-                if (existing.getPaymentMethod() != request.getPaymentMethod() || existing.getInvoice() != null) {
-                    throw new DuplicateResourceException("A PENDING payment attempt exists with a different payment method or target");
+                if (existing.getInvoice() != null) {
+                    throw new DuplicateResourceException("A PENDING payment attempt exists with a different target");
                 }
                 return response(existing, booking);
             }
         }
-        // The Booking lock serializes competing attempts, including attempts with different methods.
+        // The Booking lock serializes competing payment attempts.
         if (payments.existsByBookingIdAndStatus(bookingId, PaymentStatus.PENDING)) {
             throw new DuplicateResourceException("A PENDING payment attempt already exists for this booking");
         }

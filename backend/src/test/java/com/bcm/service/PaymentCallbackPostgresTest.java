@@ -16,7 +16,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -36,12 +35,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /** Dedicated PostgreSQL/schema-original, committed fixtures, real service transactions and constraints. */
 @SpringBootTest(properties = {
-        "booking.payment.enabled-methods=VNPAY,MOMO",
+        "booking.payment.enabled-methods=VNPAY",
         "booking.payment.vnpay.tmn-code=TEST1234",
         "booking.payment.vnpay.hash-secret=unit-test-secret",
-        "booking.payment.momo.partner-code=TESTPARTNER",
-        "booking.payment.momo.access-key=unit-test-access",
-        "booking.payment.momo.secret-key=unit-test-secret",
         "spring.datasource.hikari.connection-init-sql=SET statement_timeout = '15s'"
 })
 @AutoConfigureMockMvc
@@ -94,79 +90,70 @@ class PaymentCallbackPostgresTest {
 
     private UUID attempt(PaymentMethod method) {
         UUID id = UUID.randomUUID();
-        if (method == PaymentMethod.MOMO) {
-            jdbc.update("UPDATE bookings SET court_fee=10000.00 WHERE id=?", booking);
-            jdbc.update("UPDATE booking_details SET price=10000.00 WHERE booking_id=?", booking);
-        }
+
         jdbc.update("INSERT INTO payment_transactions(id,booking_id,payment_method,status,amount) VALUES (?,?,?,'PENDING',?)",
                 id, booking, method.name(), amount(method));
         return id;
     }
 
-    private BigDecimal amount(PaymentMethod method) { return new BigDecimal(method == PaymentMethod.VNPAY ? "10000.01" : "10000.00"); }
+    private BigDecimal amount(PaymentMethod method) { return new BigDecimal("10000.01"); }
 
-    private void send(PaymentMethod method, UUID attempt, String vnpayCode, int momoHttp) throws Exception {
-        if (method == PaymentMethod.VNPAY) { send(vnpay(attempt, config), vnpayCode); }
-        else { send(momo(attempt, config), momoHttp); }
+    private void send(PaymentMethod method, UUID attempt, String vnpayCode) throws Exception {
+        send(vnpay(attempt, config), vnpayCode);
     }
     private void send(Map<String, String> fields, String code) throws Exception {
         var request = get("/payments/vnpay/ipn"); fields.forEach(request::param);
         mvc.perform(request).andExpect(status().isOk()).andExpect(jsonPath("$.RspCode").value(code))
                 .andExpect(jsonPath("$.success").doesNotExist());
     }
-    private void send(com.fasterxml.jackson.databind.node.ObjectNode body, int status) throws Exception {
-        mvc.perform(post("/payments/momo/ipn").contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(body)))
-                .andExpect(status().is(status)).andExpect(content().string(""));
-    }
+
     private Map<String, Object> payment(UUID id) { return jdbc.queryForMap("SELECT * FROM payment_transactions WHERE id=?", id); }
     private Map<String, Object> header() { return jdbc.queryForMap("SELECT * FROM bookings WHERE id=?", booking); }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"VNPAY", "MOMO"})
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void verifiedSuccessCommitsTogetherAndPreservesDetailsAndPrices(PaymentMethod method) throws Exception {
         UUID id = attempt(method);
         var original = payment(id);
         var originalHeader = header();
         var originalDetails = jdbc.queryForList("SELECT * FROM booking_details WHERE booking_id=?", booking);
-        send(method, id, "00", 204);
+        send(method, id, "00");
         assertThat(payment(id)).containsEntry("status", "SUCCESS").containsEntry("amount", original.get("amount"))
-                .containsEntry("transaction_id", method == PaymentMethod.VNPAY ? "14226112" : "4088878653");
+                .containsEntry("transaction_id", "14226112");
         assertThat(header()).containsEntry("status", "PAID").containsEntry("court_fee", originalHeader.get("court_fee"));
-        if (method == PaymentMethod.VNPAY) {
-            var expected = LocalDateTime.of(2026, 10, 5, 12, 0).atZone(ZoneId.of("Asia/Ho_Chi_Minh"))
-                    .withZoneSameInstant(clock.getZone()).toLocalDateTime();
-            assertThat(((java.sql.Timestamp) payment(id).get("transaction_date")).toLocalDateTime()).isEqualTo(expected);
-        } else { assertThat(payment(id).get("transaction_date")).isNull(); }
+        var expected = LocalDateTime.of(2026, 10, 5, 12, 0).atZone(ZoneId.of("Asia/Ho_Chi_Minh"))
+                .withZoneSameInstant(clock.getZone()).toLocalDateTime();
+        assertThat(((java.sql.Timestamp) payment(id).get("transaction_date")).toLocalDateTime()).isEqualTo(expected);
         assertThat(jdbc.queryForList("SELECT * FROM booking_details WHERE booking_id=?", booking)).isEqualTo(originalDetails);
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"VNPAY", "MOMO"})
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void sequentialDuplicatePreservesConfirmedRows(PaymentMethod method) throws Exception {
         UUID id = attempt(method);
-        send(method, id, "00", 204);
+        send(method, id, "00");
         var confirmedPayment = payment(id); var confirmedBooking = header();
-        send(method, id, "02", 204);
+        send(method, id, "02");
         assertThat(payment(id)).isEqualTo(confirmedPayment); assertThat(header()).isEqualTo(confirmedBooking);
     }
 
     @ParameterizedTest
-    @CsvSource({"VNPAY,0", "VNPAY,-1", "MOMO,0", "MOMO,-1"})
+    @CsvSource({"VNPAY,0", "VNPAY,-1"})
     void deadlineEqualityAndPastCannotSettle(PaymentMethod method, int seconds) throws Exception {
         UUID id = attempt(method);
         jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?", NOW.plusSeconds(seconds), booking);
         var before = payment(id); var beforeHeader = header();
-        send(method, id, "99", 204);
+        send(method, id, "99");
         assertThat(payment(id)).isEqualTo(before); assertThat(header()).isEqualTo(beforeHeader);
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"VNPAY", "MOMO"})
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void expiredBookingRemainsExpiredAndDetailsAreNotRecreated(PaymentMethod method) throws Exception {
         UUID id = attempt(method);
         jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?", NOW.minusSeconds(1), booking);
         assertThat(expiration.expireBooking(booking)).isTrue();
-        send(method, id, "99", 204);
+        send(method, id, "99");
         assertThat(header()).containsEntry("status", "EXPIRED");
         assertThat(payment(id)).containsEntry("status", "PENDING");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_details WHERE booking_id=?", Integer.class, booking)).isZero();
@@ -178,7 +165,7 @@ class PaymentCallbackPostgresTest {
         UUID id = attempt(PaymentMethod.VNPAY);
         jdbc.update("UPDATE bookings SET status=? WHERE id=?", state.name(), booking);
         var before = header();
-        send(PaymentMethod.VNPAY, id, "99", 204);
+        send(PaymentMethod.VNPAY, id, "99");
         assertThat(header()).isEqualTo(before); assertThat(payment(id)).containsEntry("status", "PENDING");
     }
 
@@ -188,61 +175,39 @@ class PaymentCallbackPostgresTest {
         UUID id = attempt(PaymentMethod.VNPAY);
         jdbc.update("UPDATE payment_transactions SET status=?,transaction_id='existing' WHERE id=?", state.name(), id);
         var before = payment(id); var beforeHeader = header();
-        send(PaymentMethod.VNPAY, id, "99", 204);
+        send(PaymentMethod.VNPAY, id, "99");
         assertThat(payment(id)).isEqualTo(before); assertThat(header()).isEqualTo(beforeHeader);
     }
 
     @ParameterizedTest
-    @CsvSource({"VNPAY,signature", "MOMO,signature", "VNPAY,unknown", "MOMO,unknown", "VNPAY,provider", "MOMO,provider",
-            "VNPAY,amount", "MOMO,amount", "VNPAY,failure", "MOMO,failure", "VNPAY,transaction", "MOMO,transaction",
-            "VNPAY,date", "MOMO,date", "VNPAY,merchant", "MOMO,merchant", "VNPAY,reference", "MOMO,reference"})
+    @CsvSource({"VNPAY,signature", "VNPAY,unknown", "VNPAY,amount", "VNPAY,failure", "VNPAY,transaction", "VNPAY,date", "VNPAY,merchant", "VNPAY,reference"})
     void invalidCallbacksNeverMutate(PaymentMethod method, String problem) throws Exception {
         UUID id = attempt(method);
-        if (problem.equals("provider")) {
-            jdbc.update("UPDATE payment_transactions SET payment_method=? WHERE id=?", method == PaymentMethod.VNPAY ? "MOMO" : "VNPAY", id);
-        }
         var before = payment(id); var beforeHeader = header();
         UUID reference = problem.equals("unknown") ? UUID.randomUUID() : id;
-        if (method == PaymentMethod.VNPAY) {
-            var fields = vnpay(reference, config);
-            String code = "99";
-            switch (problem) {
-                case "signature" -> { fields.put("vnp_Amount", "1"); code = "97"; }
-                case "unknown", "provider" -> code = "01";
-                case "amount" -> { fields.put("vnp_Amount", "1000000"); code = "04"; }
-                case "failure" -> { fields.put("vnp_TransactionStatus", "01"); code = "00"; }
-                case "transaction" -> fields.put("vnp_TransactionNo", "broken");
-                case "date" -> fields.put("vnp_PayDate", "20260230120000");
-                case "merchant" -> fields.put("vnp_TmnCode", "OTHER123");
-                case "reference" -> { fields.put("vnp_TxnRef", "bad"); code = "01"; }
-            }
-            if (!problem.equals("signature")) { sign(fields, config); }
-            send(fields, code);
-        } else {
-            var body = momo(reference, config);
-            int status = 400;
-            switch (problem) {
-                case "signature" -> body.put("amount", 1L);
-                case "unknown", "provider" -> status = 404;
-                case "amount" -> body.put("amount", 10001L);
-                case "failure" -> { body.put("resultCode", 9000); status = 204; }
-                case "transaction" -> body.put("transId", -1L);
-                case "date" -> body.put("responseTime", -1L);
-                case "merchant" -> body.put("partnerCode", "OTHERPARTNER");
-                case "reference" -> body.put("requestId", UUID.randomUUID().toString());
-            }
-            if (!problem.equals("signature")) { sign(body, config); }
-            send(body, status);
+        var fields = vnpay(reference, config);
+        String code = "99";
+        switch (problem) {
+            case "signature" -> { fields.put("vnp_Amount", "1"); code = "97"; }
+            case "unknown" -> code = "01";
+            case "amount" -> { fields.put("vnp_Amount", "1000000"); code = "04"; }
+            case "failure" -> { fields.put("vnp_TransactionStatus", "01"); code = "00"; }
+            case "transaction" -> fields.put("vnp_TransactionNo", "broken");
+            case "date" -> fields.put("vnp_PayDate", "20260230120000");
+            case "merchant" -> fields.put("vnp_TmnCode", "OTHER123");
+            case "reference" -> { fields.put("vnp_TxnRef", "bad"); code = "01"; }
         }
+        if (!problem.equals("signature")) { sign(fields, config); }
+        send(fields, code);
         assertThat(payment(id)).isEqualTo(before); assertThat(header()).isEqualTo(beforeHeader);
     }
 
     @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"VNPAY", "MOMO"})
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void uniqueGatewayTransactionConflictRollsBackBothEntities(PaymentMethod method) throws Exception {
         UUID id = attempt(method); UUID other = attempt(method);
         jdbc.update("UPDATE payment_transactions SET status='FAILED',transaction_id=? WHERE id=?",
-                method == PaymentMethod.VNPAY ? "14226112" : "4088878653", other);
+                "14226112", other);
         var before = payment(id); var beforeHeader = header(); var otherBefore = payment(other);
         // Test-only observation on the disposable DB: sequence changes survive transaction rollback.
         // Proves Booking's SQL UPDATE happened before the real unique constraint aborted Payment's UPDATE.
@@ -252,7 +217,7 @@ class PaymentCallbackPostgresTest {
                 + "RETURN NEW; END $$");
         jdbc.execute("CREATE TRIGGER phase5b_observe_paid AFTER UPDATE ON bookings FOR EACH ROW EXECUTE FUNCTION phase5b_observe_paid()");
         try {
-            send(method, id, "99", 204);
+            send(method, id, "99");
             assertThat(jdbc.queryForObject("SELECT is_called FROM phase5b_rollback_probe", Boolean.class)).isTrue();
             assertThat(payment(id)).isEqualTo(before); assertThat(header()).isEqualTo(beforeHeader);
             assertThat(payment(other)).isEqualTo(otherBefore);
@@ -276,13 +241,13 @@ class PaymentCallbackPostgresTest {
         UUID older = attempt(PaymentMethod.VNPAY); UUID selected = attempt(PaymentMethod.VNPAY);
         jdbc.update("UPDATE payment_transactions SET status='FAILED' WHERE id=?", older);
         var history = payment(older);
-        send(PaymentMethod.VNPAY, selected, "00", 204);
+        send(PaymentMethod.VNPAY, selected, "00");
         assertThat(payment(selected)).containsEntry("status", "SUCCESS"); assertThat(payment(older)).isEqualTo(history);
     }
 
     @Test
     void sequentialContradictorySuccessDoesNotOverwriteConfirmedInfo() throws Exception {
-        UUID id = attempt(PaymentMethod.VNPAY); send(PaymentMethod.VNPAY, id, "00", 204);
+        UUID id = attempt(PaymentMethod.VNPAY); send(PaymentMethod.VNPAY, id, "00");
         var before = payment(id); var beforeHeader = header();
         var fields = vnpay(id, config); fields.put("vnp_TransactionNo", "14226113"); sign(fields, config);
         send(fields, "99"); assertThat(payment(id)).isEqualTo(before); assertThat(header()).isEqualTo(beforeHeader);

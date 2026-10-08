@@ -61,7 +61,6 @@ public class SecurityConfig {
                         ).permitAll()
 
                         .requestMatchers(HttpMethod.GET, "/payments/vnpay/ipn", "/payments/vnpay/return").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/payments/momo/ipn").permitAll()
 
                         // Admin-only endpoints
                         .requestMatchers("/admin/**").hasRole("ADMIN")

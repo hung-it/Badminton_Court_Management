@@ -1,8 +1,6 @@
 package com.bcm.service;
 
 import com.bcm.config.BookingPaymentConfig;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -11,9 +9,6 @@ final class PaymentCallbackFixtures {
     static final UUID ATTEMPT = UUID.fromString("12345678-1234-4234-8234-123456789abc");
     static BookingPaymentConfig config() {
         var config = VnPayGatewayTest.configuration();
-        config.getMomo().setPartnerCode("TESTPARTNER");
-        config.getMomo().setAccessKey("unit-test-access");
-        config.getMomo().setSecretKey("unit-test-secret");
         return config;
     }
 
@@ -36,26 +31,4 @@ final class PaymentCallbackFixtures {
         fields.put("vnp_SecureHash", VnPaySigner.sign(config.getVnpay().getHashSecret(), VnPaySigner.canonicalData(fields)));
     }
 
-    static ObjectNode momo(UUID attempt, BookingPaymentConfig config) {
-        var body = new ObjectMapper().createObjectNode();
-        body.put("partnerCode", config.getMomo().getPartnerCode());
-        body.put("orderId", attempt.toString());
-        body.put("requestId", attempt.toString());
-        body.put("amount", 10000L);
-        body.put("orderInfo", "Booking payment " + attempt);
-        body.put("orderType", "momo_wallet");
-        body.put("transId", 4088878653L);
-        body.put("resultCode", 0);
-        body.put("message", "Successful.");
-        body.put("payType", "qr");
-        body.put("responseTime", 1791176400000L);
-        body.put("extraData", "");
-        sign(body, config);
-        return body;
-    }
-
-    static void sign(ObjectNode body, BookingPaymentConfig config) {
-        body.put("signature", MoMoSigner.sign(config.getMomo().getSecretKey(),
-                MoMoIpnVerifier.signatureData(config.getMomo().getAccessKey(), body)));
-    }
 }

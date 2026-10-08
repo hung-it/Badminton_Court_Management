@@ -157,7 +157,7 @@ class BookingExpirationPostgresTest {
         UUID paymentId = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO payment_transactions(id,booking_id,payment_method,status,amount,note)
-                VALUES (?, ?, 'BANK_TRANSFER', 'FAILED', 30.00, 'Existing history fixture')
+                VALUES (?, ?, 'VNPAY', 'FAILED', 30.00, 'Existing history fixture')
                 """, paymentId, id);
         Map<String, Object> before = header(id);
         var paymentBefore = jdbc.queryForMap("SELECT * FROM payment_transactions WHERE id = ?", paymentId);

@@ -32,10 +32,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
 import java.math.BigDecimal;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.net.http.HttpTimeoutException;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -52,7 +48,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -62,11 +57,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
         "booking.payment.vnpay.tmn-code=TEST1234",
         "booking.payment.vnpay.hash-secret=postgres-test-secret",
         "booking.payment.vnpay.return-url=https://merchant.example/return",
-        "booking.payment.momo.partner-code=TESTPARTNER",
-        "booking.payment.momo.access-key=postgres-test-access",
-        "booking.payment.momo.secret-key=postgres-test-secret",
-        "booking.payment.momo.redirect-url=https://merchant.example/momo-return",
-        "booking.payment.momo.ipn-url=https://merchant.example/momo-ipn",
         "spring.datasource.hikari.connection-init-sql=SET statement_timeout = '15s'"
 })
 @AutoConfigureMockMvc
@@ -92,7 +82,6 @@ class PaymentInitiationPostgresTest {
     @Autowired private PlatformTransactionManager transactionManager;
     @SpyBean private VnPayGateway gateway;
     @MockBean(name = "bookingExpirationClock") private Clock clock;
-    @MockBean(name = "bookingPaymentHttpClient") private HttpClient http;
     private UUID userId;
     private UUID customerId;
     // Lifecycle/concurrency regression fixture; real JWT ownership is covered separately.
@@ -102,10 +91,6 @@ class PaymentInitiationPostgresTest {
 
     @BeforeEach
     void fixtures() throws Exception {
-        when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenAnswer(call -> {
-            var request = mapper.readValue(MoMoGatewayTest.requestBody(call.getArgument(0)), MoMoGateway.CreatePaymentRequest.class);
-            return MoMoGatewayTest.response(200, MoMoGatewayTest.successBody(mapper, request, true));
-        });
         var zone = ZoneId.systemDefault();
         when(clock.getZone()).thenReturn(zone);
         when(clock.instant()).thenReturn(NOW.atZone(zone).toInstant());
@@ -201,14 +186,6 @@ class PaymentInitiationPostgresTest {
     }
 
     @Test
-    void differentProviderCannotCreateSecondPendingAttempt() throws Exception {
-        attempts.createAttempt(bookingId, new CreatePaymentAttemptRequest(PaymentMethod.MOMO));
-        perform(409, "192.0.2.10", body());
-        verify(gateway, never()).initiate(any(), anyString());
-        assertCount(1);
-    }
-
-    @Test
     void providerWorkHasNoDbTransactionAndBookingLockHasBeenReleased() throws Exception {
         doAnswer(call -> {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
@@ -253,134 +230,6 @@ class PaymentInitiationPostgresTest {
             perform(503, "192.0.2.10", body());
             assertCount(0);
         } finally { config.getVnpay().setHashSecret(previous); }
-    }
-
-    @Test
-    void missingMomoConfigurationNeverInitiatesOrCreatesAttempt() throws Exception {
-        String previous = config.getMomo().getSecretKey();
-        try {
-            config.getMomo().setSecretKey("");
-            perform(503, "192.0.2.10", momoBody());
-            verify(http, never()).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
-            assertCount(0);
-        } finally { config.getMomo().setSecretKey(previous); }
-    }
-
-    @Test
-    void momoBootstrapIsCorrelatedButCheckoutArtifactsRemainBlockedAndStatePending() throws Exception {
-        var data = perform(201, "192.0.2.10", momoBody());
-        var checkout = data.path("gatewayPreparation");
-        assertThat(checkout.path("provider").asText()).isEqualTo("MOMO");
-        assertThat(checkout.path("checkoutReady").asBoolean()).isFalse();
-        assertThat(checkout.path("checkoutBlocker").asText()).isEqualTo(MoMoGateway.CHECKOUT_BLOCKER);
-        assertThat(checkout.path("checkoutUrl").isNull()).isTrue();
-        assertThat(checkout.path("qrCodeData").isNull()).isTrue();
-        assertThat(checkout.path("deeplink").isNull()).isTrue();
-        assertPendingStates();
-        assertCount(1);
-        assertThat(data.toString()).doesNotContain("postgres-test-access", "postgres-test-secret", "\"signature\":", "pay?t=");
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"TIMEOUT", "400", "500", "MALFORMED", "RESULT", "MISSING_PAY_URL"})
-    void momoFailureAfterAttemptCommitNeverMakesBookingPaidOrPaymentSuccessful(String failure) throws Exception {
-        when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenAnswer(call -> {
-            if (failure.equals("TIMEOUT")) { throw new HttpTimeoutException("test-only"); }
-            if (failure.equals("400") || failure.equals("500")) { return MoMoGatewayTest.response(Integer.parseInt(failure), "provider-body"); }
-            if (failure.equals("MALFORMED")) { return MoMoGatewayTest.response(200, "{"); }
-            if (failure.equals("RESULT")) { return MoMoGatewayTest.response(200, "{\"resultCode\":1002}"); }
-            var request = mapper.readValue(MoMoGatewayTest.requestBody(call.getArgument(0)), MoMoGateway.CreatePaymentRequest.class);
-            var response = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(MoMoGatewayTest.successBody(mapper, request, true));
-            response.remove("payUrl");
-            return MoMoGatewayTest.response(200, response.toString());
-        });
-        perform(502, "192.0.2.10", momoBody());
-        assertCount(1);
-        assertPendingStates();
-        verify(http, times(1)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
-    }
-
-    @Test
-    void momoRetryUsesSameAttemptOrderIdRequestIdAndPayloadAfterTimeout() throws Exception {
-        var payloads = new java.util.ArrayList<String>();
-        when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenAnswer(call -> {
-            String payload = MoMoGatewayTest.requestBody(call.getArgument(0));
-            payloads.add(payload);
-            if (payloads.size() == 1) { throw new HttpTimeoutException("test-only"); }
-            return MoMoGatewayTest.response(200, MoMoGatewayTest.successBody(mapper,
-                    mapper.readValue(payload, MoMoGateway.CreatePaymentRequest.class), false));
-        });
-        perform(502, "192.0.2.10", momoBody());
-        var before = jdbc.queryForMap("SELECT * FROM payment_transactions WHERE booking_id = ?", bookingId);
-        var data = perform(201, "192.0.2.10", momoBody());
-        assertThat(data.path("paymentAttemptId").asText()).isEqualTo(before.get("id").toString());
-        assertThat(payloads).hasSize(2);
-        assertThat(payloads.get(0)).isEqualTo(payloads.get(1));
-        var request = mapper.readTree(payloads.get(1));
-        assertThat(request.path("orderId").asText()).isEqualTo(before.get("id").toString());
-        assertThat(request.path("requestId").asText()).isEqualTo(before.get("id").toString());
-        assertThat(request.path("amount").asLong()).isEqualTo(10000);
-        assertThat(jdbc.queryForMap("SELECT * FROM payment_transactions WHERE booking_id = ?", bookingId)).isEqualTo(before);
-        assertCount(1);
-        assertPendingStates();
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"EXPIRED", "PAID", "DEADLINE"})
-    void ineligibleMomoBookingDoesNotReachHttpClient(String state) throws Exception {
-        if (state.equals("DEADLINE")) { jdbc.update("UPDATE bookings SET expires_at = ? WHERE id = ?", NOW, bookingId); }
-        else { jdbc.update("UPDATE bookings SET status = ? WHERE id = ?", state, bookingId); }
-        perform(400, "192.0.2.10", momoBody());
-        verify(http, never()).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
-        assertCount(0);
-    }
-
-    @Test
-    void momoHttpRunsAfterCommitWithoutHoldingBookingLock() throws Exception {
-        when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenAnswer(call -> {
-            assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
-            assertCount(1); // committed row visible from independent JDBC connection
-            try (var connection = dataSource.getConnection()) {
-                connection.setAutoCommit(false);
-                try (var statement = connection.prepareStatement("SELECT id FROM bookings WHERE id = ? FOR UPDATE NOWAIT")) {
-                    statement.setObject(1, bookingId);
-                    statement.executeQuery().close();
-                } finally { connection.rollback(); }
-            }
-            var request = mapper.readValue(MoMoGatewayTest.requestBody(call.getArgument(0)), MoMoGateway.CreatePaymentRequest.class);
-            return MoMoGatewayTest.response(200, MoMoGatewayTest.successBody(mapper, request, false));
-        });
-        perform(201, "192.0.2.10", momoBody());
-    }
-
-    @Test
-    void deadlineChangedDuringMomoHttpSuppressesCheckoutAndKeepsPaymentPending() throws Exception {
-        when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenAnswer(call -> {
-            jdbc.update("UPDATE bookings SET expires_at = ? WHERE id = ?", NOW, bookingId);
-            var request = mapper.readValue(MoMoGatewayTest.requestBody(call.getArgument(0)), MoMoGateway.CreatePaymentRequest.class);
-            return MoMoGatewayTest.response(200, MoMoGatewayTest.successBody(mapper, request, true));
-        });
-        perform(400, "192.0.2.10", momoBody());
-        assertCount(1);
-        assertPendingStates();
-    }
-
-    @Test
-    void fractionalMomoAmountIsRejectedExactlyWithoutTruncationOrHttp() throws Exception {
-        jdbc.update("UPDATE bookings SET court_fee = 10000.01 WHERE id = ?", bookingId);
-        perform(400, "192.0.2.10", momoBody());
-        verify(http, never()).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
-        assertThat(jdbc.queryForObject("SELECT amount FROM payment_transactions WHERE booking_id = ?", BigDecimal.class, bookingId))
-                .isEqualTo(new BigDecimal("10000.01"));
-        assertPendingStates();
-    }
-
-    private void assertPendingStates() {
-        var payment = jdbc.queryForMap("SELECT * FROM payment_transactions WHERE booking_id = ?", bookingId);
-        assertThat(payment.get("status")).isEqualTo("PENDING");
-        assertThat(payment.get("transaction_id")).isNull();
-        assertThat(payment.get("transaction_date")).isNull();
-        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id = ?", String.class, bookingId)).isEqualTo("PENDING");
     }
 
     @Test
@@ -430,8 +279,6 @@ class PaymentInitiationPostgresTest {
     }
 
     private String body() { return "{\"paymentMethod\":\"VNPAY\"}"; }
-    private String momoBody() { return "{\"paymentMethod\":\"MOMO\"}"; }
-
     private com.fasterxml.jackson.databind.JsonNode perform(int expected, String ip, String body) throws Exception {
         var result = mvc.perform(post("/api/bookings/" + bookingId + "/payments").contextPath("/api")
                 .contentType(MediaType.APPLICATION_JSON).content(body).with(request -> {

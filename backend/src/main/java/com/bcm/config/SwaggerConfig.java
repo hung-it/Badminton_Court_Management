@@ -44,7 +44,7 @@ public class SwaggerConfig {
                                 "- Court Booking with Anti-Double Booking\n" +
                                 "- 3-Tier Promotion System\n" +
                                 "- POS & Inventory Management\n" +
-                                "- Payment Integration (VNPay/MoMo)")
+                                "- Payment Integration (VNPay Sandbox)")
                         .contact(new Contact()
                                 .name("BCM Development Team")
                                 .email("support@bcm.com")

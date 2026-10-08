@@ -1,6 +1,7 @@
 # Prompt tái sử dụng — Booking Engine backend
 
 Chọn một prompt ứng với task trong `plans.md`; chưa có prompt frontend.
+Scope hiện tại: VNPay Sandbox là provider online duy nhất; không khôi phục provider đã loại bỏ.
 
 ## Inspect Booking Engine — Phase 1
 
@@ -52,18 +53,17 @@ Chạy test deadline, chạy job lặp, đặt lại slot và build sau thay đ�
 ## Implement payment attempts — Phase 5A
 
 Đọc `AGENTS.md` + `SKILL.md` + `db/migration.sql` trước. Implement payment_transactions
-PENDING cho booking còn hạn và abstraction VNPay/MoMo theo layer hiện có; amount từ server,
+PENDING cho booking còn hạn và abstraction VNPay Sandbox theo layer hiện có; amount từ server,
 target XOR đúng, gateway credentials từ config, dữ liệu không có column chỉ runtime.
 Không tự thay schema. Chạy test payment initiation/gateway sandbox phù hợp và build sau thay đổi.
 
 ## Implement sandbox initiation — Phase 5A.5
 
 Đọc instructions/schema/source trước. Giữ payment attempt PENDING; VNPay v2.1.0 tạo signed sandbox URL,
-MoMo One-Time Wallet captureWallet ký request và gọi HTTP ngoài DB transaction/Booking lock.
+Giữ provider work ngoài DB transaction/Booking lock.
 Chỉ dùng official provider contracts; amount phía server, config từ environment, artifacts runtime.
-MoMo Create Payment response signature EN/VI chưa thống nhất: không đoán verifier, giữ checkoutReady=false
-và không expose checkout artifacts tới khi có authoritative clarification. Không implement callback/mutation.
-Test deterministic signer/client, PostgreSQL initiation/retry/race, regression và full verify; smoke test opt-in.
+Không thêm provider khác hoặc callback/mutation ngoài scope task.
+Test deterministic VNPay signer, PostgreSQL initiation/retry/race, regression và full verify; smoke test opt-in.
 
 ## Implement callback verification — Phase 5B
 

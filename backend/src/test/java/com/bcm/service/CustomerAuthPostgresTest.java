@@ -31,9 +31,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(properties = {"booking.payment.vnpay.tmn-code=FAKE_TEST_MERCHANT",
-        "booking.payment.vnpay.hash-secret=fake-test-secret",
-        "booking.payment.momo.partner-code=FAKE_TEST_PARTNER", "booking.payment.momo.access-key=fake-access",
-        "booking.payment.momo.secret-key=fake-secret"})
+        "booking.payment.vnpay.hash-secret=fake-test-secret"})
 @AutoConfigureMockMvc
 @EnabledIfEnvironmentVariable(named = "BCM_TEST_DB_URL", matches = "jdbc:postgresql:.*")
 class CustomerAuthPostgresTest {
@@ -46,7 +44,6 @@ class CustomerAuthPostgresTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
     @Autowired AuthService auth;
-    @Autowired com.bcm.config.BookingPaymentConfig paymentConfig;
     @Autowired CustomerRepository customers;
     @Autowired UserRepository users;
     @Autowired CurrentCustomerService resolver;
@@ -140,10 +137,6 @@ class CustomerAuthPostgresTest {
     @Test void unauthenticatedProviderRequestsReachCryptographicVerifier() throws Exception {
         mvc.perform(get("/api/payments/vnpay/ipn").contextPath("/api").param("vnp_SecureHash", "invalid"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.RspCode").value("97"));
-        var notification = PaymentCallbackFixtures.momo(UUID.randomUUID(), paymentConfig);
-        notification.put("signature", "0".repeat(64));
-        mvc.perform(post("/api/payments/momo/ipn").contextPath("/api").contentType(MediaType.APPLICATION_JSON).content(notification.toString()))
-                .andExpect(status().isBadRequest()).andExpect(content().string(""));
         mvc.perform(get("/api/payments/vnpay/return").contextPath("/api").param("vnp_SecureHash", "invalid"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.success").value(false));
     }

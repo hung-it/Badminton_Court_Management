@@ -2,7 +2,6 @@ package com.bcm.service;
 
 import com.bcm.dto.response.VnPayIpnAcknowledgment;
 import com.bcm.exception.PaymentNotificationException;
-import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
@@ -19,7 +18,6 @@ import static com.bcm.service.PaymentCallbackTransactionService.Result;
 @Slf4j
 public class PaymentCallbackService {
     private final VnPayIpnVerifier vnpay;
-    private final MoMoIpnVerifier momo;
     private final PaymentCallbackTransactionService transactions;
 
     @Transactional(propagation = Propagation.NEVER)
@@ -46,19 +44,6 @@ public class PaymentCallbackService {
             // Includes flush/commit failures from the transactional proxy. Never acknowledge success before commit.
             return VnPayIpnAcknowledgment.of("99");
         }
-    }
-
-    @Transactional(propagation = Propagation.NEVER)
-    public Result momo(JsonNode body) {
-        try {
-            return handle(momo.verify(body));
-        } catch (PaymentNotificationException ex) {
-            return switch (ex.getReason()) {
-                case UNAVAILABLE -> Result.UNAVAILABLE;
-                case INVALID_SIGNATURE -> Result.INVALID_SIGNATURE;
-                default -> Result.INVALID_DATA;
-            };
-        } catch (RuntimeException ex) { return Result.SYSTEM_ERROR; }
     }
 
     private PaymentCallbackTransactionService.Result handle(PaymentNotification notification) {

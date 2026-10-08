@@ -20,7 +20,7 @@ class PaymentGatewayPreparationTest {
     private final PaymentGatewayPreparation gateway = new PaymentGatewayPreparation(new BookingPaymentConfig());
 
     @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"VNPAY", "MOMO"})
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void preparesInternalProviderAmountAndStableMerchantReference(PaymentMethod method) {
         UUID id = UUID.randomUUID();
         var amount = new BigDecimal("123456.78");
@@ -30,13 +30,6 @@ class PaymentGatewayPreparationTest {
         assertThat(result.amount()).isEqualTo(amount);
         assertThat(result.checkoutReady()).isFalse();
         assertThat(gateway.prepare(method, id, amount)).isEqualTo(result);
-    }
-
-    @ParameterizedTest
-    @EnumSource(value = PaymentMethod.class, names = {"CASH", "BANK_TRANSFER"})
-    void rejectsUnsupportedOnlineMethods(PaymentMethod method) {
-        assertThatThrownBy(() -> gateway.prepare(method, UUID.randomUUID(), BigDecimal.TEN))
-                .isInstanceOf(BadRequestException.class);
     }
 
     @Test
@@ -49,14 +42,12 @@ class PaymentGatewayPreparationTest {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(ConfigurationPropertiesAutoConfiguration.class))
                 .withUserConfiguration(BookingPaymentConfig.class, PaymentGatewayPreparation.class)
-                .withPropertyValues("booking.payment.enabled-methods=MOMO")
+                .withPropertyValues("booking.payment.enabled-methods=")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context.getBean(BookingPaymentConfig.class).getEnabledMethods())
-                            .containsExactly(PaymentMethod.MOMO);
+                            .isEmpty();
                     var configured = context.getBean(PaymentGatewayPreparation.class);
-                    assertThat(configured.prepare(PaymentMethod.MOMO, UUID.randomUUID(), BigDecimal.TEN).provider())
-                            .isEqualTo(PaymentMethod.MOMO);
                     assertThatThrownBy(() -> configured.validateMethod(PaymentMethod.VNPAY))
                             .isInstanceOf(BadRequestException.class).hasMessageContaining("disabled");
                 });

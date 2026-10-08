@@ -26,6 +26,6 @@ public record BookingHistoryDetailResponse(UUID bookingId, UUID customerId, Book
     public record Payment(UUID paymentAttemptId, PaymentMethod paymentMethod, PaymentStatus paymentStatus,
                           BigDecimal amount,
                           @Schema(nullable = true, description = "Gateway ID; null before confirmation") String transactionId,
-                          @Schema(nullable = true, description = "Provider payment timestamp when verified; MoMo remains null")
+                          @Schema(nullable = true, description = "Provider payment timestamp when verified; historical records may have no timestamp")
                           LocalDateTime transactionDate, LocalDateTime createdAt) { }
 }

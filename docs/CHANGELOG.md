@@ -1,5 +1,7 @@
 # CHANGELOG - Database Design Updates
 
+> Historical schema/design record. Current Member 3 online gateway scope is VNPay Sandbox only; provider names below describe the original design/schema, not active integration.
+
 ## [1.1.0] - 2026-10-03
 
 ### 🔧 Fixed Critical Issues (Phản hồi từ team review)
@@ -31,7 +33,7 @@ ON booking_details(booking_date, court_id, time_slot_id);
 ---
 
 #### 3. ✅ Thêm UNIQUE constraint cho transaction_id (partial)
-**Vấn đề:** `transaction_id` nullable nhưng không có UNIQUE → có thể duplicate webhook từ VNPay/MoMo.
+**Vấn đề:** `transaction_id` nullable nhưng không có UNIQUE → có thể duplicate webhook từ VNPay.
 
 **Giải pháp:**
 ```sql

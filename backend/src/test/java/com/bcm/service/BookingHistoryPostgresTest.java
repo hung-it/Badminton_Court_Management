@@ -186,15 +186,15 @@ class BookingHistoryPostgresTest {
     @Test
     void paymentsUseActualStatusesAndStableOrderingAndExcludeInvoiceTargetEvenWhenInvoiceLinksBooking() throws Exception {
         UUID id = booking(customerA, BookingStatus.PAID, NOW);
-        UUID oldest = payment(id, "CASH", "FAILED", NOW.minusDays(1), null);
+        UUID oldest = payment(id, "VNPAY", "FAILED", NOW.minusDays(1), null);
         UUID low = UUID.fromString("00000000-0000-0000-0000-000000006003");
         UUID high = UUID.fromString("ffffffff-ffff-ffff-ffff-ffffffff6004");
-        insertPayment(low, id, "BANK_TRANSFER", "REFUNDED", NOW, "history-refunded-" + id);
+        insertPayment(low, id, "VNPAY", "REFUNDED", NOW, "history-refunded-" + id);
         insertPayment(high, id, "VNPAY", "SUCCESS", NOW, "history-success-" + id);
-        UUID latest = payment(id, "MOMO", "PENDING", NOW.plusDays(1), null);
-        jdbc.update("INSERT INTO invoices(id,booking_id,customer_id,payment_method,total_amount) VALUES (?,?,?,'CASH',11.06)",
+        UUID latest = payment(id, "VNPAY", "PENDING", NOW.plusDays(1), null);
+        jdbc.update("INSERT INTO invoices(id,booking_id,customer_id,payment_method,total_amount) VALUES (?,?,?,'VNPAY',11.06)",
                 invoice, id, customerA);
-        jdbc.update("INSERT INTO payment_transactions(invoice_id,payment_method,status,amount) VALUES (?,'CASH','SUCCESS',11.06)", invoice);
+        jdbc.update("INSERT INTO payment_transactions(invoice_id,payment_method,status,amount) VALUES (?,'VNPAY','SUCCESS',11.06)", invoice);
         var result = history.detail(id);
         assertThat(result.payments()).extracting("paymentAttemptId").containsExactly(latest, high, low, oldest);
         assertThat(result.payments()).extracting("paymentStatus").containsExactly(
@@ -208,7 +208,7 @@ class BookingHistoryPostgresTest {
         mvc.perform(get("/api/bookings/" + id).contextPath("/api")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PAID"))
                 .andExpect(jsonPath("$.data.payments.length()").value(4))
-                .andExpect(jsonPath("$.data.payments[0].paymentMethod").value("MOMO"))
+                .andExpect(jsonPath("$.data.payments[0].paymentMethod").value("VNPAY"))
                 .andExpect(jsonPath("$.data.payments[0].paymentStatus").value("PENDING"))
                 .andExpect(jsonPath("$.data.payments[0].transactionId").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$.data.payments[0].transactionDate").value(org.hamcrest.Matchers.nullValue()))
@@ -222,7 +222,7 @@ class BookingHistoryPostgresTest {
     void getNeverExpiresOverduePendingOrMutatesAnyRows() throws Exception {
         UUID id = booking(customerA, BookingStatus.PENDING, NOW);
         addDetail(id, LocalDate.of(2026, 10, 5));
-        payment(id, "MOMO", "PENDING", NOW, null);
+        payment(id, "VNPAY", "PENDING", NOW, null);
         jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?", NOW.minusSeconds(1), id);
         var header = jdbc.queryForMap("SELECT * FROM bookings WHERE id=?", id);
         var slots = jdbc.queryForList("SELECT * FROM booking_details WHERE booking_id=?", id);
@@ -309,13 +309,14 @@ class BookingHistoryPostgresTest {
         assertThat(paths.has("/bookings/{bookingId}/payments")).isTrue();
         assertThat(paths.has("/payments/vnpay/return")).isTrue();
         assertThat(paths.has("/payments/vnpay/ipn")).isTrue();
-        assertThat(paths.has("/payments/momo/ipn")).isTrue();
+        assertThat(paths.fieldNames()).toIterable().filteredOn(path -> path.startsWith("/payments/"))
+                .containsExactlyInAnyOrder("/payments/vnpay/ipn", "/payments/vnpay/return");
         paths.fieldNames().forEachRemaining(path -> assertThat(path).doesNotStartWith("/api/"));
         var operations = List.of(paths.path("/availability").path("get"), paths.path("/bookings").path("post"),
                 paths.path("/bookings").path("get"), paths.path("/bookings/{bookingId}").path("get"),
                 paths.path("/bookings/{bookingId}/payments").path("post"));
         for (var operation : List.of(paths.path("/payments/vnpay/return").path("get"),
-                paths.path("/payments/vnpay/ipn").path("get"), paths.path("/payments/momo/ipn").path("post"))) {
+                paths.path("/payments/vnpay/ipn").path("get"))) {
             assertThat(operation.path("security").isEmpty()).isTrue();
         }
         assertThat(operations).allSatisfy(op -> assertThat(op.path("security").get(0).has("Bearer Authentication")).isTrue());
@@ -331,13 +332,12 @@ class BookingHistoryPostgresTest {
                 .toIterable().contains("201", "400", "404", "409", "502", "503");
         assertThat(paths.path("/payments/vnpay/return").path("get").path("responses").fieldNames())
                 .toIterable().contains("200", "400", "503");
-        JsonNode momo = paths.path("/payments/momo/ipn").path("post").path("responses");
-        assertThat(momo.fieldNames()).toIterable().containsExactlyInAnyOrder("204", "400", "404", "503", "500");
-        momo.forEach(response -> assertThat(response.path("content").isEmpty()).isTrue());
         String ackRef = paths.path("/payments/vnpay/ipn").path("get").path("responses").path("200")
                 .path("content").path("application/json").path("schema").path("$ref").asText();
         assertThat(ackRef).isEqualTo("#/components/schemas/VnPayIpnAcknowledgment");
         JsonNode schemas = document.path("components").path("schemas");
+        assertThat(schemas.path("CreatePaymentAttemptRequest").path("properties").path("paymentMethod").path("enum"))
+                .containsExactly(mapper.getNodeFactory().textNode("VNPAY"));
         assertThat(schemas.path("VnPayIpnAcknowledgment").path("properties").fieldNames()).toIterable()
                 .containsExactlyInAnyOrder("RspCode", "Message");
         assertThat(schemas.has("BookingHistoryResponse")).isTrue();
@@ -362,7 +362,8 @@ class BookingHistoryPostgresTest {
         assertThat(paths.path("/payments/vnpay/return").path("get").path("description").asText())
                 .contains("never reads or writes the database");
         assertThat(paths.path("/bookings/{bookingId}/payments").path("post").path("description").asText())
-                .contains("checkoutReady=false", "clarification");
+                .contains("VNPAY only", "checkoutReady=true", "Unsupported methods return 400 before persistence")
+                .doesNotContain("checkout blocker");
     }
 
     private UUID booking(UUID customer, BookingStatus status, LocalDateTime created) {
@@ -450,7 +451,7 @@ class BookingHistoryPostgresTest {
     @Test
     void trustedCustomerCannotReadAnotherCustomersExpiredHeaderOrPayment() throws Exception {
         UUID expired = booking(customerA, BookingStatus.EXPIRED, NOW);
-        payment(expired, "MOMO", "PENDING", NOW, null);
+        payment(expired, "VNPAY", "PENDING", NOW, null);
         assertThat(history.detail(expired).details()).isEmpty();
         assertThat(history.detail(expired).payments()).hasSize(1);
         authenticate(userB);

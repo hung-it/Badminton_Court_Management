@@ -2,13 +2,11 @@ package com.bcm.service;
 
 import com.bcm.controller.PaymentCallbackController;
 import com.bcm.controller.VnPayReturnController;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.time.Clock;
@@ -28,7 +26,7 @@ class PaymentCallbackControllerTest {
 
     @BeforeEach
     void setUp() {
-        var service = new PaymentCallbackService(verifier, new MoMoIpnVerifier(config), transactions);
+        var service = new PaymentCallbackService(verifier, transactions);
         mvc = MockMvcBuilders.standaloneSetup(new PaymentCallbackController(service), new VnPayReturnController(verifier)).build();
         when(transactions.resolve(any())).thenReturn(new PaymentCallbackTransactionService.Resolution(ATTEMPT, null));
         when(transactions.settle(any(), any())).thenReturn(SUCCESS);
@@ -91,49 +89,9 @@ class PaymentCallbackControllerTest {
     }
 
     @Test
-    void validMomoIpnAcknowledged204WithEmptyBody() throws Exception {
-        mvc.perform(post("/payments/momo/ipn").contentType(MediaType.APPLICATION_JSON)
-                .content(new ObjectMapper().writeValueAsBytes(momo(ATTEMPT, config))))
-                .andExpect(status().isNoContent()).andExpect(content().string(""));
-    }
-
-    @Test
-    void invalidOrMalformedMomoDoesNotUseApiResponse() throws Exception {
-        mvc.perform(post("/payments/momo/ipn").contentType(MediaType.APPLICATION_JSON).content("{"))
-                .andExpect(status().isBadRequest()).andExpect(content().string(""));
-        mvc.perform(post("/payments/momo/ipn").contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isBadRequest()).andExpect(content().string(""));
-        verifyNoInteractions(transactions);
-    }
-
-    @Test
-    void momoPersistenceFailureIsNotAcknowledgedAsHandled() throws Exception {
-        when(transactions.settle(any(), any())).thenThrow(new DataIntegrityViolationException("test failure"));
-        mvc.perform(post("/payments/momo/ipn").contentType(MediaType.APPLICATION_JSON)
-                .content(new ObjectMapper().writeValueAsBytes(momo(ATTEMPT, config))))
-                .andExpect(status().isInternalServerError()).andExpect(content().string(""));
-    }
-
-    @ParameterizedTest
-    @org.junit.jupiter.params.provider.EnumSource(value = PaymentCallbackTransactionService.Result.class,
-            names = {"SUCCESS", "ALREADY_CONFIRMED", "IGNORED", "LATE_EXPIRED", "NOT_PAYABLE", "CONFLICT", "TRANSACTION_ID_CONFLICT"})
-    void momoTransportAcknowledgesHandledBusinessOutcomesWithoutClaimingSettlement(PaymentCallbackTransactionService.Result result)
-            throws Exception {
-        when(transactions.settle(any(), any())).thenReturn(result);
-        mvc.perform(post("/payments/momo/ipn").contentType(MediaType.APPLICATION_JSON)
-                .content(new ObjectMapper().writeValueAsBytes(momo(ATTEMPT, config))))
-                .andExpect(status().isNoContent()).andExpect(content().string(""));
-    }
-
-    @Test
     void realTransactionIdConstraintFailureIsHandledOnlyAfterRollback() throws Exception {
         var sql = new java.sql.SQLException("duplicate key violates unique constraint \"uq_transaction_id\"", "23505");
         when(transactions.settle(any(), any())).thenThrow(new DataIntegrityViolationException("test-only", sql));
-        var service = new PaymentCallbackService(verifier, new MoMoIpnVerifier(config), transactions);
-        org.assertj.core.api.Assertions.assertThat(service.momo(momo(ATTEMPT, config))).isEqualTo(TRANSACTION_ID_CONFLICT);
-        mvc.perform(post("/payments/momo/ipn").contentType(MediaType.APPLICATION_JSON)
-                .content(new ObjectMapper().writeValueAsBytes(momo(ATTEMPT, config))))
-                .andExpect(status().isNoContent()).andExpect(content().string(""));
         var request = get("/payments/vnpay/ipn"); vnpay(ATTEMPT, config).forEach(request::param);
         mvc.perform(request).andExpect(content().json("{\"RspCode\":\"99\",\"Message\":\"Transaction ID belongs to another payment\"}", true));
     }
@@ -142,8 +100,7 @@ class PaymentCallbackControllerTest {
     void unrelatedUniqueConstraintIsStillSystemFailure() throws Exception {
         var sql = new java.sql.SQLException("duplicate key violates unique constraint \"another_constraint\"", "23505");
         when(transactions.settle(any(), any())).thenThrow(new DataIntegrityViolationException("test-only", sql));
-        mvc.perform(post("/payments/momo/ipn").contentType(MediaType.APPLICATION_JSON)
-                .content(new ObjectMapper().writeValueAsBytes(momo(ATTEMPT, config))))
-                .andExpect(status().isInternalServerError()).andExpect(content().string(""));
+        var request = get("/payments/vnpay/ipn"); vnpay(ATTEMPT, config).forEach(request::param);
+        mvc.perform(request).andExpect(status().isOk()).andExpect(jsonPath("$.RspCode").value("99"));
     }
 }

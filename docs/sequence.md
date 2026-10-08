@@ -118,7 +118,7 @@ actor "Khách hàng" as User
 participant "Mobile App" as UI
 participant "Backend API" as API
 database "Database" as DB
-participant "Cổng TT\n(VNPay/MoMo)" as PaymentGateway
+participant "Cổng TT\n(VNPay Sandbox)" as PaymentGateway
 
 == 1. Xem lịch trống ==
 User -> UI : Chọn Ngày & Sân cầu lông

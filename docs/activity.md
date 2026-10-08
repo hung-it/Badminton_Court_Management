@@ -29,10 +29,10 @@ start
 |Hệ thống|
 :Tính tiền: `base_price` * `price_multiplier`;
 :Ghi nhận vào `bookings` (status: PENDING);
-:Tạo URL Cổng thanh toán (VNPay/MoMo);
+:Tạo URL Cổng thanh toán (VNPay Sandbox);
 
 |Khách Hàng|
-:Mở App Ngân hàng / MoMo quét mã QR;
+:Mở App Ngân hàng quét mã QR;
 :Thanh toán thành công;
 
 |Cổng Thanh Toán|
