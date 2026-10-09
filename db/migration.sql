@@ -78,7 +78,7 @@ CREATE TABLE courts (
     name VARCHAR(255) NOT NULL,
     type VARCHAR(100),
     status VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE' CHECK (status IN ('AVAILABLE', 'MAINTENANCE', 'CLOSED')),
-    base_price NUMERIC(10, 2) NOT NULL,
+    base_price NUMERIC(10, 2) NOT NULL CHECK (base_price >= 0),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP
@@ -89,9 +89,10 @@ CREATE TABLE time_slots (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
-    price_multiplier NUMERIC(3, 2) NOT NULL DEFAULT 1.0,
+    price_multiplier NUMERIC(3, 2) NOT NULL DEFAULT 1.0 CHECK (price_multiplier > 0),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP,
     CONSTRAINT chk_time_order CHECK (start_time < end_time)
 );
 
@@ -143,8 +144,10 @@ CREATE TABLE products (
     category_id UUID NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
     name VARCHAR(255) NOT NULL,
     type VARCHAR(20) NOT NULL CHECK (type IN ('GOODS', 'SERVICE')),
-    price NUMERIC(10, 2) NOT NULL,
-    stock_quantity INT NOT NULL DEFAULT 0,
+    price NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
+    unit VARCHAR(50) NOT NULL DEFAULT 'cái',
+    image_url VARCHAR(2048),
+    stock_quantity INT NOT NULL DEFAULT 0 CHECK (stock_quantity >= 0),
     version INT NOT NULL DEFAULT 0,
     created_by UUID REFERENCES staffs(id),
     updated_by UUID REFERENCES staffs(id),
@@ -333,20 +336,20 @@ INSERT INTO roles (role_name) VALUES
 INSERT INTO time_slots (start_time, end_time, price_multiplier) VALUES
     ('06:00:00', '07:00:00', 1.0),
     ('07:00:00', '08:00:00', 1.0),
-    ('08:00:00', '09:00:00', 1.2),
-    ('09:00:00', '10:00:00', 1.2),
+    ('08:00:00', '09:00:00', 1.0),
+    ('09:00:00', '10:00:00', 1.0),
     ('10:00:00', '11:00:00', 1.0),
     ('11:00:00', '12:00:00', 1.0),
     ('12:00:00', '13:00:00', 1.0),
     ('13:00:00', '14:00:00', 1.0),
     ('14:00:00', '15:00:00', 1.0),
-    ('15:00:00', '16:00:00', 1.2),
-    ('16:00:00', '17:00:00', 1.2),
+    ('15:00:00', '16:00:00', 1.0),
+    ('16:00:00', '17:00:00', 1.0),
     ('17:00:00', '18:00:00', 1.5),
     ('18:00:00', '19:00:00', 1.5),
     ('19:00:00', '20:00:00', 1.5),
     ('20:00:00', '21:00:00', 1.5),
-    ('21:00:00', '22:00:00', 1.2);
+    ('21:00:00', '22:00:00', 1.0);
 
 -- =====================================================
 -- END OF MIGRATION SCRIPT

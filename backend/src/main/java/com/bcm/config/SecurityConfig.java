@@ -53,6 +53,7 @@ public class SecurityConfig {
                                 "/api/v3/api-docs/**",
                                 "/api/api-docs/**",
                                 // Also allow without /api prefix for direct access
+                                "/public/**",
                                 "/auth/**",
                                 "/health/**",
                                 "/swagger-ui/**",

@@ -607,3 +607,10 @@ Internal project for educational purposes.
 **Sprint**: 1, Week 2
 
 🏸 **Let's build something great together!** 🏸
+
+
+## Thành viên 2 — phạm vi cập nhật 09/10/2026
+
+Bản phân công mới: Sân, Khung giờ & Bảng giá, Danh mục & Sản phẩm (BE/FE/DB).
+Xem [hướng dẫn bàn giao](docs/MEMBER2-HANDOVER.md) và [Web Admin](frontend/README.md).
+Phần phân công cũ ở trên giữ lại làm lịch sử; phạm vi mới do người dùng xác nhận được ưu tiên.
