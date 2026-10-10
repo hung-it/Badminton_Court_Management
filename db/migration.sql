@@ -104,12 +104,13 @@ CREATE TABLE bookings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PAID', 'CHECKED_IN', 'COMPLETED', 'NO_SHOW', 'EXPIRED')),
-    court_fee NUMERIC(10, 2) NOT NULL,
+    court_amount NUMERIC(10, 2) NOT NULL,
     expires_at TIMESTAMP,
     created_by UUID REFERENCES staffs(id),
     updated_by UUID REFERENCES staffs(id),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP,
     CONSTRAINT chk_pending_expires CHECK (status != 'PENDING' OR expires_at IS NOT NULL)
 );
 
@@ -191,8 +192,8 @@ CREATE TABLE invoices (
     promotion_id UUID REFERENCES promotions(id) ON DELETE SET NULL,
     payment_method VARCHAR(50) NOT NULL CHECK (payment_method IN ('CASH', 'BANK_TRANSFER', 'VNPAY', 'MOMO')),
     status VARCHAR(20) NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PAID', 'REFUNDED', 'CANCELLED')),
-    court_fee NUMERIC(10, 2) DEFAULT 0,
-    product_fee NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    court_amount NUMERIC(10, 2) DEFAULT 0,
+    product_amount NUMERIC(10, 2) NOT NULL DEFAULT 0,
     discount_amount NUMERIC(10, 2) NOT NULL DEFAULT 0,
     total_amount NUMERIC(10, 2) NOT NULL,
     created_by UUID REFERENCES staffs(id),
@@ -200,7 +201,7 @@ CREATE TABLE invoices (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP,
-    CONSTRAINT chk_discount_amount CHECK (discount_amount <= COALESCE(court_fee, 0) + product_fee)
+    CONSTRAINT chk_discount_amount CHECK (discount_amount <= COALESCE(court_amount, 0) + product_amount)
 );
 
 -- Invoice Details table
@@ -267,7 +268,8 @@ CREATE TABLE import_orders (
     created_by UUID REFERENCES staffs(id),
     updated_by UUID REFERENCES staffs(id),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP
 );
 
 -- Import Order Details table
@@ -277,7 +279,9 @@ CREATE TABLE import_order_details (
     product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
     quantity INT NOT NULL CHECK (quantity > 0),
     import_price NUMERIC(10, 2) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP,
+    deleted_at TIMESTAMP
 );
 
 -- =====================================================

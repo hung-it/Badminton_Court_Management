@@ -1,0 +1,16 @@
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+
+# Backend build output
+**/target/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+**/application-local.yml
+**/application-local.yaml
+**/application-local.properties
+**/*secret*.local
+**/*credentials*.local
