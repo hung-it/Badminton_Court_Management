@@ -6,7 +6,8 @@ Branch: `feature/booking-engine`. Mỗi phase phụ thuộc phase trước; ch�
 Đã có VNPay Sandbox checkout Phase 5A.5; scope hiện tại chỉ hỗ trợ VNPay.
 Đã có callback/IPN verification và SUCCESS + PAID atomic Phase 5B.
 Đã xác minh idempotency/concurrent callback/expiration races Phase 5C trên PostgreSQL.
-Payment scope and schema are VNPay only. Chưa có frontend.
+Booking payment initiation is VNPay-only; the shared enum and database schema
+also retain CASH and BANK_TRANSFER for invoice/POS compatibility. Chưa có frontend.
 Phase 6 COMPLETE: authenticated customer history/detail/payment ownership, tests and API contract
 verified after the Auth handoff. Phase 7 remains unimplemented.
 Checklist hoàn thành dựa trên code và verification thực tế, không lấy từ docs cũ.
@@ -112,7 +113,8 @@ PASS 94 tests, 0 failures/errors/skipped. Test scope tắt job nền; expiration
 - [x] Concurrent callbacks, unique transaction-ID rollback and both expiration race winners verified on PostgreSQL.
 - [x] Browser Return verifies display data and never settles or reads/writes the database.
 
-Current paymentMethod enum and both schema payment-method CHECKs allow VNPAY only.
+The shared paymentMethod enum and both schema payment-method CHECKs allow
+VNPAY, CASH and BANK_TRANSFER. Booking payment initiation remains VNPay-only.
 Configuration uses BOOKING_VNPAY_TMN_CODE, BOOKING_VNPAY_HASH_SECRET,
 BOOKING_VNPAY_RETURN_URL and BOOKING_VNPAY_PAYMENT_URL. Credentials come from runtime configuration.
 Public routes: GET /api/payments/vnpay/ipn and GET /api/payments/vnpay/return.

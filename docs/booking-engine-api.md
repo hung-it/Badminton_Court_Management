@@ -101,7 +101,9 @@ size, with Court/TimeSlot fetched in the detail query. No global LAZY mappings c
 
 VNPay Sandbox checkout is signed when configuration is valid. Initiation accepts
 only VNPAY. Missing/unknown methods return 400 using the existing ApiResponse
-contract before persistence. Enum, request schema and database CHECKs allow VNPAY only.
+contract before persistence. The shared `PaymentMethod` enum and database CHECKs
+support VNPAY, CASH and BANK_TRANSFER for booking/invoice payment records.
+Booking payment-attempt requests and the initiation service accept VNPAY only.
 Config defaults to VNPAY. All attempts remain
 PENDING at initiation. Existing checkout response fields remain backward-compatible;
 unused QR/deeplink/blocker artifacts stay null.
@@ -196,9 +198,11 @@ History queries use customer_id/created_at and booking_id filtering compatible w
 existing idx_bookings_customer_created, idx_payments_booking and detail FK/query
 paths. No new index, new status, fake transaction ID or Invoice payment API.
 
-## VNPay-only schema decision
+## VNPay-only booking payment policy
 
-PaymentMethod and payment-method CHECKs on invoices/payment_transactions allow VNPAY only.
+The shared `PaymentMethod` enum and payment-method CHECKs on
+invoices/payment_transactions allow VNPAY, CASH and BANK_TRANSFER. The Member 3
+booking payment-attempt API remains VNPay-only.
 Existing local/dev databases containing removed payment methods may need recreation from
 current db/migration.sql. Application data is never automatically reset.
 Phase 1–6 remain complete with VNPay Sandbox as the sole provider; Phase 7 remains unimplemented.

@@ -82,6 +82,7 @@ class AvailabilityPostgresTest {
     private UUID deletedCourtId;
     private UUID slotId;
     private UUID otherSlotId;
+    private UUID deletedSlotId;
 
     @BeforeEach
     void fixtures() {
@@ -98,6 +99,9 @@ class AvailabilityPostgresTest {
         deletedCourtId = insertCourt(-16, "AVAILABLE", LocalDateTime.of(2019, 1, 1, 0, 0));
         slotId = insertSlot("00:00:00", "01:00:00");
         otherSlotId = insertSlot("01:00:00", "02:00:00");
+        deletedSlotId = insertSlot("02:00:00", "03:00:00");
+        jdbc.update("UPDATE time_slots SET deleted_at = ? WHERE id = ?",
+                LocalDateTime.of(2019, 1, 1, 0, 0), deletedSlotId);
     }
 
     @Test
@@ -107,9 +111,10 @@ class AvailabilityPostgresTest {
         assertThat(response.getDate()).isEqualTo(DATE);
         assertThat(response.getCourts()).extracting(CourtAvailability::getCourtId).containsExactly(courtId);
         List<SlotAvailability> slots = response.getCourts().get(0).getSlots();
-        List<UUID> expectedIds = jdbc.query("SELECT id FROM time_slots ORDER BY start_time, end_time, id",
+        List<UUID> expectedIds = jdbc.query("SELECT id FROM time_slots WHERE deleted_at IS NULL ORDER BY start_time, end_time, id",
                 (rs, row) -> rs.getObject("id", UUID.class));
         assertThat(slots).extracting(SlotAvailability::getTimeSlotId).containsExactlyElementsOf(expectedIds);
+        assertThat(slots).extracting(SlotAvailability::getTimeSlotId).doesNotContain(deletedSlotId);
         assertThat(slots).allMatch(SlotAvailability::isAvailable);
         assertThat(slots.get(0).getPriceMultiplier()).isEqualByComparingTo("1.25");
     }

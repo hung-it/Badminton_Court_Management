@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -29,7 +31,8 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-<<<<<<< HEAD
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> handleUnreadableRequestBody(HttpMessageNotReadableException ex) {
         return ResponseEntity.badRequest().body(ApiResponse.error("Missing or invalid JSON request body"));
@@ -49,13 +52,7 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error("Invalid query parameter: " + ex.getName()));
     }
 
-    /**
-     * Handle validation errors (@Valid)
-     * Example: @NotBlank, @Email, @Size validation fails
-     */
-=======
     /** Handle validation errors (@Valid) Example: @NotBlank, @Email, @Size validation fails */
->>>>>>> 56607d736f4094ad7cdd63a095113b4fbb438cd2
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Map<String, String>>> handleValidationException(
             MethodArgumentNotValidException ex) {
@@ -132,7 +129,7 @@ public class GlobalExceptionHandler {
             Exception ex, WebRequest request) {
 
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(ApiResponse.error("Authentication failed: " + ex.getMessage()));
+                .body(ApiResponse.error("Authentication failed"));
     }
 
     /** Handle Authorization errors (Access Denied) Status: 403 FORBIDDEN */
@@ -162,23 +159,14 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error("Dữ liệu đã thay đổi; hãy tải lại"));
     }
 
-    @ExceptionHandler({
-        org.springframework.http.converter.HttpMessageNotReadableException.class,
-        org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class
-    })
-    public ResponseEntity<ApiResponse<Void>> handleInvalidInput(Exception ex) {
-        return ResponseEntity.badRequest().body(ApiResponse.error("Dữ liệu đầu vào không hợp lệ"));
-    }
-
     /** Handle all other uncaught exceptions Status: 500 INTERNAL SERVER ERROR */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGlobalException(
             Exception ex, WebRequest request) {
 
-        // Log the full stack trace for debugging
-        ex.printStackTrace();
+        log.error("Unhandled server error while processing request");
 
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("Internal server error: " + ex.getMessage()));
+                .body(ApiResponse.error("Internal server error"));
     }
 }

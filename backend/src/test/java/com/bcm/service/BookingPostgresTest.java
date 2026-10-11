@@ -204,6 +204,14 @@ class BookingPostgresTest {
     }
 
     @Test
+    void rejectsSoftDeletedTimeSlot() {
+        jdbc.update("UPDATE time_slots SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", slotId);
+        assertThatThrownBy(() -> service.createBooking(request(detail(DATE))))
+                .isInstanceOf(ResourceNotFoundException.class);
+        assertCounts(0, 0);
+    }
+
+    @Test
     void rejectsDuplicateTupleBeforePersistence() {
         assertThatThrownBy(() -> service.createBooking(request(detail(DATE), detail(DATE))))
                 .isInstanceOf(BadRequestException.class).hasMessageContaining("Duplicate");

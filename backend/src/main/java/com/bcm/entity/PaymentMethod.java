@@ -1,5 +1,7 @@
 package com.bcm.entity;
 
 public enum PaymentMethod {
-    VNPAY
+    VNPAY,
+    CASH,
+    BANK_TRANSFER
 }

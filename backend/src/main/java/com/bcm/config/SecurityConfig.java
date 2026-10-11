@@ -40,7 +40,6 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http.csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configure(http))
-<<<<<<< HEAD
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints (note: context-path /api is already applied)
                         .requestMatchers(
@@ -51,6 +50,8 @@ public class SecurityConfig {
                                 "/api/v3/api-docs/**",
                                 "/api/api-docs/**",
                                 // Also allow without /api prefix for direct access
+                                "/api/public/**",
+                                "/public/**",
                                 "/auth/**",
                                 "/health/**",
                                 "/swagger-ui/**",
@@ -61,32 +62,6 @@ public class SecurityConfig {
 
                         // Admin-only endpoints
                         .requestMatchers("/admin/**").hasRole("ADMIN")
-=======
-                .authorizeHttpRequests(
-                        auth ->
-                                auth
-                                        // Public endpoints (note: context-path /api is already
-                                        // applied)
-                                        .requestMatchers(
-                                                "/api/auth/**",
-                                                "/api/health/**",
-                                                "/api/swagger-ui/**",
-                                                "/api/swagger-ui.html",
-                                                "/api/v3/api-docs/**",
-                                                "/api/api-docs/**",
-                                                // Also allow without /api prefix for direct access
-                                                "/api/public/**",
-                                                "/public/**",
-                                                "/auth/**",
-                                                "/health/**",
-                                                "/swagger-ui/**",
-                                                "/v3/api-docs/**")
-                                        .permitAll()
-
-                                        // Admin-only endpoints
-                                        .requestMatchers("/admin/**")
-                                        .hasRole("ADMIN")
->>>>>>> 56607d736f4094ad7cdd63a095113b4fbb438cd2
 
                                         // Staff endpoints
                                         .requestMatchers("/staff/**")

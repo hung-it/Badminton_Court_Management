@@ -45,7 +45,7 @@ public class AvailabilityService {
             return new AvailabilityResponse(date, List.of());
         }
 
-        List<TimeSlot> timeSlots = timeSlotRepository.findAllByOrderByStartTimeAscEndTimeAscIdAsc();
+        List<TimeSlot> timeSlots = timeSlotRepository.findByDeletedAtIsNullOrderByStartTimeAscEndTimeAscIdAsc();
         Map<UUID, Set<UUID>> occupiedByCourt = new HashMap<>();
         // A persisted detail occupies the slot even when its header is expired or inactive.
         for (BookingDetailRepository.OccupiedSlot slot : bookingDetailRepository.findOccupiedSlots(date, courtId)) {

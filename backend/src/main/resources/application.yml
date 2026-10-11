@@ -26,9 +26,9 @@ spring:
   # Database Configuration
   # ====================
   datasource:
-    url: jdbc:postgresql://localhost:5433/badminton_court_db
-    username: bcm_admin
-    password: 12345
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/badminton_court_db}
+    username: ${DB_USER:bcm_admin}
+    password: ${DB_PASSWORD:12345}
     driver-class-name: org.postgresql.Driver
 
     # HikariCP (Connection Pool)
@@ -72,9 +72,9 @@ server:
   servlet:
     context-path: /api
   error:
-    include-message: always
-    include-binding-errors: always
-    include-stacktrace: on_param
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
     include-exception: false
 
 # ====================

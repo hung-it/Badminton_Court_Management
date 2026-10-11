@@ -84,7 +84,7 @@ class BookingMappingPostgresTest {
         jdbc.update("""
                 INSERT INTO courts (id, court_number, name, type, status, base_price)
                 VALUES (?, ?, ?, ?, ?, ?)
-                """, courtId, -1, "Mapping court", "Indoor", "AVAILABLE", new BigDecimal("123456.78"));
+                """, courtId, -1, "Mapping court", "STANDARD_MAT", "AVAILABLE", new BigDecimal("123456.78"));
         jdbc.update("INSERT INTO time_slots (id, start_time, end_time, price_multiplier) VALUES (?, ?, ?, ?)",
                 timeSlotId, java.sql.Time.valueOf("10:00:00"), java.sql.Time.valueOf("11:00:00"),
                 new BigDecimal("1.25"));
@@ -151,6 +151,7 @@ class BookingMappingPostgresTest {
         assertThat(loaded.getCreatedAt()).isNotNull();
         assertThat(loaded.getCourt().getId()).isEqualTo(courtId);
         assertThat(loaded.getCourt().getName()).isEqualTo("Mapping court");
+        assertThat(loaded.getCourt().getType()).isEqualTo(CourtType.STANDARD_MAT);
         assertThat(loaded.getCourt().getStatus()).isEqualTo(CourtStatus.AVAILABLE);
         assertThat(loaded.getCourt().getBasePrice()).isEqualByComparingTo("123456.78");
         assertThat(loaded.getTimeSlot().getId()).isEqualTo(timeSlotId);
