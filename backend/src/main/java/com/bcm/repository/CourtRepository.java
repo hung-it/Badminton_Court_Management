@@ -1,6 +1,7 @@
 package com.bcm.repository;
 
 import com.bcm.entity.Court;
+<<<<<<< HEAD
 import com.bcm.entity.CourtStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.Lock;
@@ -26,4 +27,17 @@ public interface CourtRepository extends Repository<Court, UUID> {
             """)
     List<Court> findForAvailability(@Param("status") CourtStatus status,
                                     @Param("courtId") UUID courtId);
+=======
+
+import org.springframework.data.jpa.repository.*;
+
+import java.util.*;
+
+public interface CourtRepository extends JpaRepository<Court, UUID> {
+    List<Court> findByDeletedAtIsNullOrderByCourtNumberAsc();
+
+    Optional<Court> findByIdAndDeletedAtIsNull(UUID id);
+
+    boolean existsByCourtNumberAndIdNot(Integer courtNumber, UUID id);
+>>>>>>> 56607d736f4094ad7cdd63a095113b4fbb438cd2
 }
