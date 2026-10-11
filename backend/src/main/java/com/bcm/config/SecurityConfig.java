@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -39,30 +40,28 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http.csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configure(http))
-                .authorizeHttpRequests(
-                        auth ->
-                                auth
-                                        // Public endpoints (note: context-path /api is already
-                                        // applied)
-                                        .requestMatchers(
-                                                "/api/auth/**",
-                                                "/api/health/**",
-                                                "/api/swagger-ui/**",
-                                                "/api/swagger-ui.html",
-                                                "/api/v3/api-docs/**",
-                                                "/api/api-docs/**",
-                                                // Also allow without /api prefix for direct access
-                                                "/api/public/**",
-                                                "/public/**",
-                                                "/auth/**",
-                                                "/health/**",
-                                                "/swagger-ui/**",
-                                                "/v3/api-docs/**")
-                                        .permitAll()
+                .authorizeHttpRequests(auth -> auth
+                        // Public endpoints (note: context-path /api is already applied)
+                        .requestMatchers(
+                                "/api/auth/**",
+                                "/api/health/**",
+                                "/api/swagger-ui/**",
+                                "/api/swagger-ui.html",
+                                "/api/v3/api-docs/**",
+                                "/api/api-docs/**",
+                                // Also allow without /api prefix for direct access
+                                "/api/public/**",
+                                "/public/**",
+                                "/auth/**",
+                                "/health/**",
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**", "/api-docs/**", "/swagger-ui.html"
+                        ).permitAll()
 
-                                        // Admin-only endpoints
-                                        .requestMatchers("/admin/**")
-                                        .hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/payments/vnpay/ipn", "/payments/vnpay/return").permitAll()
+
+                        // Admin-only endpoints
+                        .requestMatchers("/admin/**").hasRole("ADMIN")
 
                                         // Staff endpoints
                                         .requestMatchers("/staff/**")
