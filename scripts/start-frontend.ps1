@@ -1,6 +1,6 @@
 ﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-Set-Location "$root/frontend"
+Set-Location "$root/web-admin"
 if (!(Test-Path 'node_modules')) { npm.cmd ci; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
 npm.cmd run dev
 exit $LASTEXITCODE

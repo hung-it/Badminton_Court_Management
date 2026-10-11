@@ -1,9 +1,9 @@
 .tools/
-frontend/node_modules/
-frontend/dist/
+web-admin/node_modules/
+web-admin/dist/
 backend/target/
 *.local
 .env
 
 *.local.png
-frontend/.vite/
+web-admin/.vite/

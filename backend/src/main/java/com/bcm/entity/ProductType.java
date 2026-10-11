@@ -1,2 +1,6 @@
 package com.bcm.entity;
-public enum ProductType { GOODS, SERVICE }
+
+public enum ProductType {
+    GOODS,
+    SERVICE
+}

@@ -241,8 +241,8 @@ Badminton_Court_Management/
 │   ├── test-jwt-comprehensive.sh      # Test script
 │   └── demo-jwt-interactive.sh        # Interactive demo
 │
-├── frontend/                          # React frontend (planned)
-│   └── (to be implemented)
+├── web-admin/                          # React Web Admin
+│   └── src/                           # Master Data admin screens
 │
 ├── db/                                # Database scripts
 │   ├── init.sql                       # Initial schema
@@ -612,5 +612,5 @@ Internal project for educational purposes.
 ## Thành viên 2 — phạm vi cập nhật 09/10/2026
 
 Bản phân công mới: Sân, Khung giờ & Bảng giá, Danh mục & Sản phẩm (BE/FE/DB).
-Xem [hướng dẫn bàn giao](docs/MEMBER2-HANDOVER.md) và [Web Admin](frontend/README.md).
+Xem [hướng dẫn bàn giao](docs/MEMBER2-HANDOVER.md) và [Web Admin](web-admin/README.md).
 Phần phân công cũ ở trên giữ lại làm lịch sử; phạm vi mới do người dùng xác nhận được ưu tiên.

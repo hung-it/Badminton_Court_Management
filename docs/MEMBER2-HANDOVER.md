@@ -21,12 +21,12 @@ Không đổi database cũ ở cổng 5433.
 ## Máy khác / leader
 Cần JDK 17, Maven 3.8+, Node.js 22+ và PostgreSQL 15+.
 `.tools` là công cụ/dữ liệu cục bộ, không commit. `node_modules`, `dist`, `target` cũng được bỏ qua.
-1. Database mới: chạy `db/migration.sql`, rồi `db/member2-upgrade.sql`.
-2. Database đã có schema: chỉ chạy `db/member2-upgrade.sql` sau khi sao lưu và kiểm tra dữ liệu hiện có.
+1. Database mới: chạy `db/migration.sql`, rồi `db/member2-upgrade.sql` và `db/member2-payment-method-upgrade.sql`.
+2. Database đã có schema: chạy `db/member2-upgrade.sql` và `db/member2-payment-method-upgrade.sql` sau khi sao lưu và kiểm tra dữ liệu hiện có.
 3. Upgrade không ghi đè giá/tồn hiện có. Dữ liệu cũ trùng tên danh mục, chồng khung giờ hoặc giá/tồn không hợp lệ sẽ khiến migration dừng để sửa dữ liệu có chủ đích.
 4. Seed demo là tùy chọn `db/member2-demo.sql`.
 5. Đặt biến môi trường `DB_URL`, `DB_USER`, `DB_PASSWORD`; chạy backend với profile `local`, hoặc sửa cấu hình database theo môi trường của nhóm.
-6. FE: `npm ci`, `npm run dev`; build: `npm run build`.
+6. FE nằm trong `web-admin/`: `npm ci`, `npm run dev`; build: `npm run build`.
 
 ## Quy tắc và quyết định tích hợp
 - Sân: số sân duy nhất kể cả sân xóa mềm; tên bắt buộc; loại STANDARD_MAT/WOODEN_FLOOR; trạng thái AVAILABLE/MAINTENANCE/CLOSED theo schema.
@@ -96,3 +96,15 @@ mvn -f backend/pom.xml test
 6. Thử xóa danh mục còn sản phẩm; kiểm tra bị chặn.
 7. Kiểm tra public API không cần token, admin API có phân quyền.
 8. Test booking chưa hoàn tất bằng bộ test; không cần triển khai UI booking ngoài phạm vi.
+
+## Đồng bộ theo feedback leader
+- Đổi thư mục React từ `frontend/` thành `web-admin/`; script chạy và .gitignore đã cập nhật.
+- SecurityConfig mở cả `/api/public/**` và `/public/**` theo quy ước của nhóm.
+- Các lớp Java thuộc phần Thành viên 2 được format thống nhất bằng google-java-format (AOSP, thụt 4 dấu cách).
+- Phương thức thanh toán ở invoices và payment_transactions chỉ còn CASH, BANK_TRANSFER, VNPAY. Upgrade dừng nếu còn bản ghi MOMO để nhóm quyết định cách chuyển dữ liệu; không tự thay đổi lịch sử thanh toán.
+
+### Xác minh sau feedback ngày 11/10/2026
+- Chạy lại 8 bài MasterDataIntegrationTest: 0 failures, 0 errors, 0 skipped.
+- Build Web Admin thành công trong `web-admin/`; script start-frontend.ps1 và tài nguyên main.jsx phục vụ HTTP 200.
+- `/api/public/courts` và `/api/public/categories` trả HTTP 200 khi không có token.
+- PostgreSQL: cả invoices và payment_transactions nhận CASH/BANK_TRANSFER/VNPAY, từ chối MOMO; migration chạy lại thành công. Dữ liệu fixture kiểm tra được rollback.

@@ -1,6 +1,7 @@
 package com.bcm.exception;
 
 import com.bcm.dto.response.ApiResponse;
+
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,83 +20,66 @@ import java.util.Map;
 /**
  * GlobalExceptionHandler
  *
- * Centralized exception handling cho toàn bộ application
- * Bắt tất cả exceptions và trả về ApiResponse chuẩn
+ * <p>Centralized exception handling cho toàn bộ application Bắt tất cả exceptions và trả về
+ * ApiResponse chuẩn
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    /**
-     * Handle validation errors (@Valid)
-     * Example: @NotBlank, @Email, @Size validation fails
-     */
+    /** Handle validation errors (@Valid) Example: @NotBlank, @Email, @Size validation fails */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Map<String, String>>> handleValidationException(
             MethodArgumentNotValidException ex) {
 
         Map<String, String> errors = new HashMap<>();
-        ex.getBindingResult().getAllErrors().forEach(error -> {
-            String fieldName = error instanceof FieldError ? ((FieldError) error).getField() : error.getObjectName();
-            String errorMessage = error.getDefaultMessage();
-            errors.put(fieldName, errorMessage);
-        });
+        ex.getBindingResult()
+                .getAllErrors()
+                .forEach(
+                        error -> {
+                            String fieldName =
+                                    error instanceof FieldError
+                                            ? ((FieldError) error).getField()
+                                            : error.getObjectName();
+                            String errorMessage = error.getDefaultMessage();
+                            errors.put(fieldName, errorMessage);
+                        });
 
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error("Validation failed", errors));
     }
 
-    /**
-     * Handle ResourceNotFoundException
-     * Status: 404 NOT FOUND
-     */
+    /** Handle ResourceNotFoundException Status: 404 NOT FOUND */
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleResourceNotFoundException(
-            ResourceNotFoundException ex,
-            WebRequest request) {
+            ResourceNotFoundException ex, WebRequest request) {
 
-        return ResponseEntity
-                .status(HttpStatus.NOT_FOUND)
-                .body(ApiResponse.error(ex.getMessage()));
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(ex.getMessage()));
     }
 
-    /**
-     * Handle DuplicateResourceException
-     * Status: 409 CONFLICT
-     */
+    /** Handle DuplicateResourceException Status: 409 CONFLICT */
     @ExceptionHandler(DuplicateResourceException.class)
     public ResponseEntity<ApiResponse<Void>> handleDuplicateResourceException(
-            DuplicateResourceException ex,
-            WebRequest request) {
+            DuplicateResourceException ex, WebRequest request) {
 
-        return ResponseEntity
-                .status(HttpStatus.CONFLICT)
-                .body(ApiResponse.error(ex.getMessage()));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
     }
 
-    /**
-     * Handle BadRequestException
-     * Status: 400 BAD REQUEST
-     */
+    /** Handle BadRequestException Status: 400 BAD REQUEST */
     @ExceptionHandler(BadRequestException.class)
     public ResponseEntity<ApiResponse<Void>> handleBadRequestException(
-            BadRequestException ex,
-            WebRequest request) {
+            BadRequestException ex, WebRequest request) {
 
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
     /**
-     * Handle DataIntegrityViolationException
-     * (Database constraint violations: UNIQUE, FK, CHECK)
+     * Handle DataIntegrityViolationException (Database constraint violations: UNIQUE, FK, CHECK)
      * Status: 409 CONFLICT
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolationException(
-            DataIntegrityViolationException ex,
-            WebRequest request) {
+            DataIntegrityViolationException ex, WebRequest request) {
 
         String message = "Database constraint violation";
 
@@ -110,77 +94,62 @@ public class GlobalExceptionHandler {
             }
         }
 
-        return ResponseEntity
-                .status(HttpStatus.CONFLICT)
-                .body(ApiResponse.error(message));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(message));
     }
 
-    /**
-     * Handle Authentication errors
-     * Status: 401 UNAUTHORIZED
-     */
+    /** Handle Authentication errors Status: 401 UNAUTHORIZED */
     @ExceptionHandler({AuthenticationException.class, BadCredentialsException.class})
     public ResponseEntity<ApiResponse<Void>> handleAuthenticationException(
-            Exception ex,
-            WebRequest request) {
+            Exception ex, WebRequest request) {
 
-        return ResponseEntity
-                .status(HttpStatus.UNAUTHORIZED)
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ApiResponse.error("Authentication failed: " + ex.getMessage()));
     }
 
-    /**
-     * Handle Authorization errors (Access Denied)
-     * Status: 403 FORBIDDEN
-     */
+    /** Handle Authorization errors (Access Denied) Status: 403 FORBIDDEN */
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResponse<Void>> handleAccessDeniedException(
-            AccessDeniedException ex,
-            WebRequest request) {
+            AccessDeniedException ex, WebRequest request) {
 
-        return ResponseEntity
-                .status(HttpStatus.FORBIDDEN)
-                .body(ApiResponse.error("Access denied: You don't have permission to access this resource"));
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(
+                        ApiResponse.error(
+                                "Access denied: You don't have permission to access this"
+                                    + " resource"));
     }
 
-    /**
-     * Handle IllegalArgumentException
-     * Status: 400 BAD REQUEST
-     */
+    /** Handle IllegalArgumentException Status: 400 BAD REQUEST */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponse<Void>> handleIllegalArgumentException(
-            IllegalArgumentException ex,
-            WebRequest request) {
+            IllegalArgumentException ex, WebRequest request) {
 
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
     @ExceptionHandler({org.springframework.orm.ObjectOptimisticLockingFailureException.class})
     public ResponseEntity<ApiResponse<Void>> handleConcurrentUpdate(Exception ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error("Dữ liệu đã thay đổi; hãy tải lại"));
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("Dữ liệu đã thay đổi; hãy tải lại"));
     }
 
-    @ExceptionHandler({org.springframework.http.converter.HttpMessageNotReadableException.class, org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class})
+    @ExceptionHandler({
+        org.springframework.http.converter.HttpMessageNotReadableException.class,
+        org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class
+    })
     public ResponseEntity<ApiResponse<Void>> handleInvalidInput(Exception ex) {
         return ResponseEntity.badRequest().body(ApiResponse.error("Dữ liệu đầu vào không hợp lệ"));
     }
 
-    /**
-     * Handle all other uncaught exceptions
-     * Status: 500 INTERNAL SERVER ERROR
-     */
+    /** Handle all other uncaught exceptions Status: 500 INTERNAL SERVER ERROR */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGlobalException(
-            Exception ex,
-            WebRequest request) {
+            Exception ex, WebRequest request) {
 
         // Log the full stack trace for debugging
         ex.printStackTrace();
 
-        return ResponseEntity
-                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error("Internal server error: " + ex.getMessage()));
     }
 }
