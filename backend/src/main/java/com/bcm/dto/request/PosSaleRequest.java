@@ -26,7 +26,16 @@ public class PosSaleRequest {
     @NotNull
     private String paymentMethod;
 
-    private BigDecimal courtAmount = BigDecimal.ZERO;
+    @JsonProperty("court_fee")
+    private BigDecimal courtFee = BigDecimal.ZERO;
+
+    public BigDecimal getCourtAmount() {
+        return courtFee;
+    }
+
+    public void setCourtAmount(BigDecimal courtAmount) {
+        this.courtFee = courtAmount;
+    }
 
     @Valid
     @NotEmpty

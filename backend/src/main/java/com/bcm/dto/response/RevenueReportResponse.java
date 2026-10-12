@@ -19,12 +19,28 @@ public class RevenueReportResponse {
     private LocalDate from;
     private LocalDate to;
 
-    @JsonProperty("court_amount")
-    private BigDecimal courtAmount;
+    @JsonProperty("court_fee")
+    private BigDecimal courtFee;
 
-    @JsonProperty("product_amount")
-    private BigDecimal productAmount;
+    @JsonProperty("product_fee")
+    private BigDecimal productFee;
 
     @JsonProperty("total_amount")
     private BigDecimal totalAmount;
+
+    public BigDecimal getCourtAmount() {
+        return courtFee;
+    }
+
+    public void setCourtAmount(BigDecimal courtAmount) {
+        this.courtFee = courtAmount;
+    }
+
+    public BigDecimal getProductAmount() {
+        return productFee;
+    }
+
+    public void setProductAmount(BigDecimal productAmount) {
+        this.productFee = productAmount;
+    }
 }

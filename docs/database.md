@@ -151,7 +151,7 @@ erDiagram
         uuid booking_id FK "Nullable"
         uuid customer_id FK "Người mua"
         uuid promotion_id FK "Nullable, mã KM áp dụng"
-        string payment_method "CASH/BANK_TRANSFER/VNPAY/MOMO"
+        string payment_method "VNPAY"
         string status "DRAFT/PAID/REFUNDED/CANCELLED"
         numeric court_fee "Tiền sân, Nullable nếu không có booking"
         numeric product_fee "Tiền Hàng hóa"
@@ -166,7 +166,7 @@ erDiagram
         uuid id PK
         uuid booking_id FK "Nullable, nếu thanh toán tiền sân"
         uuid invoice_id FK "Nullable, nếu thanh toán hoá đơn"
-        string payment_method "VNPAY/MOMO/CASH/BANK_TRANSFER"
+        string payment_method "VNPAY"
         string transaction_id "Nullable. Mã GD từ cổng thanh toán"
         string status "PENDING/SUCCESS/FAILED/REFUNDED"
         numeric amount
@@ -283,7 +283,7 @@ erDiagram
 ### 3.3. Phân hệ Đặt sân & Thanh toán Online (Booking Engine)
 *   **Các bảng:** `bookings`, `booking_details`, `payment_transactions`
 *   **Mô tả:** Quản lý quy trình giữ chỗ và thu tiền sân trước của khách hàng.
-    *   **Thanh toán 100% Online:** Khách hàng buộc phải thanh toán tiền sân ngay trên App. Do đó, bảng `bookings` lưu trữ `court_fee` để cung cấp ngay lập tức dữ liệu cho các cổng thanh toán (VNPay, MoMo) xuất mã QR. Cột này còn dùng để thống kê thiệt hại từ các giao dịch bùng kèo (không bao giờ check-in).
+    *   **Thanh toán 100% Online:** Khách hàng buộc phải thanh toán tiền sân ngay trên App. Do đó, bảng `bookings` lưu trữ `court_fee` để cung cấp ngay lập tức dữ liệu cho các cổng thanh toán (VNPay Sandbox) xuất mã QR. Cột này còn dùng để thống kê thiệt hại từ các giao dịch bùng kèo (không bao giờ check-in).
     *   **Trạng thái Booking:** Vòng đời của một booking từ PENDING (chờ thanh toán) → PAID (đã thanh toán online) → CHECKED_IN (đã đến sân, invoice được tạo tự động) → COMPLETED (đã chơi xong) hoặc NO_SHOW (bùng kèo). **Không có trạng thái CANCELLED** - Khách hàng không được phép hủy booking sau khi đã thanh toán, đảm bảo doanh thu ổn định cho chủ sân.
     *   **Timeout Mechanism (Giữ slot tạm thời):** Cột `bookings.expires_at` lưu thời điểm hết hạn (thường là `created_at + 15 phút`). Một **Scheduler (Spring @Scheduled)** chạy mỗi 1 phút sẽ tự động chuyển các booking có `status = 'PENDING'` và `expires_at < NOW()` sang trạng thái `EXPIRED`, giải phóng slot cho khách khác đặt. Logic:
         ```java
@@ -296,9 +296,9 @@ erDiagram
         ```
     *   **Snapshot Price:** Khi đặt, giá cuối cùng sẽ được tính và ghi chết vào cột `price` trong `booking_details`. Dù sau này chủ sân đổi `base_price`, hóa đơn cũ vẫn giữ nguyên lịch sử.
     *   **Khóa đụng độ (Anti-Double Booking):** Hệ thống cài đặt **Unique Constraint** trên DB ở 3 cột `(booking_date, court_id, time_slot_id)` trong bảng `booking_details`. Hai người cùng lúc bấm nút đặt 1 sân sẽ có 1 người bị DB từ chối ngay lập tức (Duplicate Key Error), khắc phục triệt để lỗi Overbooking. Kết hợp với **Pessimistic Lock** (`@Lock(LockModeType.PESSIMISTIC_WRITE)`) khi query slot để giữ chỗ tạm thời.
-    *   **Payment Transactions:** Bảng `payment_transactions` lưu trữ chi tiết giao dịch từ cổng thanh toán (VNPay, MoMo), bao gồm mã giao dịch (`transaction_id`), trạng thái (PENDING/SUCCESS/FAILED/REFUNDED), và thời gian thực tế. Một booking hoặc invoice có thể có nhiều payment transaction (ví dụ: thanh toán lần đầu thất bại, thanh toán lại lần 2). 
-        *   **transaction_id nullable:** Hợp lý vì thanh toán CASH/BANK_TRANSFER không có mã GD từ cổng thanh toán.
-        *   **transaction_id UNIQUE (partial):** Đảm bảo không duplicate transaction từ VNPay/MoMo webhook retry (`CREATE UNIQUE INDEX ... WHERE transaction_id IS NOT NULL`).
+    *   **Payment Transactions:** Bảng `payment_transactions` lưu trữ chi tiết giao dịch từ cổng thanh toán (VNPay Sandbox), bao gồm mã giao dịch (`transaction_id`), trạng thái (PENDING/SUCCESS/FAILED/REFUNDED), và thời gian thực tế. Một booking hoặc invoice có thể có nhiều payment transaction (ví dụ: thanh toán lần đầu thất bại, thanh toán lại lần 2).
+        *   **transaction_id nullable:** VNPay attempts chưa được xác nhận chưa có mã giao dịch provider.
+        *   **transaction_id UNIQUE (partial):** Đảm bảo không duplicate transaction từ VNPay Sandbox webhook retry (`CREATE UNIQUE INDEX ... WHERE transaction_id IS NOT NULL`).
         *   **Ràng buộc XOR:** Mỗi transaction chỉ được liên kết với HOẶC booking HOẶC invoice (không cả hai), đảm bảo bởi CHECK constraint: `CHECK ((booking_id IS NOT NULL)::int + (invoice_id IS NOT NULL)::int = 1)`.
 
 ### 3.4. Phân hệ Bán hàng & Dịch vụ (POS)
@@ -501,8 +501,8 @@ PAID → CHECKED_IN → COMPLETED
 ### 7.4. Payment Transaction Constraints
 - **XOR Constraint:** Mỗi transaction chỉ liên kết với HOẶC booking HOẶC invoice (không cả hai)
   - `CHECK ((booking_id IS NOT NULL)::int + (invoice_id IS NOT NULL)::int = 1)`
-- **transaction_id nullable:** Hợp lý cho CASH/BANK_TRANSFER (không có mã GD từ cổng thanh toán)
-- **transaction_id UNIQUE (partial):** Ngăn duplicate từ VNPay/MoMo webhook retry
+- **transaction_id nullable:** VNPay attempts chưa được xác nhận chưa có mã giao dịch provider
+- **transaction_id UNIQUE (partial):** Ngăn duplicate từ VNPay Sandbox webhook retry
   - `CREATE UNIQUE INDEX uq_transaction_id ON payment_transactions(transaction_id) WHERE transaction_id IS NOT NULL`
 
 ### 7.5. Promotion System Architecture

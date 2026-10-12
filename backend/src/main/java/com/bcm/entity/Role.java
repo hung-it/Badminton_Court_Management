@@ -2,9 +2,13 @@ package com.bcm.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Role Entity - Represents user roles (ADMIN, STAFF, CUSTOMER)
@@ -12,18 +16,25 @@ import java.util.Set;
  */
 @Entity
 @Table(name = "roles")
+@EntityListeners(AuditingEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Role extends BaseEntity {
+public class Role {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "id", updatable = false, nullable = false)
+    private UUID id;
 
     @Column(name = "role_name", nullable = false, unique = true, length = 50)
     private String roleName;
 
-    @Column(columnDefinition = "TEXT")
-    private String description;
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 
     @ManyToMany(mappedBy = "roles")
     @Builder.Default
@@ -31,5 +42,12 @@ public class Role extends BaseEntity {
 
     public Role(String roleName) {
         this.roleName = roleName;
+    }
+
+    @PrePersist
+    protected void onCreate() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
     }
 }

@@ -1,5 +1,7 @@
 # ⭐ UPGRADE SUMMARY - Badminton Court Management Database
 
+> Historical schema/design record. Current Member 3 online gateway scope is VNPay Sandbox only; provider names below describe the original design/schema, not active integration.
+
 ## 🎯 Tổng quan
 
 Database đã được nâng cấp từ **v1.0.0** → **v1.1.0** với các thay đổi quan trọng sau khi team review.
@@ -14,7 +16,7 @@ Database đã được nâng cấp từ **v1.0.0** → **v1.1.0** với các tha
 - **Số indexes:** 30+ indexes (bao gồm UNIQUE, performance, partial indexes)
 - **Số constraints:** 40+ constraints (PK, FK, UNIQUE, CHECK)
 - **Locking strategies:** 2 types (Pessimistic cho bookings, Optimistic cho products)
-- **Payment methods:** 3 types (VNPay, MoMo, CASH/BANK_TRANSFER)
+- **Payment methods:** VNPay only
 - **Promotion types:** 3 tiers (PRODUCT, INVOICE_TOTAL, VOUCHER)
 
 ---
@@ -34,7 +36,7 @@ ON booking_details(booking_date, court_id, time_slot_id);
 **Giải thích:** `time_slots` là master data tĩnh (template). Status được suy ra từ `booking_details`.
 
 ### ✅ 3. Thêm UNIQUE Constraint cho transaction_id (partial)
-**Vấn đề:** Webhook retry từ VNPay/MoMo có thể tạo duplicate.
+**Vấn đề:** Webhook retry từ VNPay có thể tạo duplicate.
 
 **Giải pháp:**
 ```sql

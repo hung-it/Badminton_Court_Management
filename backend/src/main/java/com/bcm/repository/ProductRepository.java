@@ -1,12 +1,18 @@
 package com.bcm.repository;
 
 import com.bcm.entity.Product;
-import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.*;
 
-import java.util.UUID;
-import java.util.List;
+import java.util.*;
 
 public interface ProductRepository extends JpaRepository<Product, UUID> {
+    List<Product> findByDeletedAtIsNullOrderByNameAsc();
 
-	List<Product> findAllByDeletedAtIsNullOrderByNameAsc();
+    Optional<Product> findByIdAndDeletedAtIsNull(UUID id);
+
+    boolean existsByCategoryIdAndDeletedAtIsNull(UUID categoryId);
+
+    default List<Product> findAllByDeletedAtIsNullOrderByNameAsc() {
+        return findByDeletedAtIsNullOrderByNameAsc();
+    }
 }

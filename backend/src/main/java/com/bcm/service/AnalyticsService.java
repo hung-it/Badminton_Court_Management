@@ -30,16 +30,16 @@ public class AnalyticsService {
                 PAID_STATUS,
                 range.from().atStartOfDay(),
                 range.toExclusive().atStartOfDay());
-        BigDecimal courtAmount = valueOrZero((BigDecimal) totals[0]);
-        BigDecimal productAmount = valueOrZero((BigDecimal) totals[1]);
+        BigDecimal courtFee = valueOrZero((BigDecimal) totals[0]);
+        BigDecimal productFee = valueOrZero((BigDecimal) totals[1]);
 
         return RevenueReportResponse.builder()
                 .period(normalizedPeriod)
                 .from(range.from())
                 .to(range.toInclusive())
-                .courtAmount(courtAmount)
-                .productAmount(productAmount)
-                .totalAmount(courtAmount.add(productAmount))
+                .courtFee(courtFee)
+                .productFee(productFee)
+                .totalAmount(courtFee.add(productFee))
                 .build();
     }
 

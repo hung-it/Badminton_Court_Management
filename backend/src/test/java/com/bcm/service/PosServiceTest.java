@@ -3,6 +3,7 @@ package com.bcm.service;
 import com.bcm.dto.request.PosSaleItemRequest;
 import com.bcm.dto.request.PosSaleRequest;
 import com.bcm.entity.Product;
+import com.bcm.entity.ProductType;
 import com.bcm.exception.BadRequestException;
 import com.bcm.repository.InvoiceDetailRepository;
 import com.bcm.repository.InvoiceRepository;
@@ -44,14 +45,14 @@ class PosServiceTest {
     @Test
     void optimisticLockConflictIsReturnedAsInsufficientStock() {
         UUID productId = UUID.randomUUID();
-        Product product = Product.builder()
-                .name("Nước suối")
-                .type("GOODS")
-                .price(BigDecimal.TEN)
-                .stockQuantity(1)
-                .version(0)
-                .build();
+        Product product = new Product();
         product.setId(productId);
+        product.setName("Nước suối");
+        product.setType(ProductType.GOODS);
+        product.setUnit("chai");
+        product.setPrice(BigDecimal.TEN);
+        product.setStockQuantity(1);
+        product.setVersion(0);
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
         when(productRepository.saveAndFlush(any(Product.class)))
                 .thenThrow(new ObjectOptimisticLockingFailureException(Product.class, productId));

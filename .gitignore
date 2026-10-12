@@ -1,11 +1,13 @@
-# Frontend dependencies and build output
+.tools/
+web-admin/node_modules/
+web-admin/dist/
+web-admin/.vite/
 frontend/node_modules/
 frontend/dist/
-
-# Backend build output
+backend/target/
 **/target/
-
-# Local environment files
+*.local
+*.local.png
 .env
 .env.*
 !.env.example

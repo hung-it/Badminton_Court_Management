@@ -37,7 +37,7 @@ public class PosService {
     public Invoice sell(PosSaleRequest request) {
         Map<UUID, Integer> quantitiesByProduct = aggregateQuantities(request.getItems());
         List<InvoiceDetail> invoiceDetails = new ArrayList<>();
-        BigDecimal productAmount = BigDecimal.ZERO;
+        BigDecimal productFee = BigDecimal.ZERO;
 
         try {
             for (Map.Entry<UUID, Integer> entry : quantitiesByProduct.entrySet()) {
@@ -53,7 +53,7 @@ public class PosService {
                 productRepository.saveAndFlush(product);
 
                 BigDecimal lineAmount = product.getPrice().multiply(BigDecimal.valueOf(quantity));
-                productAmount = productAmount.add(lineAmount);
+                productFee = productFee.add(lineAmount);
                 invoiceDetails.add(InvoiceDetail.builder()
                         .productId(product.getId())
                         .quantity(quantity)
@@ -64,18 +64,18 @@ public class PosService {
             throw new BadRequestException(INSUFFICIENT_STOCK_MESSAGE);
         }
 
-        BigDecimal courtAmount = request.getCourtAmount() == null
+        BigDecimal courtFee = request.getCourtFee() == null
                 ? BigDecimal.ZERO
-            : request.getCourtAmount();
+                : request.getCourtFee();
         Invoice invoice = Invoice.builder()
                 .bookingId(request.getBookingId())
                 .customerId(request.getCustomerId())
                 .paymentMethod(request.getPaymentMethod())
                 .status(request.getBookingId() == null ? "PAID" : "DRAFT")
-                .courtAmount(courtAmount)
-                .productAmount(productAmount)
+                .courtFee(courtFee)
+                .productFee(productFee)
                 .discountAmount(BigDecimal.ZERO)
-                .totalAmount(courtAmount.add(productAmount))
+                .totalAmount(courtFee.add(productFee))
                 .createdBy(request.getStaffId())
                 .updatedBy(request.getStaffId())
                 .build();

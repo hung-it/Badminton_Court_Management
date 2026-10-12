@@ -51,8 +51,8 @@ public class CorsConfig {
                 "X-Total-Count"  // Cho pagination
         ));
 
-        // Apply config cho tất cả endpoints /api/**
-        source.registerCorsConfiguration("/api/**", config);
+        // The servlet path excludes the /api context path configured by Spring Boot.
+        source.registerCorsConfiguration("/**", config);
 
         return new CorsFilter(source);
     }

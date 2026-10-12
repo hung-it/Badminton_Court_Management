@@ -1,38 +1,30 @@
 package com.bcm.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
-import jakarta.persistence.Version;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.NoArgsConstructor;
+import jakarta.persistence.*;
 
-import java.math.BigDecimal;
-import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "products")
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-@EqualsAndHashCode(callSuper = true)
+@Getter
+@Setter
 public class Product extends BaseEntity {
-
     @Column(name = "category_id", nullable = false)
-    private UUID categoryId;
+    private java.util.UUID categoryId;
 
     @Column(nullable = false, length = 255)
     private String name;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private String type;
+    private ProductType type;
 
     @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal price;
+    private java.math.BigDecimal price;
+
+    @Column(nullable = false, length = 50)
+    private String unit;
 
     @Column(name = "stock_quantity", nullable = false)
     private Integer stockQuantity;
@@ -41,9 +33,6 @@ public class Product extends BaseEntity {
     @Column(nullable = false)
     private Integer version;
 
-    @Column(name = "created_by")
-    private UUID createdBy;
-
-    @Column(name = "updated_by")
-    private UUID updatedBy;
+    @Column(name = "image_url", length = 2048)
+    private String imageUrl;
 }

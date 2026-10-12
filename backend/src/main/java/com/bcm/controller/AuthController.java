@@ -7,6 +7,7 @@ import com.bcm.dto.response.ApiResponse;
 import com.bcm.dto.response.LoginResponse;
 import com.bcm.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/auth")
+@SecurityRequirements
 @RequiredArgsConstructor
 @Tag(name = "Authentication", description = "User authentication and registration endpoints")
 public class AuthController {
@@ -34,7 +36,12 @@ public class AuthController {
      * @return Login response with JWT tokens
      */
     @PostMapping("/register")
-    @Operation(summary = "Register new user", description = "Register a new user with CUSTOMER role")
+    @Operation(summary = "Register new user", description = "Atomically register User, CUSTOMER role and Customer profile using required fullName and phone and optional address")
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "User, CUSTOMER role and Customer committed atomically"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Registration validation failure", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Duplicate email or persistence constraint", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = ApiResponse.class)))
+    })
     public ResponseEntity<ApiResponse<LoginResponse>> register(@Valid @RequestBody RegisterRequest request) {
         LoginResponse response = authService.register(request);
         return ResponseEntity

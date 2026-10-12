@@ -7,6 +7,9 @@ import com.bcm.dto.response.LoginResponse;
 import com.bcm.dto.response.UserResponse;
 import com.bcm.entity.Role;
 import com.bcm.entity.User;
+import com.bcm.entity.Customer;
+import com.bcm.repository.CustomerRepository;
+import com.bcm.exception.DuplicateResourceException;
 import com.bcm.repository.RoleRepository;
 import com.bcm.repository.UserRepository;
 import com.bcm.util.JwtUtil;
@@ -35,6 +38,7 @@ import java.util.stream.Collectors;
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final CustomerRepository customerRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
@@ -49,7 +53,7 @@ public class AuthService {
     public LoginResponse register(RegisterRequest request) {
         // Check if email already exists
         if (userRepository.existsByEmail(request.getEmail())) {
-            throw new RuntimeException("Email already registered");
+            throw new DuplicateResourceException("Email already registered");
         }
 
         // Get CUSTOMER role
@@ -66,7 +70,13 @@ public class AuthService {
                 .roles(Set.of(customerRole))
                 .build();
 
-        User savedUser = userRepository.save(user);
+        User savedUser = userRepository.saveAndFlush(user);
+        Customer customer = new Customer();
+        customer.setUser(savedUser);
+        customer.setFullName(request.getFullName());
+        customer.setPhone(request.getPhone());
+        customer.setAddress(request.getAddress());
+        customerRepository.saveAndFlush(customer);
         log.info("New user registered: {}", savedUser.getEmail());
 
         // Generate tokens

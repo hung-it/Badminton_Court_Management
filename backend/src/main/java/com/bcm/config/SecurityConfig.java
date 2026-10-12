@@ -1,9 +1,12 @@
 package com.bcm.config;
 
 import com.bcm.security.JwtAuthenticationFilter;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -20,11 +23,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Security Configuration for JWT-based authentication
- * - Stateless session management
- * - JWT filter integration
- * - Public and protected endpoints
- * - Role-based access control
+ * Security Configuration for JWT-based authentication - Stateless session management - JWT filter
+ * integration - Public and protected endpoints - Role-based access control
  */
 @Configuration
 @EnableWebSecurity
@@ -35,13 +35,10 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final UserDetailsService userDetailsService;
 
-    /**
-     * Configure security filter chain
-     */
+    /** Configure security filter chain */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-                .csrf(AbstractHttpConfigurer::disable)
+        http.csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configure(http))
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints (note: context-path /api is already applied)
@@ -53,44 +50,46 @@ public class SecurityConfig {
                                 "/api/v3/api-docs/**",
                                 "/api/api-docs/**",
                                 // Also allow without /api prefix for direct access
+                                "/api/public/**",
+                                "/public/**",
                                 "/auth/**",
                                 "/health/**",
                                 "/swagger-ui/**",
-                                "/v3/api-docs/**"
+                                "/v3/api-docs/**", "/api-docs/**", "/swagger-ui.html"
                         ).permitAll()
+
+                        .requestMatchers(HttpMethod.GET, "/payments/vnpay/ipn", "/payments/vnpay/return").permitAll()
 
                         // Admin-only endpoints
                         .requestMatchers("/admin/**").hasRole("ADMIN")
 
-                        // Staff endpoints
-                        .requestMatchers("/staff/**").hasAnyRole("ADMIN", "STAFF")
+                                        // Staff endpoints
+                                        .requestMatchers("/staff/**")
+                                        .hasAnyRole("ADMIN", "STAFF")
 
-                        // Customer endpoints
-                        .requestMatchers("/customer/**").hasAnyRole("ADMIN", "STAFF", "CUSTOMER")
+                                        // Customer endpoints
+                                        .requestMatchers("/customer/**")
+                                        .hasAnyRole("ADMIN", "STAFF", "CUSTOMER")
 
-                        // All other requests require authentication
-                        .anyRequest().authenticated()
-                )
-                .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                )
+                                        // All other requests require authentication
+                                        .anyRequest()
+                                        .authenticated())
+                .sessionManagement(
+                        session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(
+                        jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
-    /**
-     * Password encoder bean using BCrypt
-     */
+    /** Password encoder bean using BCrypt */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
-    /**
-     * Authentication provider with UserDetailsService and PasswordEncoder
-     */
+    /** Authentication provider with UserDetailsService and PasswordEncoder */
     @Bean
     public AuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
@@ -99,11 +98,10 @@ public class SecurityConfig {
         return authProvider;
     }
 
-    /**
-     * Authentication manager bean
-     */
+    /** Authentication manager bean */
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config)
+            throws Exception {
         return config.getAuthenticationManager();
     }
 }

@@ -10,7 +10,7 @@
 └─────────────────────────────────────────────────────────┘
 Customer App:
   1. Chọn sân, khung giờ → Tạo booking (status: PENDING)
-  2. Thanh toán online (VNPay/MoMo) → booking.status = PAID
+  2. Thanh toán online (VNPay Sandbox) → booking.status = PAID
   3. Đến sân check-in → booking.status = CHECKED_IN
                       → Tạo invoice (court_fee từ booking)
   4. Mua nước/cầu → Thêm invoice_details → Tính product_fee
@@ -51,7 +51,7 @@ sequenceDiagram
     participant C as Customer (App)
     participant API as Backend API
     participant DB as Database
-    participant PG as Payment Gateway (VNPay/MoMo)
+    participant PG as Payment Gateway (VNPay Sandbox)
     participant Staff as Staff (POS)
 
     %% Phase 1: Booking & Payment
@@ -196,7 +196,7 @@ sequenceDiagram
 
 ### ❓ `invoices.court_fee` vs `bookings.court_fee` - Có duplicate?
 **Trả lời:**
-- **bookings.court_fee:** Tiền sân **đã thu trước** qua VNPay/MoMo (dùng cho payment gateway + báo cáo thiệt hại NO_SHOW)
+- **bookings.court_fee:** Tiền sân **đã thu trước** qua VNPay Sandbox (dùng cho payment gateway + báo cáo thiệt hại NO_SHOW)
 - **invoices.court_fee:** Tiền sân **ghi vào hóa đơn tổng hợp** (dùng cho kế toán, in bill)
 
 **Quan hệ:**
@@ -344,7 +344,7 @@ CREATE INDEX idx_products_category_active
 ┌─────────┐
 │ PENDING │ Khách vừa tạo booking, chưa thanh toán
 └────┬────┘
-     │ Thanh toán VNPay/MoMo thành công
+     │ Thanh toán VNPay Sandbox thành công
      ▼
 ┌─────────┐
 │  PAID   │ Đã thanh toán, chờ đến sân

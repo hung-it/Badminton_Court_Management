@@ -1,25 +1,50 @@
 package com.bcm.controller;
 
+import com.bcm.dto.request.ProductRequest;
 import com.bcm.dto.response.ApiResponse;
 import com.bcm.entity.Product;
-import com.bcm.repository.ProductRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import com.bcm.service.MasterDataService;
 
-import java.util.List;
+import jakarta.validation.Valid;
+
+import lombok.RequiredArgsConstructor;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.*;
 
 @RestController
-@RequestMapping("/products")
+@RequestMapping("/admin/products")
 @RequiredArgsConstructor
 public class ProductController {
-
-    private final ProductRepository productRepository;
+    private final MasterDataService service;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<Product>>> findAll() {
-        return ResponseEntity.ok(ApiResponse.success(productRepository.findAllByDeletedAtIsNullOrderByNameAsc()));
+    public ApiResponse<List<Product>> list() {
+        return ApiResponse.success(service.products());
+    }
+
+    @GetMapping("/{id}")
+    public ApiResponse<Product> get(@PathVariable UUID id) {
+        return ApiResponse.success(service.product(id));
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<Product> create(@Valid @RequestBody ProductRequest r) {
+        return ApiResponse.success(service.saveProduct(null, r));
+    }
+
+    @PutMapping("/{id}")
+    public ApiResponse<Product> update(
+            @PathVariable UUID id, @Valid @RequestBody ProductRequest r) {
+        return ApiResponse.success(service.saveProduct(id, r));
+    }
+
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> delete(@PathVariable UUID id) {
+        service.deleteProduct(id);
+        return ApiResponse.success("Đã xóa");
     }
 }

@@ -27,23 +27,25 @@ public class CheckoutService {
     private final InvoiceRepository invoiceRepository;
 
     @Transactional
-        public ApiResponse<CheckoutResponse> checkout(UUID bookingId, String paymentMethod) {
+    @Transactional
+    public ApiResponse<CheckoutResponse> checkout(UUID bookingId, String paymentMethod) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", "id", bookingId));
 
         String normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
-        BigDecimal courtAmount = valueOrZero(booking.getCourtAmount());
-        BigDecimal productAmount = valueOrZero(
-                invoiceRepository.sumProductAmountByBookingIdAndStatus(bookingId, PENDING_POS_STATUS));
-        BigDecimal totalAmount = courtAmount.add(productAmount);
+        BigDecimal courtFee = valueOrZero(booking.getCourtFee());
+        BigDecimal productFee = valueOrZero(
+                invoiceRepository.sumProductFeeByBookingIdAndStatus(bookingId, PENDING_POS_STATUS));
+        BigDecimal totalAmount = courtFee.add(productFee);
+        UUID customerId = booking.getCustomer() != null ? booking.getCustomer().getId() : null;
 
         Invoice invoice = Invoice.builder()
                 .bookingId(bookingId)
-                .customerId(booking.getCustomerId())
+                .customerId(customerId)
                 .paymentMethod(normalizedPaymentMethod)
                 .status(PAID_STATUS)
-                .courtAmount(courtAmount)
-                .productAmount(productAmount)
+                .courtFee(courtFee)
+                .productFee(productFee)
                 .discountAmount(BigDecimal.ZERO)
                 .totalAmount(totalAmount)
                 .build();
@@ -57,8 +59,8 @@ public class CheckoutService {
         CheckoutResponse response = CheckoutResponse.builder()
                 .bookingId(bookingId)
                 .invoiceId(savedInvoice.getId())
-                .courtAmount(courtAmount)
-                .productAmount(productAmount)
+                .courtFee(courtFee)
+                .productFee(productFee)
                 .totalAmount(totalAmount)
                 .build();
         return ApiResponse.success("Checkout thành công", response);
@@ -68,11 +70,14 @@ public class CheckoutService {
         return amount == null ? BigDecimal.ZERO : amount;
     }
 
-        private String normalizePaymentMethod(String paymentMethod) {
-                String normalized = paymentMethod == null ? "CASH" : paymentMethod.trim().toUpperCase();
-                if (!normalized.equals("CASH") && !normalized.equals("QR")) {
-                            throw new BadRequestException("Phương thức thanh toán phải là CASH hoặc QR");
-                }
-                return normalized;
+    private String normalizePaymentMethod(String paymentMethod) {
+        String normalized = paymentMethod == null ? "CASH" : paymentMethod.trim().toUpperCase();
+        if ("QR".equals(normalized)) {
+            normalized = "BANK_TRANSFER";
         }
+        if (!normalized.equals("CASH") && !normalized.equals("BANK_TRANSFER") && !normalized.equals("VNPAY")) {
+            throw new BadRequestException("Phương thức thanh toán phải là CASH, BANK_TRANSFER hoặc VNPAY");
+        }
+        return normalized;
+    }
 }

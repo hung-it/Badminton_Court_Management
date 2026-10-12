@@ -11,15 +11,19 @@ import java.util.UUID;
 
 public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
 
-	@Query("select coalesce(sum(i.productAmount), 0) from Invoice i "
+	@Query("select coalesce(sum(i.productFee), 0) from Invoice i "
 	    + "where i.bookingId = :bookingId and i.status = :status")
-	BigDecimal sumProductAmountByBookingIdAndStatus(
+	BigDecimal sumProductFeeByBookingIdAndStatus(
 	    @Param("bookingId") UUID bookingId,
 	    @Param("status") String status);
 
+	default BigDecimal sumProductAmountByBookingIdAndStatus(UUID bookingId, String status) {
+		return sumProductFeeByBookingIdAndStatus(bookingId, status);
+	}
+
     java.util.List<Invoice> findByBookingIdAndStatus(UUID bookingId, String status);
 
-	    @Query("select coalesce(sum(i.courtAmount), 0), coalesce(sum(i.productAmount), 0) "
+	    @Query("select coalesce(sum(i.courtFee), 0), coalesce(sum(i.productFee), 0) "
 		    + "from Invoice i where i.status = :status and i.deletedAt is null "
 		    + "and i.createdAt >= :from and i.createdAt < :to")
 	    Object[] sumRevenueByPeriod(

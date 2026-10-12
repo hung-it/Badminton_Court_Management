@@ -37,13 +37,13 @@ public class Invoice extends BaseEntity {
     @Column(nullable = false, length = 20)
     private String status;
 
-    @Column(name = "court_amount", precision = 10, scale = 2)
-    @JsonProperty("court_amount")
-    private BigDecimal courtAmount;
+    @Column(name = "court_fee", precision = 10, scale = 2)
+    @JsonProperty("court_fee")
+    private BigDecimal courtFee;
 
-    @Column(name = "product_amount", nullable = false, precision = 10, scale = 2)
-    @JsonProperty("product_amount")
-    private BigDecimal productAmount;
+    @Column(name = "product_fee", nullable = false, precision = 10, scale = 2)
+    @JsonProperty("product_fee")
+    private BigDecimal productFee;
 
     @Column(name = "discount_amount", nullable = false, precision = 10, scale = 2)
     private BigDecimal discountAmount;
@@ -57,4 +57,20 @@ public class Invoice extends BaseEntity {
 
     @Column(name = "updated_by")
     private UUID updatedBy;
+
+    public BigDecimal getCourtAmount() {
+        return courtFee;
+    }
+
+    public void setCourtAmount(BigDecimal courtAmount) {
+        this.courtFee = courtAmount;
+    }
+
+    public BigDecimal getProductAmount() {
+        return productFee;
+    }
+
+    public void setProductAmount(BigDecimal productAmount) {
+        this.productFee = productAmount;
+    }
 }
