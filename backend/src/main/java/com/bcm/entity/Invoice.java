@@ -1,27 +1,76 @@
 package com.bcm.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import lombok.AccessLevel;
-import lombok.Getter;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.Immutable;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
-/**
- * Read-only identity reference to invoices; writes belong to its owning module.
- */
 @Entity
 @Table(name = "invoices")
-@Immutable
-@Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Invoice {
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@EqualsAndHashCode(callSuper = true)
+public class Invoice extends BaseEntity {
 
-    @Id
-    @Column(name = "id", nullable = false, updatable = false)
-    private UUID id;
+    @Column(name = "booking_id")
+    private UUID bookingId;
+
+    @Column(name = "customer_id", nullable = false)
+    private UUID customerId;
+
+    @Column(name = "promotion_id")
+    private UUID promotionId;
+
+    @Column(name = "payment_method", nullable = false, length = 50)
+    private String paymentMethod;
+
+    @Column(nullable = false, length = 20)
+    private String status;
+
+    @Column(name = "court_fee", precision = 10, scale = 2)
+    @JsonProperty("court_fee")
+    private BigDecimal courtFee;
+
+    @Column(name = "product_fee", nullable = false, precision = 10, scale = 2)
+    @JsonProperty("product_fee")
+    private BigDecimal productFee;
+
+    @Column(name = "discount_amount", nullable = false, precision = 10, scale = 2)
+    private BigDecimal discountAmount;
+
+    @Column(name = "total_amount", nullable = false, precision = 10, scale = 2)
+    @JsonProperty("total_amount")
+    private BigDecimal totalAmount;
+
+    @Column(name = "created_by")
+    private UUID createdBy;
+
+    @Column(name = "updated_by")
+    private UUID updatedBy;
+
+    public BigDecimal getCourtAmount() {
+        return courtFee;
+    }
+
+    public void setCourtAmount(BigDecimal courtAmount) {
+        this.courtFee = courtAmount;
+    }
+
+    public BigDecimal getProductAmount() {
+        return productFee;
+    }
+
+    public void setProductAmount(BigDecimal productAmount) {
+        this.productFee = productAmount;
+    }
 }
