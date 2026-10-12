@@ -27,7 +27,6 @@ public class CheckoutService {
     private final InvoiceRepository invoiceRepository;
 
     @Transactional
-    @Transactional
     public ApiResponse<CheckoutResponse> checkout(UUID bookingId, String paymentMethod) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", "id", bookingId));

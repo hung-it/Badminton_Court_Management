@@ -67,10 +67,17 @@ public class PosService {
         BigDecimal courtFee = request.getCourtFee() == null
                 ? BigDecimal.ZERO
                 : request.getCourtFee();
+        String paymentMethod = request.getPaymentMethod() == null ? "CASH" : request.getPaymentMethod().trim().toUpperCase();
+        if ("QR".equals(paymentMethod)) {
+            paymentMethod = "BANK_TRANSFER";
+        }
+        if (!paymentMethod.equals("CASH") && !paymentMethod.equals("BANK_TRANSFER") && !paymentMethod.equals("VNPAY")) {
+            throw new BadRequestException("Phương thức thanh toán phải là CASH, BANK_TRANSFER hoặc VNPAY");
+        }
         Invoice invoice = Invoice.builder()
                 .bookingId(request.getBookingId())
                 .customerId(request.getCustomerId())
-                .paymentMethod(request.getPaymentMethod())
+                .paymentMethod(paymentMethod)
                 .status(request.getBookingId() == null ? "PAID" : "DRAFT")
                 .courtFee(courtFee)
                 .productFee(productFee)
