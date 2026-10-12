@@ -17,7 +17,6 @@ import java.util.UUID;
 @AllArgsConstructor
 public class PosSaleRequest {
 
-    @NotNull
     private UUID customerId;
 
     private UUID bookingId;

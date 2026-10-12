@@ -2,11 +2,13 @@ package com.bcm.service;
 
 import com.bcm.dto.request.PosSaleItemRequest;
 import com.bcm.dto.request.PosSaleRequest;
+import com.bcm.entity.Customer;
 import com.bcm.entity.Invoice;
 import com.bcm.entity.InvoiceDetail;
 import com.bcm.entity.Product;
 import com.bcm.exception.BadRequestException;
 import com.bcm.exception.ResourceNotFoundException;
+import com.bcm.repository.CustomerRepository;
 import com.bcm.repository.InvoiceDetailRepository;
 import com.bcm.repository.InvoiceRepository;
 import com.bcm.repository.ProductRepository;
@@ -32,6 +34,7 @@ public class PosService {
     private final ProductRepository productRepository;
     private final InvoiceRepository invoiceRepository;
     private final InvoiceDetailRepository invoiceDetailRepository;
+    private final CustomerRepository customerRepository;
 
     @Transactional
     public Invoice sell(PosSaleRequest request) {
@@ -74,9 +77,11 @@ public class PosService {
         if (!paymentMethod.equals("CASH") && !paymentMethod.equals("BANK_TRANSFER") && !paymentMethod.equals("VNPAY")) {
             throw new BadRequestException("Phương thức thanh toán phải là CASH, BANK_TRANSFER hoặc VNPAY");
         }
+        UUID customerId = resolveCustomerId(request.getCustomerId());
+
         Invoice invoice = Invoice.builder()
                 .bookingId(request.getBookingId())
-                .customerId(request.getCustomerId())
+                .customerId(customerId)
                 .paymentMethod(paymentMethod)
                 .status(request.getBookingId() == null ? "PAID" : "DRAFT")
                 .courtFee(courtFee)
@@ -99,5 +104,15 @@ public class PosService {
             quantitiesByProduct.merge(item.getProductId(), item.getQuantity(), Integer::sum);
         }
         return quantitiesByProduct;
+    }
+
+    private UUID resolveCustomerId(UUID requestedCustomerId) {
+        if (requestedCustomerId != null && customerRepository.existsById(requestedCustomerId)) {
+            return requestedCustomerId;
+        }
+        return customerRepository.findByPhone("0000000000")
+                .map(Customer::getId)
+                .or(() -> customerRepository.findAll().stream().findFirst().map(Customer::getId))
+                .orElse(requestedCustomerId);
     }
 }

@@ -39,6 +39,9 @@ class PosServiceTest {
     @Mock
     private InvoiceDetailRepository invoiceDetailRepository;
 
+    @Mock
+    private com.bcm.repository.CustomerRepository customerRepository;
+
     @InjectMocks
     private PosService posService;
 

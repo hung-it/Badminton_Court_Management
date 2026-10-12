@@ -3,10 +3,13 @@ package com.bcm.service;
 import com.bcm.dto.response.ApiResponse;
 import com.bcm.dto.response.CheckoutResponse;
 import com.bcm.entity.Booking;
+import com.bcm.entity.BookingStatus;
 import com.bcm.entity.Invoice;
+import com.bcm.entity.InvoiceDetail;
 import com.bcm.exception.BadRequestException;
 import com.bcm.exception.ResourceNotFoundException;
 import com.bcm.repository.BookingRepository;
+import com.bcm.repository.InvoiceDetailRepository;
 import com.bcm.repository.InvoiceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,6 +28,7 @@ public class CheckoutService {
 
     private final BookingRepository bookingRepository;
     private final InvoiceRepository invoiceRepository;
+    private final InvoiceDetailRepository invoiceDetailRepository;
 
     @Transactional
     public ApiResponse<CheckoutResponse> checkout(UUID bookingId, String paymentMethod) {
@@ -52,8 +56,20 @@ public class CheckoutService {
 
         List<Invoice> pendingPosInvoices = invoiceRepository
                 .findByBookingIdAndStatus(bookingId, PENDING_POS_STATUS);
+        List<UUID> pendingInvoiceIds = pendingPosInvoices.stream().map(Invoice::getId).toList();
+        if (!pendingInvoiceIds.isEmpty()) {
+            List<InvoiceDetail> details = invoiceDetailRepository.findByInvoiceIdIn(pendingInvoiceIds);
+            for (InvoiceDetail detail : details) {
+                detail.setInvoiceId(savedInvoice.getId());
+            }
+            invoiceDetailRepository.saveAll(details);
+        }
+
         pendingPosInvoices.forEach(posInvoice -> posInvoice.setStatus("CANCELLED"));
         invoiceRepository.saveAll(pendingPosInvoices);
+
+        booking.setStatus(BookingStatus.COMPLETED);
+        bookingRepository.save(booking);
 
         CheckoutResponse response = CheckoutResponse.builder()
                 .bookingId(bookingId)

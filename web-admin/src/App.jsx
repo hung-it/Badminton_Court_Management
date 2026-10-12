@@ -19,6 +19,7 @@ export default function App(){
  const [posSearch,setPosSearch]=useState('');
  const [posHistory,setPosHistory]=useState([]);
  const [posCustomerId,setPosCustomerId]=useState('');
+ const [customers,setCustomers]=useState([]);
 
  // Checkout state
  const [checkoutBookingId,setCheckoutBookingId]=useState('');
@@ -56,7 +57,10 @@ export default function App(){
 
  async function loadOperationalData(){
   try{
-   if(tab==='inventory'){
+   if(tab==='pos'){
+    const custs=await api('/pos/customers').catch(()=>[]);
+    setCustomers(custs||[]);
+   }else if(tab==='inventory'){
     const [orders,supps]=await Promise.all([api('/import-orders').catch(()=>[]),api('/suppliers').catch(()=>[])]);
     setImportOrders(orders||[]);setSuppliers(supps||[]);
     if(supps&&supps.length>0&&!importForm.supplierId){
@@ -99,8 +103,8 @@ export default function App(){
   if(!posCart.length)return;
   setSaving(true);setError('');
   try{
-   // Fallback customer ID if not provided
-   const custId=posCustomerId||session?.user?.id;
+   // Never pass session.user.id because that is in users table, not customers table
+   const custId=posCustomerId||null;
    const payload={
     customerId:custId,
     bookingId:null,
@@ -226,7 +230,7 @@ export default function App(){
     <div className="pos-summary">
      <div className="pos-summary-line"><span>Số lượng:</span><strong>{posCart.reduce((s,i)=>s+i.quantity,0)}</strong></div>
      <div className="pos-summary-total"><span>Tổng thanh toán:</span><span>{money(posCart.reduce((s,i)=>s+i.price*i.quantity,0))}</span></div>
-     <label className="field" style={{marginTop:'14px'}}>Khách hàng (Tùy chọn Customer UUID)<input placeholder="UUID hoặc để trống mặc định" value={posCustomerId} onChange={e=>setPosCustomerId(e.target.value)}/></label>
+     <label className="field" style={{marginTop:'14px'}}>Khách hàng<select value={posCustomerId} onChange={e=>setPosCustomerId(e.target.value)}><option value="">Khách vãng lai (Mặc định)</option>{customers.map(c=><option key={c.id} value={c.id}>{c.fullName} ({c.phone})</option>)}</select></label>
      <button className="primary wide" style={{marginTop:'14px'}} disabled={!posCart.length||saving} onClick={handlePosSale}>{saving?'Đang thanh toán…':'✓ Thu tiền ngay (CASH)'}</button>
     </div>
    </div>

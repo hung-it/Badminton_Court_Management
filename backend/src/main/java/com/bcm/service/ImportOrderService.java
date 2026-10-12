@@ -81,7 +81,7 @@ public class ImportOrderService {
     public void delete(UUID id) {
         ImportOrder order = getOrder(id);
         ensureEditable(order);
-        order.softDelete();
+        order.setStatus("CANCELLED");
         importOrderRepository.save(order);
     }
 
