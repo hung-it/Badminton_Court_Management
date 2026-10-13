@@ -95,12 +95,10 @@ response=$(curl -s -w "\n%{http_code}" -X POST $BASE_URL/auth/register \
     \"phone\": \"0999999999\"
   }")
 http_code=$(echo "$response" | tail -n1)
-body=$(echo "$response" | head -n-1)
-
-if [ "$http_code" = "400" ] || [ "$http_code" = "409" ] || [ "$http_code" = "500" ]; then
+if [ "$http_code" = "400" ] || [ "$http_code" = "409" ]; then
     test_result 0 "Reject duplicate email"
 else
-    test_result 1 "Reject duplicate email" "$body"
+    test_result 1 "Reject duplicate email (must be 409 or 400, not 500)" "HTTP $http_code: $body"
 fi
 
 # Test 2.3: Invalid email format
@@ -155,6 +153,8 @@ body=$(echo "$response" | head -n-1)
 
 if [ "$http_code" = "200" ]; then
     USER_TOKEN=$(echo "$body" | grep -o '"accessToken":"[^"]*' | cut -d'"' -f4)
+    USER_REFRESH_TOKEN=$(echo "$body" | grep -o '"refreshToken":"[^"]*' | cut -d'"' -f4)
+    USER_ID=$(echo "$body" | grep -o '"id":"[^"]*' | head -n1 | cut -d'"' -f4)
     test_result 0 "Login with valid credentials"
 else
     test_result 1 "Login with valid credentials" "$body"
@@ -246,6 +246,29 @@ else
     test_result 1 "Deny access with malformed header" "HTTP $http_code"
 fi
 
+# Test 4.5: Refresh Token cannot be used as Access Token on protected routes
+response=$(curl -s -w "\n%{http_code}" $BASE_URL/users/me \
+  -H "Authorization: Bearer $USER_REFRESH_TOKEN")
+http_code=$(echo "$response" | tail -n1)
+
+if [ "$http_code" = "403" ] || [ "$http_code" = "401" ]; then
+    test_result 0 "Reject Refresh Token used as Bearer token"
+else
+    test_result 1 "Reject Refresh Token used as Bearer token" "HTTP $http_code"
+fi
+
+# Test 4.6: Access Token cannot be used as Refresh Token at /auth/refresh
+response=$(curl -s -w "\n%{http_code}" -X POST $BASE_URL/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d "{\"refreshToken\": \"$USER_TOKEN\"}")
+http_code=$(echo "$response" | tail -n1)
+
+if [ "$http_code" = "400" ] || [ "$http_code" = "401" ]; then
+    test_result 0 "Reject Access Token passed to /auth/refresh"
+else
+    test_result 1 "Reject Access Token passed to /auth/refresh" "HTTP $http_code"
+fi
+
 # ============================================================
 # 5. ADMIN ACCESS TESTS
 # ============================================================
@@ -280,6 +303,30 @@ if [ ! -z "$ADMIN_TOKEN" ]; then
         test_result 0 "Admin has ADMIN role"
     else
         test_result 1 "Admin has ADMIN role" "$body"
+    fi
+fi
+
+# Test 5.3: Customer cannot access other user's profile via GET /users/{id} (IDOR prevention)
+response=$(curl -s -w "\n%{http_code}" $BASE_URL/users/$USER_ID \
+  -H "Authorization: Bearer $USER_TOKEN")
+http_code=$(echo "$response" | tail -n1)
+
+if [ "$http_code" = "403" ]; then
+    test_result 0 "Prevent IDOR: Customer cannot access GET /users/{id}"
+else
+    test_result 1 "Prevent IDOR: Customer cannot access GET /users/{id}" "HTTP $http_code"
+fi
+
+# Test 5.4: Admin CAN access GET /users/{id}
+if [ ! -z "$ADMIN_TOKEN" ] && [ ! -z "$USER_ID" ]; then
+    response=$(curl -s -w "\n%{http_code}" $BASE_URL/users/$USER_ID \
+      -H "Authorization: Bearer $ADMIN_TOKEN")
+    http_code=$(echo "$response" | tail -n1)
+
+    if [ "$http_code" = "200" ]; then
+        test_result 0 "Admin can access GET /users/{id}"
+    else
+        test_result 1 "Admin can access GET /users/{id}" "HTTP $http_code"
     fi
 fi
 

@@ -16,3 +16,5 @@ backend/target/
 **/application-local.properties
 **/*secret*.local
 **/*credentials*.local
+.vscode/
+.idea/

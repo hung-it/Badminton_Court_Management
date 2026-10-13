@@ -45,9 +45,29 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String jwt = extractJwtFromRequest(request);
 
             if (jwt != null && jwtUtil.validateToken(jwt)) {
-                String email = jwtUtil.extractEmail(jwt);
+                // Reject refresh tokens presented in Authorization header
+                if (!jwtUtil.isAccessToken(jwt)) {
+                    log.warn("Rejected non-access token in Authorization header");
+                    filterChain.doFilter(request, response);
+                    return;
+                }
 
-                UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+                String email = jwtUtil.extractEmail(jwt);
+                String userId = jwtUtil.extractUserId(jwt);
+                java.util.List<String> roles = jwtUtil.extractRoles(jwt);
+
+                UserDetails userDetails;
+                if (userId != null && roles != null && !roles.isEmpty()) {
+                    // Truly stateless: construct UserPrincipal directly from verified JWT claims
+                    java.util.Collection<org.springframework.security.core.GrantedAuthority> authorities =
+                            roles.stream()
+                                    .map(org.springframework.security.core.authority.SimpleGrantedAuthority::new)
+                                    .collect(java.util.stream.Collectors.toList());
+                    userDetails = new UserPrincipal(userId, email, "", authorities, true);
+                } else {
+                    // Fallback to database lookup if token lacks uid or roles
+                    userDetails = userDetailsService.loadUserByUsername(email);
+                }
 
                 if (jwtUtil.validateToken(jwt, userDetails)) {
                     UsernamePasswordAuthenticationToken authentication =

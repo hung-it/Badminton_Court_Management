@@ -32,7 +32,7 @@ start
 :Tạo URL Cổng thanh toán (VNPay Sandbox);
 
 |Khách Hàng|
-:Mở App Ngân hàng quét mã QR;
+:Mở App Ngân hàng quét mã QR VNPay;
 :Thanh toán thành công;
 
 |Cổng Thanh Toán|

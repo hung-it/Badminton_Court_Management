@@ -9,7 +9,10 @@ import com.bcm.entity.Role;
 import com.bcm.entity.User;
 import com.bcm.entity.Customer;
 import com.bcm.repository.CustomerRepository;
+import com.bcm.exception.BadRequestException;
 import com.bcm.exception.DuplicateResourceException;
+import com.bcm.exception.ResourceNotFoundException;
+import com.bcm.security.UserPrincipal;
 import com.bcm.repository.RoleRepository;
 import com.bcm.repository.UserRepository;
 import com.bcm.util.JwtUtil;
@@ -80,22 +83,11 @@ public class AuthService {
         log.info("New user registered: {}", savedUser.getEmail());
 
         // Generate tokens
-        String accessToken = jwtUtil.generateAccessToken(
-                org.springframework.security.core.userdetails.User.builder()
-                        .username(savedUser.getEmail())
-                        .password(savedUser.getPasswordHash())
-                        .authorities("ROLE_CUSTOMER")
-                        .build()
-        );
+        UserPrincipal principal = UserPrincipal.create(savedUser);
+        String accessToken = jwtUtil.generateAccessToken(principal);
         String refreshToken = jwtUtil.generateRefreshToken(savedUser.getEmail());
 
-        UserResponse userResponse = UserResponse.builder()
-                .id(savedUser.getId().toString())
-                .email(savedUser.getEmail())
-                .roles(savedUser.getRoles().stream()
-                        .map(Role::getRoleName)
-                        .collect(Collectors.toSet()))
-                .build();
+        UserResponse userResponse = UserResponse.fromEntity(savedUser);
 
         return new LoginResponse(accessToken, refreshToken, userResponse);
     }
@@ -116,19 +108,15 @@ public class AuthService {
 
         // Get user from database
         User user = userRepository.findByEmailAndDeletedAtIsNull(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         // Generate tokens
-        String accessToken = jwtUtil.generateAccessToken(userDetails);
+        UserPrincipal principal = authentication.getPrincipal() instanceof UserPrincipal p
+                ? p : UserPrincipal.create(user);
+        String accessToken = jwtUtil.generateAccessToken(principal);
         String refreshToken = jwtUtil.generateRefreshToken(user.getEmail());
 
-        UserResponse userResponse = UserResponse.builder()
-                .id(user.getId().toString())
-                .email(user.getEmail())
-                .roles(user.getRoles().stream()
-                        .map(Role::getRoleName)
-                        .collect(Collectors.toSet()))
-                .build();
+        UserResponse userResponse = UserResponse.fromEntity(user);
 
         log.info("User logged in: {}", user.getEmail());
 
@@ -145,8 +133,8 @@ public class AuthService {
         String refreshToken = request.getRefreshToken();
 
         // Validate refresh token
-        if (!jwtUtil.validateToken(refreshToken)) {
-            throw new RuntimeException("Invalid or expired refresh token");
+        if (!jwtUtil.validateToken(refreshToken) || !jwtUtil.isRefreshToken(refreshToken)) {
+            throw new BadRequestException("Invalid or expired refresh token");
         }
 
         // Extract email from refresh token
@@ -154,27 +142,14 @@ public class AuthService {
 
         // Get user
         User user = userRepository.findByEmailAndDeletedAtIsNull(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         // Generate new tokens
-        UserDetails userDetails = org.springframework.security.core.userdetails.User.builder()
-                .username(user.getEmail())
-                .password(user.getPasswordHash())
-                .authorities(user.getRoles().stream()
-                        .map(role -> "ROLE_" + role.getRoleName())
-                        .toArray(String[]::new))
-                .build();
-
-        String newAccessToken = jwtUtil.generateAccessToken(userDetails);
+        UserPrincipal principal = UserPrincipal.create(user);
+        String newAccessToken = jwtUtil.generateAccessToken(principal);
         String newRefreshToken = jwtUtil.generateRefreshToken(user.getEmail());
 
-        UserResponse userResponse = UserResponse.builder()
-                .id(user.getId().toString())
-                .email(user.getEmail())
-                .roles(user.getRoles().stream()
-                        .map(Role::getRoleName)
-                        .collect(Collectors.toSet()))
-                .build();
+        UserResponse userResponse = UserResponse.fromEntity(user);
 
         log.info("Token refreshed for user: {}", user.getEmail());
 

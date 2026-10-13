@@ -16,7 +16,7 @@ Database đã được nâng cấp từ **v1.0.0** → **v1.1.0** với các tha
 - **Số indexes:** 30+ indexes (bao gồm UNIQUE, performance, partial indexes)
 - **Số constraints:** 40+ constraints (PK, FK, UNIQUE, CHECK)
 - **Locking strategies:** 2 types (Pessimistic cho bookings, Optimistic cho products)
-- **Payment methods:** VNPay only
+- **Payment methods:** 3 types (VNPay, CASH, BANK_TRANSFER)
 - **Promotion types:** 3 tiers (PRODUCT, INVOICE_TOTAL, VOUCHER)
 
 ---
@@ -59,7 +59,7 @@ WHERE transaction_id IS NOT NULL;
 
 ### 1. Core System (2 bảng)
 - `users` - Tài khoản đăng nhập (Customer + Staff)
-- `roles` - Phân quyền (CUSTOMER, STAFF, MANAGER, ADMIN)
+- `roles` - Phân quyền (CUSTOMER, STAFF, ADMIN)
 
 ### 2. Master Data (4 bảng)
 - `courts` - Danh sách sân
