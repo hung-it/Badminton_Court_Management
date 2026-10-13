@@ -66,6 +66,7 @@ class PosServiceTest {
                 null,
                 "CASH",
                 BigDecimal.ZERO,
+                BigDecimal.ZERO,
                 List.of(new PosSaleItemRequest(productId, 1)));
 
         BadRequestException exception = assertThrows(

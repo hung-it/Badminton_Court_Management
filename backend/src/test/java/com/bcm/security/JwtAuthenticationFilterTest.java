@@ -47,7 +47,7 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    @DisplayName("Filter rejects Refresh Token presented in Authorization header")
+    @DisplayName("Filter rejects Refresh Token presented in Authorization header with 401")
     void filterRejectsRefreshTokenInAuthorizationHeader() throws Exception {
         String refreshToken = jwtUtil.generateRefreshToken("user@example.com");
 
@@ -58,8 +58,10 @@ class JwtAuthenticationFilterTest {
 
         filter.doFilter(request, response, filterChain);
 
+        // Refresh token must NOT be accepted in Authorization header
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
-        verify(filterChain).doFilter(request, response);
+        assertThat(response.getStatus()).isEqualTo(401);
+        verifyNoInteractions(filterChain);
         verifyNoInteractions(userDetailsService);
     }
 

@@ -155,11 +155,15 @@ public class JwtUtil {
 
     /**
      * Validate token (without user details)
+     * Verifies signature via extractAllClaims() to reject tampered tokens,
+     * then checks expiration. A token with a forged signature will fail
+     * parseSignedClaims() and return false.
      * @param token JWT token
-     * @return true if valid and not expired
+     * @return true if signature is valid and not expired
      */
     public Boolean validateToken(String token) {
         try {
+            extractAllClaims(token);
             return !isTokenExpired(token);
         } catch (Exception e) {
             return false;

@@ -17,6 +17,12 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
 	    @Param("bookingId") UUID bookingId,
 	    @Param("status") String status);
 
+	@Query("select coalesce(sum(i.discountAmount), 0) from Invoice i "
+	    + "where i.bookingId = :bookingId and i.status = :status")
+	BigDecimal sumDiscountAmountByBookingIdAndStatus(
+	    @Param("bookingId") UUID bookingId,
+	    @Param("status") String status);
+
 	default BigDecimal sumProductAmountByBookingIdAndStatus(UUID bookingId, String status) {
 		return sumProductFeeByBookingIdAndStatus(bookingId, status);
 	}

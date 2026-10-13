@@ -39,7 +39,9 @@ public class CheckoutService {
         BigDecimal courtFee = valueOrZero(booking.getCourtFee());
         BigDecimal productFee = valueOrZero(
                 invoiceRepository.sumProductFeeByBookingIdAndStatus(bookingId, PENDING_POS_STATUS));
-        BigDecimal totalAmount = courtFee.add(productFee);
+        BigDecimal discountAmount = valueOrZero(
+                invoiceRepository.sumDiscountAmountByBookingIdAndStatus(bookingId, PENDING_POS_STATUS));
+        BigDecimal totalAmount = courtFee.add(productFee).subtract(discountAmount);
         UUID customerId = booking.getCustomer() != null ? booking.getCustomer().getId() : null;
 
         Invoice invoice = Invoice.builder()
@@ -49,7 +51,7 @@ public class CheckoutService {
                 .status(PAID_STATUS)
                 .courtFee(courtFee)
                 .productFee(productFee)
-                .discountAmount(BigDecimal.ZERO)
+                .discountAmount(discountAmount)
                 .totalAmount(totalAmount)
                 .build();
         Invoice savedInvoice = invoiceRepository.saveAndFlush(invoice);
@@ -76,6 +78,7 @@ public class CheckoutService {
                 .invoiceId(savedInvoice.getId())
                 .courtFee(courtFee)
                 .productFee(productFee)
+                .discountAmount(discountAmount)
                 .totalAmount(totalAmount)
                 .build();
         return ApiResponse.success("Checkout thành công", response);

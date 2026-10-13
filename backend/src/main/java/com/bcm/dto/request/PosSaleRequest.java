@@ -29,6 +29,9 @@ public class PosSaleRequest {
     @JsonProperty("court_fee")
     private BigDecimal courtFee = BigDecimal.ZERO;
 
+    @JsonProperty("discount_amount")
+    private BigDecimal discountAmount = BigDecimal.ZERO;
+
     public BigDecimal getCourtAmount() {
         return courtFee;
     }

@@ -24,6 +24,9 @@ public class CheckoutResponse {
     @JsonProperty("product_fee")
     private BigDecimal productFee;
 
+    @JsonProperty("discount_amount")
+    private BigDecimal discountAmount;
+
     @JsonProperty("total_amount")
     private BigDecimal totalAmount;
 

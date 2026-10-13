@@ -6,6 +6,7 @@ import com.bcm.entity.Customer;
 import com.bcm.entity.Invoice;
 import com.bcm.entity.InvoiceDetail;
 import com.bcm.entity.Product;
+import com.bcm.entity.ProductType;
 import com.bcm.exception.BadRequestException;
 import com.bcm.exception.ResourceNotFoundException;
 import com.bcm.repository.CustomerRepository;
@@ -48,12 +49,14 @@ public class PosService {
                         .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy sản phẩm"));
                 int quantity = entry.getValue();
 
-                if (product.getStockQuantity() < quantity) {
-                    throw new BadRequestException(INSUFFICIENT_STOCK_MESSAGE);
+                // Only GOODS products have physical inventory; SERVICE products are non-stocked
+                if (product.getType() == ProductType.GOODS) {
+                    if (product.getStockQuantity() < quantity) {
+                        throw new BadRequestException(INSUFFICIENT_STOCK_MESSAGE);
+                    }
+                    product.setStockQuantity(product.getStockQuantity() - quantity);
+                    productRepository.saveAndFlush(product);
                 }
-
-                product.setStockQuantity(product.getStockQuantity() - quantity);
-                productRepository.saveAndFlush(product);
 
                 BigDecimal lineAmount = product.getPrice().multiply(BigDecimal.valueOf(quantity));
                 productFee = productFee.add(lineAmount);
@@ -70,6 +73,12 @@ public class PosService {
         BigDecimal courtFee = request.getCourtFee() == null
                 ? BigDecimal.ZERO
                 : request.getCourtFee();
+        BigDecimal discountAmount = request.getDiscountAmount() == null
+                ? BigDecimal.ZERO
+                : request.getDiscountAmount();
+        if (discountAmount.signum() < 0) {
+            throw new BadRequestException("Discount amount cannot be negative");
+        }
         String paymentMethod = request.getPaymentMethod() == null ? "CASH" : request.getPaymentMethod().trim().toUpperCase();
         if ("QR".equals(paymentMethod)) {
             paymentMethod = "BANK_TRANSFER";
@@ -86,8 +95,8 @@ public class PosService {
                 .status(request.getBookingId() == null ? "PAID" : "DRAFT")
                 .courtFee(courtFee)
                 .productFee(productFee)
-                .discountAmount(BigDecimal.ZERO)
-                .totalAmount(courtFee.add(productFee))
+                .discountAmount(discountAmount)
+                .totalAmount(courtFee.add(productFee).subtract(discountAmount))
                 .createdBy(request.getStaffId())
                 .updatedBy(request.getStaffId())
                 .build();

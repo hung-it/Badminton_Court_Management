@@ -44,16 +44,16 @@ public class SecurityConfig {
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, authException) -> {
                             response.setContentType("application/json;charset=UTF-8");
-                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                             response.getWriter().write(
-                                    "{\"success\":false,\"message\":\"Access denied: Authentication required\"}"
+                                    "{\"success\":false,\"message\":\"Authentication required\"}"
                             );
                         })
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
                             response.setContentType("application/json;charset=UTF-8");
                             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                             response.getWriter().write(
-                                    "{\"success\":false,\"message\":\"Access denied: You don't have permission to access this resource\"}"
+                                    "{\"success\":false,\"message\":\"Access denied: insufficient permissions\"}"
                             );
                         })
                 )

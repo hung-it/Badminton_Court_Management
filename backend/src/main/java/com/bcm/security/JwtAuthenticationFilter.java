@@ -48,7 +48,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // Reject refresh tokens presented in Authorization header
                 if (!jwtUtil.isAccessToken(jwt)) {
                     log.warn("Rejected non-access token in Authorization header");
-                    filterChain.doFilter(request, response);
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.getWriter().write(
+                            "{\"success\":false,\"message\":\"Refresh token cannot be used for authentication\"}"
+                    );
                     return;
                 }
 
