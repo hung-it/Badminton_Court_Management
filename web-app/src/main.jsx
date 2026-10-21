@@ -5,6 +5,7 @@ import CustomerCourts from './CustomerCourts.jsx';
 import CustomerGuide from './CustomerGuide.jsx';
 import CustomerContact from './CustomerContact.jsx';
 import CustomerCheckout from './CustomerCheckout.jsx';
+import PaymentResult from './PaymentResult.jsx';
 
 if (window.location.pathname === '/') {
   window.history.replaceState({}, '', '/courts');
@@ -14,6 +15,7 @@ const pages = {
   '/guide': {component: CustomerGuide, title: 'Hướng dẫn · Sân cầu lông'},
   '/contact': {component: CustomerContact, title: 'Liên hệ · Sân cầu lông'},
   '/checkout': {component: CustomerCheckout, title: 'Xác nhận đặt sân · Sân cầu lông'},
+  '/payment-result': {component: PaymentResult, title: 'Kết quả thanh toán · Sân cầu lông'},
 };
 const page = pages[window.location.pathname] || {component: CustomerCourts, title: 'Sân cầu lông · Đặt sân'};
 const Page = page.component;

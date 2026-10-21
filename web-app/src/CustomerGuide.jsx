@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from "react";
-import {api, CustomerLogin, readSession, SESSION_KEY} from "./CustomerCourts.jsx";
+import {api, readSession, SESSION_KEY} from "./CustomerCourts.jsx";
 import {assets, GuideFooter, GuideHeader, GuideIcon, SupportBanner} from "./CustomerLayout.jsx";
 import './customer-guide.css';
 export {GuideFooter, GuideHeader} from "./CustomerLayout.jsx";
@@ -80,11 +80,9 @@ export default function CustomerGuide() {
 
   useEffect(() => {
     if (!session?.accessToken) {
+      setBookingCount(0);
       setBookingLoading(false);
-      setBookingError({
-        status: 401,
-        message: 'Vui lòng đăng nhập lại để xem lịch đặt của bạn.',
-      });
+      setBookingError(null);
       return undefined;
     }
     let active = true;
@@ -115,7 +113,7 @@ export default function CustomerGuide() {
     setSession(null);
   }
 
-  if (!session) return <CustomerLogin onLogin={setSession}/>;
+
 
   return <div className="guide-page" id="guide-top">
     <GuideHeader session={session} bookingCount={bookingCount} bookingError={bookingError} bookingLoading={bookingLoading} onLogout={logout}/>

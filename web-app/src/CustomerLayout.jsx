@@ -39,20 +39,22 @@ export function SupportBanner({id = 'support-banner'}) {
 
 export function GuideHeader({session, bookingCount, bookingError, bookingLoading, onLogout, activePage = 'guide'}) {
   const [profileOpen, setProfileOpen] = useState(false);
-  const fullName = session.user?.fullName || 'Khách hàng';
+  const hasBookingError = Boolean(session && bookingError);
+  const isBookingLoading = Boolean(session && bookingLoading);
+  const fullName = session?.user?.fullName || 'Khách';
   const initials = fullName.split(/\s+/).map(part => part[0]).slice(-2).join('').toUpperCase();
 
   return <header className="guide-header" id="page-top">
     <div className="guide-utility-row">
       <a className="guide-support-link" href="tel:19001000"><GuideIcon src={assets.headset}/> Hỗ trợ: 1900 1000 <span>• 24/7</span></a>
       <div className="guide-account-area">
-        <a className="guide-bookings-link" href="/courts#upcoming-booking" aria-label={bookingError ? 'Không tải được lịch đặt của tôi' : bookingLoading ? 'Đang tải lịch đặt của tôi' : `Lịch đặt của tôi, ${bookingCount} lịch`}><GuideIcon src={assets.calendarCheck}/> Lịch đặt của tôi <b title={bookingError ? bookingError.message : undefined} aria-live="polite">{bookingError ? '!' : bookingLoading ? '…' : bookingCount}</b></a>
+        <a className="guide-bookings-link" href="/courts#upcoming-booking" aria-label={hasBookingError ? 'Không tải được lịch đặt của tôi' : isBookingLoading ? 'Đang tải lịch đặt của tôi' : `Lịch đặt của tôi, ${session ? Number(bookingCount) || 0 : 0} lịch`}><GuideIcon src={assets.calendarCheck}/> Lịch đặt của tôi <b title={hasBookingError ? bookingError.message : undefined} aria-live="polite">{!session ? 0 : hasBookingError ? '!' : isBookingLoading ? '…' : Number(bookingCount) || 0}</b></a>
         <span className="guide-divider" aria-hidden="true" />
         <div className="guide-profile-wrap">
-          <button className="guide-profile-button" aria-expanded={profileOpen} onClick={() => setProfileOpen(value => !value)}>
+          <button className="guide-profile-button" aria-expanded={session ? profileOpen : undefined} onClick={() => session && setProfileOpen(value => !value)} disabled={!session}>
             <span className="guide-avatar">{initials || 'KH'}</span><span>{fullName}</span><GuideIcon src={assets.chevronDown} />
           </button>
-          {profileOpen && <div className="guide-profile-menu"><span>{session.user?.email}</span><button onClick={onLogout}>Đăng xuất</button></div>}
+          {profileOpen && session && <div className="guide-profile-menu"><span>{session.user?.email}</span><button onClick={onLogout}>Đăng xuất</button></div>}
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {api, CustomerLogin, readSession, SESSION_KEY} from './CustomerCourts.jsx';
+import {api, readSession, SESSION_KEY} from './CustomerCourts.jsx';
 import {assets, GuideFooter, GuideHeader, GuideIcon} from './CustomerLayout.jsx';
 import './customer-contact.css';
 
@@ -43,8 +43,9 @@ export default function CustomerContact() {
 
   useEffect(() => {
     if (!session?.accessToken) {
+      setBookingCount(0);
       setBookingLoading(false);
-      setBookingError({status: 401, message: 'Vui lòng đăng nhập lại để xem lịch đặt của bạn.'});
+      setBookingError(null);
       return undefined;
     }
     let active = true;
@@ -108,7 +109,7 @@ export default function CustomerContact() {
     setNotice('Website chưa gửi yêu cầu đến máy chủ. Hãy kiểm tra ứng dụng email, gửi thư và đính kèm tệp thủ công nếu có.');
   }
 
-  if (!session) return <CustomerLogin onLogin={setSession}/>;
+
 
   return <div className="guide-page contact-page" id="contact-top">
     <GuideHeader session={session} bookingCount={bookingCount} bookingError={bookingError} bookingLoading={bookingLoading} onLogout={logout} activePage="contact"/>
@@ -137,9 +138,9 @@ export default function CustomerContact() {
           {notice && <p className="contact-form-notice" role="status">{notice}</p>}
           <form onSubmit={submitRequest}>
             <div className="contact-form-grid">
-              <label className="contact-field">Họ và tên <b>*</b><input name="name" autoComplete="name" required maxLength={255} defaultValue={session.user?.fullName || ''} placeholder="Nhập họ và tên"/></label>
+              <label className="contact-field">Họ và tên <b>*</b><input name="name" autoComplete="name" required maxLength={255} defaultValue={session?.user?.fullName || ''} placeholder="Nhập họ và tên"/></label>
               <label className="contact-field">Số điện thoại <b>*</b><input name="phone" type="tel" autoComplete="tel" required pattern="[0-9+() .-]{10,20}" maxLength={20} placeholder="Nhập số điện thoại"/></label>
-              <label className="contact-field contact-field-wide">Email <b>*</b><input name="email" type="email" autoComplete="email" required maxLength={254} placeholder="Nhập email để nhận phản hồi" defaultValue={session.user?.email || ''}/></label>
+              <label className="contact-field contact-field-wide">Email <b>*</b><input name="email" type="email" autoComplete="email" required maxLength={254} placeholder="Nhập email để nhận phản hồi" defaultValue={session?.user?.email || ''}/></label>
               <label className="contact-field">Chủ đề <b>*</b><select name="topic" defaultValue="Hỗ trợ đặt sân" required><option>Hỗ trợ đặt sân</option><option>Thanh toán</option><option>Thông tin tài khoản</option><option>Góp ý dịch vụ</option><option>Khác</option></select></label>
               <label className="contact-field">Mã đặt sân <span>(không bắt buộc)</span><input name="bookingCode" maxLength={64} placeholder="VD: SC-241026"/></label>
               <label className="contact-field contact-field-wide">Nội dung cần hỗ trợ <b>*</b><textarea name="message" required minLength={10} maxLength={3000} placeholder="Bạn đang gặp vấn đề gì? Hãy chia sẻ thông tin sân, ngày chơi và nội dung cần hỗ trợ…"/></label>

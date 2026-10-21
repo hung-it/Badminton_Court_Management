@@ -60,41 +60,6 @@ function CourtIllustration() {
   return <div className="customer-court-illustration" aria-label="Ảnh sân chưa được cung cấp" role="img"><div className="court-lines"><i/><b/></div><span>Chưa có ảnh sân</span></div>;
 }
 
-export function CustomerLogin({onLogin}) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState('');
-
-  async function submit(event) {
-    event.preventDefault();
-    setPending(true);
-    setError('');
-    try {
-      const session = await api('/auth/login', null, {method: 'POST', body: JSON.stringify({email, password})});
-      if (!session?.user?.roles?.includes('CUSTOMER')) {
-        throw new Error('Tài khoản này chưa có quyền khách hàng.');
-      }
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-      onLogin(session);
-    } catch (reason) {
-      setError(reason.message);
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return <main className="customer-login-wrap"><form className="customer-login-card" onSubmit={submit}>
-    <span className="customer-eyebrow">SÂN CẦU LÔNG · TP.HCM</span>
-    <h1>Đăng nhập khách hàng</h1>
-    <p>Đăng nhập để xem sân trống và lịch đặt sắp tới của bạn.</p>
-    <label>Email<input type="email" autoComplete="username" required value={email} onChange={event => setEmail(event.target.value)}/></label>
-    <label>Mật khẩu<input type="password" autoComplete="current-password" minLength="6" required value={password} onChange={event => setPassword(event.target.value)}/></label>
-    {error && <div role="alert" className="customer-alert customer-alert-error">{error}</div>}
-    <button className="customer-button customer-button-primary customer-login-submit" disabled={pending}>{pending ? 'Đang đăng nhập…' : 'Đăng nhập'}</button>
-  </form></main>;
-}
-
 export default function CustomerCourts() {
   const [session, setSession] = useState(readSession);
   const [courts, setCourts] = useState([]);
@@ -120,20 +85,19 @@ export default function CustomerCourts() {
   const [notice, setNotice] = useState('');
 
   const fetchPageData = useCallback(async () => {
-    if (!session) return;
     setLoading(true);
     setError('');
     try {
       const [courtData, slotData, availabilityData, bookingPage] = await Promise.all([
         api('/public/courts', null),
         api('/public/time-slots', null),
-        api(`/availability?date=${encodeURIComponent(date)}`, session.accessToken),
-        api('/bookings?page=0&size=20', session.accessToken).catch(() => null),
+        session ? api(`/availability?date=${encodeURIComponent(date)}`, session.accessToken) : Promise.resolve(null),
+        session ? api('/bookings?page=0&size=20', session.accessToken).catch(() => null) : Promise.resolve(null),
       ]);
       setCourts(Array.isArray(courtData) ? courtData : []);
       setSlots(Array.isArray(slotData) ? slotData : []);
       setAvailability(availabilityData);
-      setBookings({items: bookingPage?.content || [], total: bookingPage ? Number(bookingPage.totalElements) || 0 : null, upcoming: null, error: !bookingPage});
+      setBookings({items: bookingPage?.content || [], total: bookingPage ? Number(bookingPage.totalElements) || 0 : session ? null : 0, upcoming: null, error: Boolean(session && !bookingPage)});
       setSelectedSlot(current => current || slotData?.[0]?.id || '');
       const candidates = (bookingPage?.content || []).filter(item => ['PENDING', 'PAID'].includes(item.status));
       let upcoming = null;
@@ -162,7 +126,7 @@ export default function CustomerCourts() {
   useEffect(() => { fetchPageData(); }, [fetchPageData]);
 
   useEffect(() => {
-    if (!session || !selectedSlot || !courts.length) {
+    if (!selectedSlot || !courts.length) {
       setQuotes({});
       return;
     }
@@ -179,14 +143,14 @@ export default function CustomerCourts() {
       if (active) setQuotes(Object.fromEntries(entries));
     }).finally(() => { if (active) setQuoteLoading(false); });
     return () => { active = false; };
-  }, [courts, selectedSlot, session]);
+  }, [courts, selectedSlot]);
 
   const availabilityByCourt = useMemo(() => new Map((availability?.courts || []).map(court => [court.courtId, court])), [availability]);
   const visibleCourts = useMemo(() => courts.filter(court => {
     const term = query.trim().toLocaleLowerCase('vi');
     const courtAvailability = availabilityByCourt.get(court.id);
     const availableSlots = courtAvailability?.slots?.filter(slot => slot.available) || [];
-    const slotAvailable = !selectedSlot || availableSlots.some(slot => slot.timeSlotId === selectedSlot);
+    const slotAvailable = !session || !selectedSlot || availableSlots.some(slot => slot.timeSlotId === selectedSlot);
     const price = quotes[court.id]?.price;
     return (!term || `${court.name} ${court.courtNumber}`.toLocaleLowerCase('vi').includes(term))
       && (!onlyAvailable || slotAvailable)
@@ -203,17 +167,15 @@ export default function CustomerCourts() {
     setError('');
   }
 
-  if (!session) return <CustomerLogin onLogin={setSession}/>;
-
   return <div className="customer-page">
-    <GuideHeader session={session} bookingCount={bookings.total ?? 0} bookingError={bookings.error ? {message: 'Không tải được lịch đặt.'} : null} bookingLoading={bookings.total === null && !bookings.error} onLogout={logout} activePage="courts"/>
+    <GuideHeader session={session} bookingCount={bookings.total ?? 0} bookingError={bookings.error ? {message: 'Không tải được lịch đặt.'} : null} bookingLoading={Boolean(session && bookings.total === null && !bookings.error)} onLogout={logout} activePage="courts"/>
 
     <main className="customer-content customer-main">
       <section className="customer-welcome-row" aria-labelledby="welcome-title">
         <div className="customer-welcome">
           <div className="customer-breadcrumb"><a href="#page-top">Trang chủ</a><GuideIcon src={assets.chevronRight}/><strong>Sân cầu lông</strong></div>
           <h1 id="welcome-title">Hôm nay, mình ra sân nhé!</h1>
-          <p>Chào {session.user?.fullName?.split(/\s+/)[0] || 'bạn'}! Tìm sân yêu thích và giữ ngay khung giờ cho hội bạn.</p>
+          <p>{session ? `Chào ${session.user?.fullName?.split(/\s+/)[0] || 'bạn'}! Tìm sân yêu thích và giữ ngay khung giờ cho hội bạn.` : 'Tìm sân yêu thích và xem giá theo khung giờ. Đăng nhập sẽ được yêu cầu khi bạn bắt đầu đặt sân.'}</p>
         </div>
         <aside className="customer-upcoming-card" id="upcoming-booking" aria-live="polite">
           <div className="customer-card-kicker"><Icon name="calendar" size={17}/> LỊCH CHƠI SẮP TỚI</div>
@@ -221,7 +183,7 @@ export default function CustomerCourts() {
             <strong>{bookings.upcoming.detail.courtName}</strong>
             <span>{bookings.upcoming.detail.bookingDate} • {shortTime(bookings.upcoming.detail.startTime)} – {shortTime(bookings.upcoming.detail.endTime)}</span>
             <a href="#upcoming-booking">Mã đặt {bookings.upcoming.header.bookingId.slice(0, 8)} · {bookings.upcoming.header.status}</a>
-          </> : <><strong>{loading ? 'Đang tải lịch đặt…' : bookings.error ? 'Không tải được lịch đặt' : 'Chưa có lịch chơi sắp tới'}</strong><span>{loading ? ' ' : bookings.error ? 'Thử lại để xem các lịch đặt của bạn.' : 'Các lịch đặt sắp tới của bạn sẽ hiển thị ở đây.'}</span><a href={bookings.error ? '#upcoming-booking' : '#search-courts'} onClick={bookings.error ? event => {event.preventDefault(); fetchPageData();} : undefined}>{bookings.error ? 'Tải lại lịch đặt' : 'Tìm sân phù hợp →'}</a></>}
+          </> : <><strong>{!session ? 'Lịch chơi sắp tới' : loading ? 'Đang tải lịch đặt…' : bookings.error ? 'Không tải được lịch đặt' : 'Chưa có lịch chơi sắp tới'}</strong><span>{!session ? 'Đăng nhập để xem lịch đặt của bạn.' : loading ? ' ' : bookings.error ? 'Thử lại để xem các lịch đặt của bạn.' : 'Các lịch đặt sắp tới của bạn sẽ hiển thị ở đây.'}</span><a href={bookings.error ? '#upcoming-booking' : '#search-courts'} onClick={bookings.error ? event => {event.preventDefault(); fetchPageData();} : undefined}>{bookings.error ? 'Tải lại lịch đặt' : 'Tìm sân phù hợp →'}</a></>}
         </aside>
       </section>
 
@@ -269,8 +231,8 @@ export default function CustomerCourts() {
                   <div className="customer-court-location"><Icon name="pin" size={15}/> TP. Hồ Chí Minh</div>
                   <h3>{court.name}</h3>
                   <p className="customer-court-type">{court.type === 'WOODEN_FLOOR' ? 'Sàn gỗ' : 'Thảm tiêu chuẩn'} <span>•</span> Mã sân {String(court.courtNumber).padStart(2, '0')}</p>
-                  <div className="customer-slot-row"><span>Khung giờ còn:</span>{availableSlots.length ? availableSlots.slice(0, 4).map(slot => <button key={slot.timeSlotId} className={slot.timeSlotId === selectedSlot ? 'customer-slot-chip selected' : 'customer-slot-chip'} onClick={() => setSelectedSlot(slot.timeSlotId)}>{shortTime(slot.startTime)} – {shortTime(slot.endTime)}</button>) : <span className="customer-no-slots">Không còn khung giờ trống trong ngày</span>}</div>
-                  <div className="customer-court-price-row"><div><strong>{priceText}</strong><span>/ khung giờ</span><small>{quote ? `Giá cho ${shortTime(quote.startTime || slots.find(slot => slot.id === selectedSlot)?.startTime)} – ${shortTime(quote.endTime || slots.find(slot => slot.id === selectedSlot)?.endTime)}` : 'Chọn khung giờ để xem giá'}</small></div><button className="customer-button customer-button-primary customer-book-button" disabled={!selectedSlot || !selectedAvailable || !quote} onClick={() => {
+                  <div className="customer-slot-row"><span>{session ? 'Khung giờ còn:' : 'Khung giờ:'}</span>{!session ? <span>Đăng nhập để kiểm tra tình trạng trống</span> : availableSlots.length ? availableSlots.slice(0, 4).map(slot => <button key={slot.timeSlotId} className={slot.timeSlotId === selectedSlot ? 'customer-slot-chip selected' : 'customer-slot-chip'} onClick={() => setSelectedSlot(slot.timeSlotId)}>{shortTime(slot.startTime)} – {shortTime(slot.endTime)}</button>) : <span className="customer-no-slots">Không còn khung giờ trống trong ngày</span>}</div>
+                  <div className="customer-court-price-row"><div><strong>{priceText}</strong><span>/ khung giờ</span><small>{quote ? `Giá cho ${shortTime(quote.startTime || slots.find(slot => slot.id === selectedSlot)?.startTime)} – ${shortTime(quote.endTime || slots.find(slot => slot.id === selectedSlot)?.endTime)}` : 'Chọn khung giờ để xem giá'}</small></div><button className="customer-button customer-button-primary customer-book-button" disabled={!session || !selectedSlot || !selectedAvailable || !quote} onClick={() => {
                     sessionStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify({
                       courtId: court.id, bookingDate: date, timeSlotId: selectedSlot,
                       courtName: court.name, courtNumber: court.courtNumber, courtType: court.type,

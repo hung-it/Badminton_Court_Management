@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import './customer-checkout.css';
-import {api, CustomerLogin, readSession, SESSION_KEY, BOOKING_DRAFT_KEY} from './CustomerCourts.jsx';
+import {api, readSession, SESSION_KEY, BOOKING_DRAFT_KEY} from './CustomerCourts.jsx';
 import {GuideFooter, GuideHeader} from './CustomerLayout.jsx';
 
 const asset = name => `/assets/checkout-${name}`;
@@ -161,6 +161,9 @@ export default function CustomerCheckout() {
         method: 'POST', body: JSON.stringify({paymentMethod}),
       });
       if (payment?.gatewayPreparation?.checkoutReady && payment.gatewayPreparation.checkoutUrl) {
+        const paymentDraft = {...draft, bookingId, paymentAttemptId: payment.paymentAttemptId};
+        sessionStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify(paymentDraft));
+        setDraft(paymentDraft);
         window.location.assign(payment.gatewayPreparation.checkoutUrl);
         return;
       }
@@ -174,7 +177,7 @@ export default function CustomerCheckout() {
   }
 
   if (!session) {
-    return <div className="checkout-login-page"><CustomerLogin onLogin={value => {sessionStorage.setItem(SESSION_KEY, JSON.stringify(value)); setSession(value);}}/></div>;
+    return <div className="checkout-page"><GuideHeader session={null} activePage="checkout"/><main className="checkout-empty"><h1>Đăng nhập để tiếp tục đặt sân</h1><p>Việc xác nhận đặt sân và thanh toán yêu cầu tài khoản khách hàng.</p><a className="checkout-primary-link" href="/courts#search-courts">Quay lại danh sách sân</a></main><GuideFooter activePage="courts"/></div>;
   }
 
   if (!draft?.courtId || !draft?.timeSlotId || !draft?.bookingDate) {
