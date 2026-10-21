@@ -34,7 +34,9 @@ public class CorsConfig {
         // Cho phép origins (frontend URLs)
         config.setAllowedOrigins(Arrays.asList(
                 "http://localhost:5173",  // Vite dev server
-                "http://localhost:3000"   // React dev server
+                "http://localhost:3000",  // React dev server
+                "http://127.0.0.1:5174",  // Customer Vite dev server
+                "http://localhost:5174"  // Customer Vite dev server
                 // TODO: Thêm production domain khi deploy
         ));
 

@@ -1,0 +1,54 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --color-page-bg: #f0fdf4;
+  --color-surface: #fff;
+  --color-surface-subtle: #fbfdfc;
+  --color-mint: #d1fae5;
+  --color-primary-dark: #065f46;
+  --color-primary: #047857;
+  --color-accent: #16a34a;
+  --color-border: #d5e9de;
+  --color-border-accent: #d1fae5;
+  --color-muted: #60766a;
+  --color-focus: var(--color-primary);
+  --color-primary-hover: var(--color-primary);
+  --color-primary-active: #065f46;
+  --font-family-base: Inter, Arial, sans-serif;
+  --font-size-page-title: 44px;
+  --line-height-page-title: 1.18;
+  --font-size-body: 14px;
+  --line-height-body: 1.5;
+  --container-max-width: 1280px;
+  --radius-pill: 999px;
+  --radius-hero: 24px;
+  --radius-card: 16px;
+  --radius-control: 12px;
+  --radius-small: 8px;
+  --shadow-action: 0 1px 2px #0000000d;
+  --motion-fast: 160ms;
+  --easing-standard: ease;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+.customer-page {
+  --cc-green-900: var(--color-primary-dark);
+  --cc-green-800: var(--color-primary);
+  --cc-green-600: var(--color-accent);
+  --cc-mint: var(--color-page-bg);
+  --cc-border: var(--color-border);
+  --cc-muted: var(--color-muted);
+}
+
