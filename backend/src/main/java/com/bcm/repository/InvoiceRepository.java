@@ -29,10 +29,15 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
 
     java.util.List<Invoice> findByBookingIdAndStatus(UUID bookingId, String status);
 
-	    @Query("select coalesce(sum(i.courtFee), 0), coalesce(sum(i.productFee), 0) "
+	    interface RevenueTotals {
+            BigDecimal getCourtFee();
+            BigDecimal getProductFee();
+        }
+
+	    @Query("select coalesce(sum(i.courtFee), 0) as courtFee, coalesce(sum(i.productFee), 0) as productFee "
 		    + "from Invoice i where i.status = :status and i.deletedAt is null "
 		    + "and i.createdAt >= :from and i.createdAt < :to")
-	    Object[] sumRevenueByPeriod(
+	    RevenueTotals sumRevenueByPeriod(
 		    @Param("status") String status,
 		    @Param("from") LocalDateTime from,
 		    @Param("to") LocalDateTime to);
