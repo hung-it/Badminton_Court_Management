@@ -2,22 +2,49 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: bcm-postgres
-    restart: always
+    restart: unless-stopped
+
     environment:
       POSTGRES_DB: badminton_court_db
       POSTGRES_USER: bcm_admin
-      POSTGRES_PASSWORD: 12345
+      POSTGRES_PASSWORD: "12345"
       PGDATA: /var/lib/postgresql/data/pgdata
+
     ports:
       - "5432:5432"
+
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/migration.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./db/migration.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bcm_admin -d badminton_court_db"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+    container_name: bcm-backend
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/badminton_court_db
+      SPRING_DATASOURCE_USERNAME: bcm_admin
+      SPRING_DATASOURCE_PASSWORD: "12345"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+
+    ports:
+      - "8080:8080"
+
 
 volumes:
   postgres_data:

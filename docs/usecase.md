@@ -2,6 +2,8 @@
 
 Sơ đồ này đã phân chia rõ 3 nhóm người dùng (Actors) theo đúng thiết kế CSDL mới: Khách Hàng (Customers), Nhân Viên (Staffs) và Chủ Sân (Admins).
 
+> **Lưu ý nghiệp vụ:** Hệ thống **không cho phép khách hàng tự hủy đặt sân (No Cancellation)** sau khi đã thanh toán để đảm bảo doanh thu và lịch vận hành của chủ sân (theo đúng quy tắc không có trạng thái `CANCELLED` trong CSDL).
+
 ## Mã nguồn PlantUML
 
 ```plantuml
@@ -23,16 +25,16 @@ rectangle "Hệ thống Quản lý Sân Cầu Lông (BCM)" {
     ' Tính năng của Khách hàng
     usecase "Đăng ký / Đăng nhập" as UC1
     usecase "Tìm kiếm Sân trống" as UC2
-    usecase "Đặt sân & Thanh toán Online" as UC3
-    usecase "Hủy lịch đặt sân" as UC4
-    usecase "Xem lịch sử giao dịch" as UC5
+    usecase "Đặt sân & Thanh toán Online (VNPay)" as UC3
+    usecase "Xem lịch sử đặt sân & biên lai" as UC4
+    usecase "Xem thông tin cá nhân" as UC5
     
     ' Tính năng của Nhân viên
     usecase "Check-in Sân cho khách" as UC6
     usecase "Bán hàng POS (Nước, Dịch vụ)" as UC7
     usecase "Tạo Hóa đơn (Invoices)" as UC8
     usecase "Tạo Phiếu Nhập Kho" as UC9
-    usecase "Quản lý Đơn hàng" as UC10
+    usecase "Quản lý Đơn hàng nhập" as UC10
     
     ' Tính năng của Admin / Chủ sân
     usecase "Quản lý Sân & Giá gốc" as UC11
@@ -66,7 +68,6 @@ Admin --> UC15
 
 ' Ràng buộc luồng (Includes / Extends)
 UC3 .> UC2 : <<include>>
-UC4 .> UC3 : <<extend>> (Chỉ khi chưa chơi)
 UC7 .> UC8 : <<include>>
 UC9 .> UC13 : <<extend>>
 @enduml

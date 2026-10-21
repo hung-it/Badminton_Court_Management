@@ -1,7 +1,9 @@
 package com.bcm.config;
 
+import com.bcm.entity.Customer;
 import com.bcm.entity.Role;
 import com.bcm.entity.User;
+import com.bcm.repository.CustomerRepository;
 import com.bcm.repository.RoleRepository;
 import com.bcm.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -14,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Set;
 
 /**
- * Data seeder to initialize database with default roles and admin user
+ * Data seeder to initialize database with default roles, admin user, and guest customer
  * Runs automatically on application startup
  */
 @Component
@@ -24,6 +26,7 @@ public class DataSeeder implements CommandLineRunner {
 
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
+    private final CustomerRepository customerRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
@@ -31,6 +34,7 @@ public class DataSeeder implements CommandLineRunner {
     public void run(String... args) {
         seedRoles();
         seedAdminUser();
+        seedGuestCustomer();
     }
 
     /**
@@ -42,17 +46,14 @@ public class DataSeeder implements CommandLineRunner {
 
             Role adminRole = Role.builder()
                     .roleName("ADMIN")
-                    .description("Administrator with full access")
                     .build();
 
             Role staffRole = Role.builder()
                     .roleName("STAFF")
-                    .description("Staff member managing bookings and courts")
                     .build();
 
             Role customerRole = Role.builder()
                     .roleName("CUSTOMER")
-                    .description("Regular customer making bookings")
                     .build();
 
             roleRepository.save(adminRole);
@@ -96,6 +97,41 @@ public class DataSeeder implements CommandLineRunner {
             log.info("   ⚠️  IMPORTANT: Change this password in production!");
         } else {
             log.info("Admin user already exists, skipping seeding");
+        }
+    }
+
+    /**
+     * Seed default guest customer "Khách vãng lai" for POS sales
+     */
+    private void seedGuestCustomer() {
+        String guestPhone = "0000000000";
+        if (customerRepository.findByPhone(guestPhone).isEmpty()) {
+            log.info("Seeding default guest customer...");
+
+            String guestEmail = "guest@bcm.com";
+            Role customerRole = roleRepository.findByRoleName("CUSTOMER")
+                    .orElseThrow(() -> new RuntimeException("CUSTOMER role not found"));
+
+            User guestUser = userRepository.findByEmail(guestEmail).orElseGet(() -> {
+                User u = User.builder()
+                        .email(guestEmail)
+                        .passwordHash(passwordEncoder.encode("guest123"))
+                        .fullName("Khách vãng lai")
+                        .phone(guestPhone)
+                        .address("Tại quầy")
+                        .roles(Set.of(customerRole))
+                        .build();
+                return userRepository.save(u);
+            });
+
+            Customer guestCustomer = new Customer();
+            guestCustomer.setUser(guestUser);
+            guestCustomer.setFullName("Khách vãng lai");
+            guestCustomer.setPhone(guestPhone);
+            guestCustomer.setAddress("Tại quầy");
+            customerRepository.save(guestCustomer);
+
+            log.info("✅ Default guest customer seeded (phone: 0000000000)");
         }
     }
 }

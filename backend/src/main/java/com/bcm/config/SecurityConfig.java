@@ -2,10 +2,12 @@ package com.bcm.config;
 
 import com.bcm.security.JwtAuthenticationFilter;
 
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -39,30 +41,44 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http.csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configure(http))
-                .authorizeHttpRequests(
-                        auth ->
-                                auth
-                                        // Public endpoints (note: context-path /api is already
-                                        // applied)
-                                        .requestMatchers(
-                                                "/api/auth/**",
-                                                "/api/health/**",
-                                                "/api/swagger-ui/**",
-                                                "/api/swagger-ui.html",
-                                                "/api/v3/api-docs/**",
-                                                "/api/api-docs/**",
-                                                // Also allow without /api prefix for direct access
-                                                "/api/public/**",
-                                                "/public/**",
-                                                "/auth/**",
-                                                "/health/**",
-                                                "/swagger-ui/**",
-                                                "/v3/api-docs/**")
-                                        .permitAll()
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setContentType("application/json;charset=UTF-8");
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            response.getWriter().write(
+                                    "{\"success\":false,\"message\":\"Authentication required\"}"
+                            );
+                        })
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            response.setContentType("application/json;charset=UTF-8");
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            response.getWriter().write(
+                                    "{\"success\":false,\"message\":\"Access denied: insufficient permissions\"}"
+                            );
+                        })
+                )
+                .authorizeHttpRequests(auth -> auth
+                        // Public endpoints (note: context-path /api is already applied)
+                        .requestMatchers(
+                                "/api/auth/**",
+                                "/api/health/**",
+                                "/api/swagger-ui/**",
+                                "/api/swagger-ui.html",
+                                "/api/v3/api-docs/**",
+                                "/api/api-docs/**",
+                                // Also allow without /api prefix for direct access
+                                "/api/public/**",
+                                "/public/**",
+                                "/auth/**",
+                                "/health/**",
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**", "/api-docs/**", "/swagger-ui.html"
+                        ).permitAll()
 
-                                        // Admin-only endpoints
-                                        .requestMatchers("/admin/**")
-                                        .hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/payments/vnpay/ipn", "/payments/vnpay/return").permitAll()
+
+                        // Admin-only endpoints
+                        .requestMatchers("/admin/**").hasRole("ADMIN")
 
                                         // Staff endpoints
                                         .requestMatchers("/staff/**")

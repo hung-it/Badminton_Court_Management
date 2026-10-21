@@ -17,6 +17,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.*;
 
 @SpringBootTest
@@ -28,12 +30,45 @@ class MasterDataIntegrationTest {
     @Autowired ObjectMapper mapper;
     @Autowired JdbcTemplate jdbc;
 
-    @BeforeEach
-    void bookingSchema() {
-        jdbc.execute("create table if not exists bookings(id uuid primary key,status varchar(20))");
-        jdbc.execute(
-                "create table if not exists booking_details(id uuid primary key,booking_id"
-                    + " uuid,court_id uuid,time_slot_id uuid,price decimal(10,2))");
+    private record BookingFixture(UUID id, UUID detailId) {}
+
+    private BookingFixture persistBooking(UUID courtId, UUID timeSlotId, String status) {
+        UUID userId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+        UUID bookingId = UUID.randomUUID();
+        UUID detailId = UUID.randomUUID();
+        jdbc.update(
+                "insert into users(id,email,password_hash,full_name,phone,created_at)"
+                        + " values (?,?,?,?,?,CURRENT_TIMESTAMP)",
+                userId,
+                userId + "@master-data-test.invalid",
+                "test-only",
+                "Master data fixture",
+                "0900000000");
+        jdbc.update(
+                "insert into customers(id,user_id,full_name,phone,created_at)"
+                        + " values (?,?,?,?,CURRENT_TIMESTAMP)",
+                customerId,
+                userId,
+                "Master data fixture",
+                "0900000000");
+        jdbc.update(
+                "insert into bookings(id,customer_id,status,court_fee,expires_at,created_at,updated_at)"
+                        + " values (?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+                bookingId,
+                customerId,
+                status,
+                BigDecimal.valueOf(100000));
+        jdbc.update(
+                "insert into booking_details(id,booking_id,court_id,time_slot_id,booking_date,price,created_at)"
+                        + " values (?,?,?,?,?,?,CURRENT_TIMESTAMP)",
+                detailId,
+                bookingId,
+                courtId,
+                timeSlotId,
+                LocalDate.of(2030, 1, 15),
+                BigDecimal.valueOf(100000));
+        return new BookingFixture(bookingId, detailId);
     }
 
     private JsonNode create(String path, String json) throws Exception {
@@ -79,15 +114,12 @@ class MasterDataIntegrationTest {
     @WithMockUser(roles = "ADMIN")
     void blocksUnfinishedBookingButPreservesHistory() throws Exception {
         String court = create("courts", courtBody(2)).get("id").asText();
-        UUID b = UUID.randomUUID();
-        UUID d = UUID.randomUUID();
-        jdbc.update("insert into bookings(id,status) values (?,?)", b, "PENDING");
-        jdbc.update(
-                "insert into booking_details(id,booking_id,court_id,price) values (?,?,?,?)",
-                d,
-                b,
-                UUID.fromString(court),
-                100000);
+        String slot =
+                create("time-slots", "{\"startTime\":\"06:00\",\"endTime\":\"07:00\"}")
+                        .get("id")
+                        .asText();
+        BookingFixture booking = persistBooking(UUID.fromString(court), UUID.fromString(slot), "PENDING");
+        UUID b = booking.id();
         for (String state : List.of("PENDING", "PAID", "CHECKED_IN")) {
             jdbc.update("update bookings set status=? where id=?", state, b);
             mvc.perform(delete("/admin/courts/" + court)).andExpect(status().isBadRequest());
@@ -96,7 +128,7 @@ class MasterDataIntegrationTest {
         mvc.perform(delete("/admin/courts/" + court)).andExpect(status().isOk());
         assertThat(
                         jdbc.queryForObject(
-                                "select price from booking_details where id=?", Integer.class, d))
+                                "select price from booking_details where id=?", Integer.class, booking.detailId()))
                 .isEqualTo(100000);
     }
 
@@ -142,11 +174,8 @@ class MasterDataIntegrationTest {
                 create("time-slots", "{\"startTime\":\"06:00\",\"endTime\":\"07:00\"}")
                         .get("id")
                         .asText();
-        jdbc.update(
-                "insert into booking_details(id,time_slot_id,price) values (?,?,?)",
-                UUID.randomUUID(),
-                UUID.fromString(slot),
-                100000);
+        String court = create("courts", courtBody(6)).get("id").asText();
+        persistBooking(UUID.fromString(court), UUID.fromString(slot), "PENDING");
         mvc.perform(delete("/admin/time-slots/" + slot)).andExpect(status().isBadRequest());
         mvc.perform(
                         put("/admin/time-slots/" + slot)

@@ -28,7 +28,7 @@ Tài liệu tổng kết review toàn bộ thiết kế database sau khi nâng c
 
 ### Nhóm 2: Court Management (3 bảng)
 4. **courts** - Sân cầu lông (base_price)
-5. **time_slots** - Khung giờ (price_multiplier, day_of_week)
+5. **time_slots** - Khung giờ template (start_time, end_time, price_multiplier)
 6. **bookings** - Đơn đặt sân (PENDING → PAID → CHECKED_IN → COMPLETED/NO_SHOW)
 7. **booking_details** - Chi tiết đặt sân (UNIQUE: date + court + timeslot)
 

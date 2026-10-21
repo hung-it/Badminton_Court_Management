@@ -32,23 +32,45 @@ public class JwtUtil {
     @Value("${jwt.refresh-token-expiration}")
     private Long refreshTokenExpiration;
 
+    public static final String CLAIM_TOKEN_TYPE = "typ";
+    public static final String TOKEN_TYPE_ACCESS = "ACCESS";
+    public static final String TOKEN_TYPE_REFRESH = "REFRESH";
+    public static final String CLAIM_USER_ID = "uid";
+    public static final String CLAIM_ROLES = "roles";
+
     /**
-     * Generate access token for authenticated user
+     * Generate access token for authenticated user with typ, uid, and roles claims
      * @param userDetails Spring Security UserDetails
      * @return JWT access token
      */
     public String generateAccessToken(UserDetails userDetails) {
         Map<String, Object> claims = new HashMap<>();
+        claims.put(CLAIM_TOKEN_TYPE, TOKEN_TYPE_ACCESS);
+
+        if (userDetails instanceof com.bcm.security.UserPrincipal principal) {
+            claims.put(CLAIM_USER_ID, principal.getId());
+            java.util.List<String> roles = principal.getAuthorities().stream()
+                    .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+                    .toList();
+            claims.put(CLAIM_ROLES, roles);
+        } else if (userDetails != null && userDetails.getAuthorities() != null) {
+            java.util.List<String> roles = userDetails.getAuthorities().stream()
+                    .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+                    .toList();
+            claims.put(CLAIM_ROLES, roles);
+        }
+
         return createToken(claims, userDetails.getUsername(), accessTokenExpiration);
     }
 
     /**
-     * Generate refresh token
+     * Generate refresh token with typ claim
      * @param email User email
      * @return JWT refresh token
      */
     public String generateRefreshToken(String email) {
         Map<String, Object> claims = new HashMap<>();
+        claims.put(CLAIM_TOKEN_TYPE, TOKEN_TYPE_REFRESH);
         return createToken(claims, email, refreshTokenExpiration);
     }
 
@@ -133,14 +155,70 @@ public class JwtUtil {
 
     /**
      * Validate token (without user details)
+     * Verifies signature via extractAllClaims() to reject tampered tokens,
+     * then checks expiration. A token with a forged signature will fail
+     * parseSignedClaims() and return false.
      * @param token JWT token
-     * @return true if valid and not expired
+     * @return true if signature is valid and not expired
      */
     public Boolean validateToken(String token) {
         try {
+            extractAllClaims(token);
             return !isTokenExpired(token);
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /**
+     * Extract token type (typ claim)
+     */
+    public String extractTokenType(String token) {
+        try {
+            return extractClaim(token, claims -> claims.get(CLAIM_TOKEN_TYPE, String.class));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Extract user UUID from uid claim
+     */
+    public String extractUserId(String token) {
+        try {
+            return extractClaim(token, claims -> claims.get(CLAIM_USER_ID, String.class));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Extract roles list from roles claim
+     */
+    @SuppressWarnings("unchecked")
+    public java.util.List<String> extractRoles(String token) {
+        try {
+            return extractClaim(token, claims -> claims.get(CLAIM_ROLES, java.util.List.class));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Check if token is an ACCESS token
+     * Accepts explicitly marked ACCESS tokens or tokens without typ claim (backward compatibility),
+     * but strictly rejects REFRESH tokens.
+     */
+    public Boolean isAccessToken(String token) {
+        String typ = extractTokenType(token);
+        return !TOKEN_TYPE_REFRESH.equalsIgnoreCase(typ);
+    }
+
+    /**
+     * Check if token is explicitly a REFRESH token
+     */
+    public Boolean isRefreshToken(String token) {
+        String typ = extractTokenType(token);
+        return TOKEN_TYPE_REFRESH.equalsIgnoreCase(typ);
     }
 }

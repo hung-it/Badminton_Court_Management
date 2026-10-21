@@ -20,6 +20,9 @@ public class UserResponse {
 
     private String id;
     private String email;
+    private String fullName;
+    private String phone;
+    private String address;
     private Set<String> roles;
 
     /**
@@ -31,6 +34,9 @@ public class UserResponse {
         return UserResponse.builder()
                 .id(user.getId().toString())
                 .email(user.getEmail())
+                .fullName(user.getFullName())
+                .phone(user.getPhone())
+                .address(user.getAddress())
                 .roles(user.getRoles().stream()
                         .map(role -> role.getRoleName())
                         .collect(Collectors.toSet()))
