@@ -26,12 +26,12 @@ public class AnalyticsService {
         LocalDate referenceDate = date == null ? LocalDate.now() : date;
         DateRange range = createDateRange(normalizedPeriod, referenceDate);
 
-        Object[] totals = invoiceRepository.sumRevenueByPeriod(
+        InvoiceRepository.RevenueTotals totals = invoiceRepository.sumRevenueByPeriod(
                 PAID_STATUS,
                 range.from().atStartOfDay(),
                 range.toExclusive().atStartOfDay());
-        BigDecimal courtFee = valueOrZero((BigDecimal) totals[0]);
-        BigDecimal productFee = valueOrZero((BigDecimal) totals[1]);
+        BigDecimal courtFee = valueOrZero(totals.getCourtFee());
+        BigDecimal productFee = valueOrZero(totals.getProductFee());
 
         return RevenueReportResponse.builder()
                 .period(normalizedPeriod)
