@@ -361,13 +361,13 @@ public class CourtService {
 @RestController
 @RequestMapping("/courts")
 public class CourtController {
-    
+
     // Public endpoint
     @GetMapping
     public ResponseEntity<ApiResponse<List<Court>>> getAll() {
         return ResponseEntity.ok(ApiResponse.success(courts));
     }
-    
+
     // Admin-only endpoint
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
@@ -544,8 +544,6 @@ Internal project for educational purposes.
 
 ---
 
-**Generated:** 2026-10-05  
-**Version:** 1.0.0  
+**Generated:** 2026-10-05
+**Version:** 1.0.0
 **Status:** ✅ Production Ready
-
-🏸 **Happy Coding!** 🏸

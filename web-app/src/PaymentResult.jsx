@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import './payment-result.css';
-import {api, readSession, SESSION_KEY, BOOKING_DRAFT_KEY} from './CustomerCourts.jsx';
+import {api, readSession, clearSession, BOOKING_DRAFT_KEY} from './CustomerCourts.jsx';
 import {GuideHeader} from './CustomerLayout.jsx';
 
 const asset = name => `/assets/checkout-${name}`;
@@ -165,7 +165,7 @@ export default function PaymentResult() {
   }, [retry, session]);
 
   function logout() {
-    sessionStorage.removeItem(SESSION_KEY);
+    clearSession();
     setSession(null);
   }
 

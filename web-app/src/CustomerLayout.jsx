@@ -49,6 +49,7 @@ export function GuideHeader({session, bookingCount, bookingError, bookingLoading
       <a className="guide-support-link" href="tel:19001000"><GuideIcon src={assets.headset}/> Hỗ trợ: 1900 1000 <span>• 24/7</span></a>
       <div className="guide-account-area">
         <a className="guide-bookings-link" href="/courts#upcoming-booking" aria-label={hasBookingError ? 'Không tải được lịch đặt của tôi' : isBookingLoading ? 'Đang tải lịch đặt của tôi' : `Lịch đặt của tôi, ${session ? Number(bookingCount) || 0 : 0} lịch`}><GuideIcon src={assets.calendarCheck}/> Lịch đặt của tôi <b title={hasBookingError ? bookingError.message : undefined} aria-live="polite">{!session ? 0 : hasBookingError ? '!' : isBookingLoading ? '…' : Number(bookingCount) || 0}</b></a>
+        {!session && <><a href={`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`}>Đăng nhập</a><a href="/register">Đăng ký</a></>}
         <span className="guide-divider" aria-hidden="true" />
         <div className="guide-profile-wrap">
           <button className="guide-profile-button" aria-expanded={session ? profileOpen : undefined} onClick={() => session && setProfileOpen(value => !value)} disabled={!session}>
@@ -59,9 +60,9 @@ export function GuideHeader({session, bookingCount, bookingError, bookingLoading
       </div>
     </div>
     <div className="guide-main-nav">
-      <a className="guide-brand" href="/courts"><GuideIcon src={assets.brand} className="guide-brand-mark"/><span><strong>Sân cầu lông</strong><small>Đặt sân nhanh • Giá tốt • Gần bạn</small></span></a>
+      <a className="guide-brand" href="/"><GuideIcon src={assets.brand} className="guide-brand-mark"/><span><strong>Sân cầu lông</strong><small>Đặt sân nhanh • Giá tốt • Gần bạn</small></span></a>
       <nav className="guide-nav-links" aria-label="Điều hướng chính">
-        <a href="/courts">Trang chủ</a><a className={activePage === 'courts' ? 'active' : ''} href="/courts" aria-current={activePage === 'courts' ? 'page' : undefined}>Sân cầu lông</a><a className={activePage === 'guide' ? 'active' : ''} href="/guide" aria-current={activePage === 'guide' ? 'page' : undefined}>Hướng dẫn</a><a className={activePage === 'contact' ? 'active' : ''} href="/contact" aria-current={activePage === 'contact' ? 'page' : undefined}>Liên hệ</a>
+        <a href="/">Trang chủ</a><a className={activePage === 'courts' ? 'active' : ''} href="/courts" aria-current={activePage === 'courts' ? 'page' : undefined}>Sân cầu lông</a><a className={activePage === 'guide' ? 'active' : ''} href="/guide" aria-current={activePage === 'guide' ? 'page' : undefined}>Hướng dẫn</a><a className={activePage === 'contact' ? 'active' : ''} href="/contact" aria-current={activePage === 'contact' ? 'page' : undefined}>Liên hệ</a>
       </nav>
         <a className="guide-cta" href="/courts#search-courts">Đặt sân ngay</a>
     </div>
@@ -76,7 +77,7 @@ export function GuideFooter({activePage = 'guide'}) {
   return <footer className="guide-footer">
     <div className="guide-footer-grid">
       <div className="guide-footer-brand">
-        <a className="guide-brand" href="/courts"><GuideIcon src={assets.brand} className="guide-brand-mark"/><span><strong>Sân cầu lông</strong><small>Đặt sân nhanh • Giá tốt • Gần bạn</small></span></a>
+        <a className="guide-brand" href="/"><GuideIcon src={assets.brand} className="guide-brand-mark"/><span><strong>Sân cầu lông</strong><small>Đặt sân nhanh • Giá tốt • Gần bạn</small></span></a>
         <p>Tìm sân phù hợp, hẹn hội bạn và quản lý lịch chơi dễ dàng. Mỗi trận cầu, một niềm vui.</p>
       </div>
       <div><strong>Khám phá</strong><a href="/courts">Tìm sân cầu lông</a><a href="/courts#upcoming-booking">Lịch đặt của tôi</a><a href="/guide">Hướng dẫn</a><a href={contactTarget}>Liên hệ</a></div>

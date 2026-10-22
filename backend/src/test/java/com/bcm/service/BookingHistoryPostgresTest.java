@@ -307,6 +307,7 @@ class BookingHistoryPostgresTest {
         assertThat(paths.has("/bookings")).isTrue();
         assertThat(paths.has("/bookings/{bookingId}")).isTrue();
         assertThat(paths.has("/bookings/{bookingId}/payments")).isTrue();
+        assertThat(paths.has("/bookings/customer-profile")).isTrue();
         assertThat(paths.has("/payments/vnpay/return")).isTrue();
         assertThat(paths.has("/payments/vnpay/ipn")).isTrue();
         assertThat(paths.fieldNames()).toIterable().filteredOn(path -> path.startsWith("/payments/"))
@@ -314,7 +315,8 @@ class BookingHistoryPostgresTest {
         paths.fieldNames().forEachRemaining(path -> assertThat(path).doesNotStartWith("/api/"));
         var operations = List.of(paths.path("/availability").path("get"), paths.path("/bookings").path("post"),
                 paths.path("/bookings").path("get"), paths.path("/bookings/{bookingId}").path("get"),
-                paths.path("/bookings/{bookingId}/payments").path("post"));
+                paths.path("/bookings/{bookingId}/payments").path("post"),
+                paths.path("/bookings/customer-profile").path("get"));
         for (var operation : List.of(paths.path("/payments/vnpay/return").path("get"),
                 paths.path("/payments/vnpay/ipn").path("get"))) {
             assertThat(operation.path("security").isEmpty()).isTrue();
@@ -322,8 +324,10 @@ class BookingHistoryPostgresTest {
         assertThat(operations).allSatisfy(op -> assertThat(op.path("security").get(0).has("Bearer Authentication")).isTrue());
         assertThat(operations).allSatisfy(op -> {
             assertThat(op.path("summary").asText()).isNotBlank();
-            assertThat(op.path("responses").has("403")).isTrue();
+            assertThat(op.path("responses").has("401")).isTrue();
         });
+        assertThat(operations.subList(1, operations.size()))
+                .allSatisfy(op -> assertThat(op.path("responses").has("403")).isTrue());
         assertThat(paths.path("/availability").path("get").path("responses").fieldNames())
                 .toIterable().contains("200", "400", "404");
         assertThat(paths.path("/bookings").path("post").path("responses").fieldNames())
@@ -375,10 +379,10 @@ class BookingHistoryPostgresTest {
         UUID id = booking(customerA, BookingStatus.PAID, NOW);
         mvc.perform(get("/api/bookings").contextPath("/api").param("customerId", customerA.toString())
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous()))
-                .andExpect(status().isForbidden()).andExpect(jsonPath("$.data").doesNotExist());
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.data").doesNotExist());
         mvc.perform(get("/api/bookings/" + id).contextPath("/api")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous()))
-                .andExpect(status().isForbidden()).andExpect(jsonPath("$.data").doesNotExist());
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test
@@ -392,7 +396,7 @@ class BookingHistoryPostgresTest {
                 post("/api/bookings/" + UUID.randomUUID() + "/payments")
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))) {
             mvc.perform(request.contextPath("/api").with(anonymous))
-                    .andExpect(status().isForbidden()).andExpect(jsonPath("$.data").doesNotExist());
+                    .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.data").doesNotExist());
         }
     }
 

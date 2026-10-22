@@ -37,6 +37,17 @@ Access/refresh token purpose separation remains an unchanged Auth limitation.
 
 ## Web API
 
+`GET /api/bookings/customer-profile` returns
+`ApiResponse<{customerId: UUID}>` for the active authenticated CUSTOMER.
+The ID is resolved through `CurrentCustomerService` from the trusted principal,
+not from request parameters. It is the domain `customers.id`, distinct from
+`users.id`. It performs no writes. Anonymous requests return 401; missing/deleted
+profiles and non-CUSTOMER users return 403. Web checkout uses this endpoint before
+POST /bookings, so the Auth response does not need to expose a new domain field.
+
+All protected Booking routes return 401 for missing authentication; 403 means an
+authenticated caller lacks the required customer identity or ownership.
+
 Normal APIs return `ApiResponse<T>` with success/message/data/timestamp; errors
 handled by MVC use the existing ApiResponse error envelope. All five application
 operations require authentication; anonymous requests currently return 403 from

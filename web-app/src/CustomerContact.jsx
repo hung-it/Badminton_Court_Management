@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {api, readSession, SESSION_KEY} from './CustomerCourts.jsx';
+import {api, readSession, clearSession} from './CustomerCourts.jsx';
 import {assets, GuideFooter, GuideHeader, GuideIcon} from './CustomerLayout.jsx';
 import './customer-contact.css';
 
@@ -68,7 +68,7 @@ export default function CustomerContact() {
   }, [session, bookingRetry]);
 
   function logout() {
-    sessionStorage.removeItem(SESSION_KEY);
+    clearSession();
     setSession(null);
   }
 

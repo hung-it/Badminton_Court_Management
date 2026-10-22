@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import './customer-checkout.css';
-import {api, readSession, SESSION_KEY, BOOKING_DRAFT_KEY} from './CustomerCourts.jsx';
+import {api, readSession, clearSession, BOOKING_DRAFT_KEY} from './CustomerCourts.jsx';
 import {GuideFooter, GuideHeader} from './CustomerLayout.jsx';
 
 const asset = name => `/assets/checkout-${name}`;
@@ -79,6 +79,20 @@ export default function CustomerCheckout() {
     let active = true;
     setLoading(true);
     setError('');
+    if (draft.bookingId) {
+      api(`/bookings/${encodeURIComponent(draft.bookingId)}`, session.accessToken).then(booking => {
+        if (!active) return;
+        if (booking.status !== 'PENDING') throw new Error('Booking này không còn chờ thanh toán. Vui lòng kiểm tra lịch đặt của bạn.');
+        const detail = booking.details?.find(item => item.courtId === draft.courtId
+          && item.timeSlotId === draft.timeSlotId && item.bookingDate === draft.bookingDate);
+        if (!detail || booking.details.length !== 1) throw new Error('Thông tin booking không khớp với lựa chọn. Vui lòng kiểm tra lịch đặt.');
+        setCourt({id: detail.courtId, name: detail.courtName, courtNumber: detail.courtNumber});
+        setSlot({id: detail.timeSlotId, startTime: detail.startTime, endTime: detail.endTime});
+        setPrice(Number(booking.courtFee));
+      }).catch(reason => { if (active) setError(reason.message); })
+        .finally(() => { if (active) setLoading(false); });
+      return () => { active = false; };
+    }
     Promise.all([
       api('/public/courts', null),
       api('/public/time-slots', null),
@@ -98,13 +112,13 @@ export default function CustomerCheckout() {
     }).catch(reason => { if (active) setError(reason.message || 'Không tải được thông tin đặt sân.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [draft, session]);
+  }, [draft?.bookingId, draft?.courtId, draft?.timeSlotId, draft?.bookingDate, session]);
 
   const duration = useMemo(() => durationText(slot), [slot]);
   const customer = session?.user || {};
 
   function logout() {
-    sessionStorage.removeItem(SESSION_KEY);
+    clearSession();
     setSession(null);
   }
 
@@ -122,11 +136,6 @@ export default function CustomerCheckout() {
       setSubmitError('Thông tin giá hoặc khung giờ chưa sẵn sàng. Vui lòng thử tải lại trang.');
       return;
     }
-    const customerId = customer.customerId;
-    if (!customerId) {
-      setSubmitError('Chưa thể tạo đặt sân: thông tin đăng nhập hiện không cung cấp mã customers.id bắt buộc của API. Không có booking hoặc giao dịch nào được tạo.');
-      return;
-    }
     if (submitted.current || submitting) return;
     submitted.current = true;
     setSubmitting(true);
@@ -136,6 +145,8 @@ export default function CustomerCheckout() {
         if (draft.bookingCreateStarted) {
           throw new Error('Yêu cầu đặt sân trước đó chưa nhận được xác nhận. Hãy kiểm tra Lịch đặt của tôi trước khi thử lại để tránh tạo booking trùng.');
         }
+        const {customerId} = await api('/bookings/customer-profile', session.accessToken);
+        if (!customerId) throw new Error('Không tìm thấy hồ sơ khách hàng để đặt sân.');
         const startedDraft = {...draft, bookingCreateStarted: true};
         sessionStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify(startedDraft));
         setDraft(startedDraft);
@@ -177,7 +188,7 @@ export default function CustomerCheckout() {
   }
 
   if (!session) {
-    return <div className="checkout-page"><GuideHeader session={null} activePage="checkout"/><main className="checkout-empty"><h1>Đăng nhập để tiếp tục đặt sân</h1><p>Việc xác nhận đặt sân và thanh toán yêu cầu tài khoản khách hàng.</p><a className="checkout-primary-link" href="/courts#search-courts">Quay lại danh sách sân</a></main><GuideFooter activePage="courts"/></div>;
+    return <div className="checkout-page"><GuideHeader session={null} activePage="checkout"/><main className="checkout-empty"><h1>Đăng nhập để tiếp tục đặt sân</h1><p>Việc xác nhận đặt sân và thanh toán yêu cầu tài khoản khách hàng.</p><a className="checkout-primary-link" href="/login?redirect=%2Fcheckout">Đăng nhập</a></main><GuideFooter activePage="courts"/></div>;
   }
 
   if (!draft?.courtId || !draft?.timeSlotId || !draft?.bookingDate) {
@@ -234,7 +245,7 @@ export default function CustomerCheckout() {
             <div className="checkout-note"><span>Ghi chú:</span> API đặt sân hiện không nhận ghi chú riêng cho sân.</div>
           </section>
 
-          <div className="checkout-arrival-note"><CheckoutIcon name="info"/><div><strong>Sẵn sàng cho buổi chơi của bạn</strong><p>Vui lòng đến trước 10 phút và mang giày thể thao đế mềm. Thông tin xác nhận sẽ chỉ được gửi sau khi thanh toán được máy chủ xác nhận.</p></div></div>
+            <div className="checkout-arrival-note"><CheckoutIcon name="info"/><div><strong>Sẵn sàng cho buổi chơi của bạn</strong><p>Vui lòng đến trước 10 phút và mang giày thể thao đế mềm. Kiểm tra kết quả thanh toán trong lịch đặt; hệ thống hiện chưa gửi email tự động.</p></div></div>
         </div>
 
         <aside className="checkout-invoice-column">

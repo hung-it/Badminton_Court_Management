@@ -81,6 +81,9 @@ class CustomerAuthPostgresTest {
         assertThat(principal.getAuthorities()).extracting(authority -> authority.getAuthority())
                 .containsExactly("ROLE_CUSTOMER");
         String token = mapper.readTree(response).path("data").path("accessToken").asText();
+        mvc.perform(get("/api/bookings/customer-profile").contextPath("/api").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.customerId").value(customer.get("id").toString()));
         mvc.perform(get("/api/bookings").contextPath("/api").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.content").isEmpty());
     }
@@ -170,13 +173,14 @@ class CustomerAuthPostgresTest {
         assertThat(operation.path("responses").fieldNames()).toIterable().contains("201", "400", "409");
     }
     @Test void publicProvidersDoNotOpenBookingOrPaymentInitiationRoutes() throws Exception {
-        mvc.perform(get("/api/bookings").contextPath("/api")).andExpect(status().isForbidden());
-        mvc.perform(get("/api/bookings/" + UUID.randomUUID()).contextPath("/api")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/bookings/customer-profile").contextPath("/api")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/bookings").contextPath("/api")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/bookings/" + UUID.randomUUID()).contextPath("/api")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/bookings").contextPath("/api").contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mvc.perform(post("/api/bookings/" + UUID.randomUUID() + "/payments").contextPath("/api").contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mvc.perform(post("/api/payments/vnpay/ipn").contextPath("/api"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }

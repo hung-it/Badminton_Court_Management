@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from "react";
-import {api, readSession, SESSION_KEY} from "./CustomerCourts.jsx";
+import {api, readSession, clearSession} from "./CustomerCourts.jsx";
 import {assets, GuideFooter, GuideHeader, GuideIcon, SupportBanner} from "./CustomerLayout.jsx";
 import './customer-guide.css';
 export {GuideFooter, GuideHeader} from "./CustomerLayout.jsx";
@@ -26,7 +26,7 @@ const steps = [
   {
     title: 'Kiểm tra và đặt sân',
     description: 'Kiểm tra tên sân, lịch chơi và thông tin liên hệ. Xem lại lựa chọn của bạn trước khi xác nhận.',
-    note: 'Xác nhận đặt sân trực tuyến hiện chưa khả dụng; vui lòng liên hệ hỗ trợ.',
+    note: 'Khung giờ được giữ sau khi máy chủ xác nhận tạo booking; hãy thanh toán trước khi hết hạn.',
     icon: 'clipboard',
     panelTitle: 'TÓM TẮT ĐẶT SÂN',
     panelValue: 'Sân bạn đã chọn',
@@ -34,7 +34,7 @@ const steps = [
   },
   {
     title: 'Thanh toán và nhận xác nhận',
-    description: 'Khi đặt sân và thanh toán trực tuyến được hỗ trợ, hãy chọn phương thức hiển thị, làm theo hướng dẫn và chờ hệ thống xác nhận.',
+    description: 'Chọn VNPay Sandbox trên trang xác nhận, làm theo hướng dẫn và chờ hệ thống xác nhận thanh toán.',
     note: 'Chỉ xem xác nhận sau khi hệ thống cập nhật trạng thái thành công.',
     icon: 'card',
     panelTitle: 'THANH TOÁN',
@@ -109,7 +109,7 @@ export default function CustomerGuide() {
   }, [session, bookingRetry]);
 
   function logout() {
-    sessionStorage.removeItem(SESSION_KEY);
+    clearSession();
     setSession(null);
   }
 

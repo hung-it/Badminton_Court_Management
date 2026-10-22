@@ -351,6 +351,18 @@ INSERT INTO time_slots (start_time, end_time, price_multiplier) VALUES
     ('20:00:00', '21:00:00', 1.5),
     ('21:00:00', '22:00:00', 1.0);
 
+-- Insert sample courts (TP. Hồ Chí Minh) — ON CONFLICT để chạy lại được nhiều lần
+INSERT INTO courts (court_number, name, type, status, base_price) VALUES
+    (1, 'Sân cầu lông Star City', 'WOODEN_FLOOR', 'AVAILABLE', 180000),
+    (2, 'Green Court Arena', 'STANDARD_MAT', 'AVAILABLE', 220000),
+    (3, 'Sky Sports Center', 'WOODEN_FLOOR', 'AVAILABLE', 150000),
+    (4, 'Sân cầu lông Quận 7', 'STANDARD_MAT', 'AVAILABLE', 200000),
+    (5, 'Sân cầu lông Bình Thạnh', 'WOODEN_FLOOR', 'AVAILABLE', 160000),
+    (6, 'Sân cầu lông Tân Bình', 'STANDARD_MAT', 'AVAILABLE', 190000),
+    (7, 'Sân cầu lông Thủ Đức', 'WOODEN_FLOOR', 'AVAILABLE', 175000),
+    (8, 'Sân cầu lông Gò Vấp', 'STANDARD_MAT', 'AVAILABLE', 165000)
+ON CONFLICT (court_number) DO NOTHING;
+
 -- =====================================================
 -- END OF MIGRATION SCRIPT
 -- =====================================================

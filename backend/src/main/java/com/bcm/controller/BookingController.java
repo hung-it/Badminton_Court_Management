@@ -5,6 +5,8 @@ import com.bcm.dto.response.ApiResponse;
 import com.bcm.dto.response.BookingResponse;
 import com.bcm.dto.response.BookingHistoryResponse;
 import com.bcm.dto.response.BookingHistoryDetailResponse;
+import com.bcm.dto.response.BookingCustomerResponse;
+import com.bcm.security.CurrentCustomerService;
 import com.bcm.entity.BookingStatus;
 import com.bcm.service.BookingHistoryService;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -27,6 +29,21 @@ import org.springframework.web.bind.annotation.*;
 public class BookingController {
     private final BookingService bookingService;
     private final BookingHistoryService historyService;
+    private final CurrentCustomerService currentCustomer;
+
+    @GetMapping("/customer-profile")
+    @SecurityRequirement(name = "Bearer Authentication")
+    @Operation(summary = "Resolve the current booking customer",
+            description = "Returns the active customers.id needed by POST /bookings. Resolves the authenticated "
+                    + "CUSTOMER principal server-side; accepts no user/customer ID. No profile is created or changed.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Own active customer ID"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Authentication required"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "CUSTOMER role or active profile unavailable")
+    })
+    public ApiResponse<BookingCustomerResponse> customerProfile() {
+        return ApiResponse.success(new BookingCustomerResponse(currentCustomer.requireCustomerId()));
+    }
 
     @GetMapping
     @SecurityRequirement(name = "Bearer Authentication")
@@ -37,6 +54,7 @@ public class BookingController {
                     + "Includes EXPIRED headers; no details/payments are loaded for the list. "
                     + "Page beyond the end returns an empty page. Read-only; never expires bookings.")
     @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Authentication required"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "CUSTOMER identity required or foreign customer/booking", content = @io.swagger.v3.oas.annotations.media.Content(schema = @Schema(implementation = ApiResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Page of booking headers"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid customerId, status or pagination", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = ApiResponse.class)))
@@ -60,6 +78,7 @@ public class BookingController {
                     + "ordered by createdAt DESC then paymentAttemptId DESC; no payments means an empty collection. "
                     + "Payment status is not inferred from booking status; unconfirmed transactionId/date may be null.")
     @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Authentication required"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "CUSTOMER identity required or foreign customer/booking", content = @io.swagger.v3.oas.annotations.media.Content(schema = @Schema(implementation = ApiResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Booking header, details and booking-target payments"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Malformed booking UUID", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = ApiResponse.class))),
@@ -81,7 +100,8 @@ public class BookingController {
                     + "Court rows are locked in UUID order and occupied slots are re-checked before insert. "
                     + "Existing details block regardless of booking status/expiry; the unique slot index is the final safeguard.")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "CUSTOMER identity required or customerId mismatch; anonymous requests are rejected by the security filter", content = @io.swagger.v3.oas.annotations.media.Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Authentication required"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "CUSTOMER identity required or customerId mismatch", content = @io.swagger.v3.oas.annotations.media.Content(schema = @Schema(implementation = ApiResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Booking created"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid input, duplicate tuple, ineligible court or price overflow", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = ApiResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Customer, court or time slot not found", content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = ApiResponse.class))),
