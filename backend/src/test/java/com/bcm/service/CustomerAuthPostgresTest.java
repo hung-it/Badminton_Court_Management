@@ -183,4 +183,23 @@ class CustomerAuthPostgresTest {
         mvc.perform(post("/api/payments/vnpay/ipn").contextPath("/api"))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test void adminCanLoginAndReadCatalogFromLoopbackWebAdminOrigin() throws Exception {
+        UUID userId = UUID.fromString(register());
+        jdbc.update("DELETE FROM user_roles WHERE user_id=?", userId);
+        jdbc.update("INSERT INTO user_roles(user_id,role_id) SELECT ?,id FROM roles WHERE role_name='ADMIN'", userId);
+        String origin = "http://127.0.0.1:5173";
+        String response = mvc.perform(post("/api/auth/login").contextPath("/api")
+                        .header("Origin", origin).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(java.util.Map.of("email", email, "password", request().getPassword()))))
+                .andExpect(status().isOk()).andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(header().string("Access-Control-Allow-Origin", origin))
+                .andExpect(jsonPath("$.data.user.roles[0]").value("ADMIN"))
+                .andReturn().getResponse().getContentAsString();
+        String token = mapper.readTree(response).path("data").path("accessToken").asText();
+        mvc.perform(get("/api/admin/courts").contextPath("/api").header("Origin", origin)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.success").value(true))
+                .andExpect(header().string("Access-Control-Allow-Origin", origin));
+    }
 }
