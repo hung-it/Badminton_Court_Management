@@ -58,21 +58,15 @@ public class SecurityConfig {
                         })
                 )
                 .authorizeHttpRequests(auth -> auth
-                        // Public endpoints (note: context-path /api is already applied)
+                        // Public endpoints (context path /api already stripped by Spring)
                         .requestMatchers(
-                                "/api/auth/**",
-                                "/api/health/**",
-                                "/api/swagger-ui/**",
-                                "/api/swagger-ui.html",
-                                "/api/v3/api-docs/**",
-                                "/api/api-docs/**",
-                                // Also allow without /api prefix for direct access
-                                "/api/public/**",
-                                "/public/**",
                                 "/auth/**",
                                 "/health/**",
+                                "/public/**",
                                 "/swagger-ui/**",
-                                "/v3/api-docs/**", "/api-docs/**", "/swagger-ui.html"
+                                "/swagger-ui.html",
+                                "/v3/api-docs/**",
+                                "/api-docs/**"
                         ).permitAll()
 
                         .requestMatchers(HttpMethod.GET, "/payments/vnpay/ipn", "/payments/vnpay/return").permitAll()
@@ -80,17 +74,14 @@ public class SecurityConfig {
                         // Admin-only endpoints
                         .requestMatchers("/admin/**").hasRole("ADMIN")
 
-                                        // Staff endpoints
-                                        .requestMatchers("/staff/**")
-                                        .hasAnyRole("ADMIN", "STAFF")
+                        // Staff endpoints
+                        .requestMatchers("/staff/**").hasAnyRole("ADMIN", "STAFF")
 
-                                        // Customer endpoints
-                                        .requestMatchers("/customer/**")
-                                        .hasAnyRole("ADMIN", "STAFF", "CUSTOMER")
+                        // Customer endpoints
+                        .requestMatchers("/customer/**").hasAnyRole("ADMIN", "STAFF", "CUSTOMER")
 
-                                        // All other requests require authentication
-                                        .anyRequest()
-                                        .authenticated())
+                        // All other requests require authentication
+                        .anyRequest().authenticated())
                 .sessionManagement(
                         session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())

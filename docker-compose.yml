@@ -11,7 +11,9 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
 
     ports:
-      - "5432:5432"
+      # Host 5433: native PostgreSQL trên Windows đã chiếm 5432,
+      # application.yml mặc định trỏ localhost:5433
+      - "5433:5432"
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
