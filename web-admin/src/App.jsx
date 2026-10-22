@@ -142,7 +142,7 @@ export default function App(){
   setSaving(true);setError('');
   try{
    const res=await api('/checkout/'+checkoutSlip.bookingId,'POST',{paymentMethod:checkoutPaymentMethod});
-   const paidSlip={...checkoutSlip,status:'PAID',paymentMethod:checkoutPaymentMethod,invoiceId:res.invoiceId,totalAmount:res.totalAmount||checkoutSlip.totalAmount};
+   const paidSlip={...checkoutSlip,status:'PAID',paymentMethod:checkoutPaymentMethod,invoiceId:res.invoiceId,totalAmount:res.total_amount??res.totalAmount??checkoutSlip.totalAmount};
    setCheckoutSlip(paidSlip);
    setCheckoutHistory(h=>[paidSlip,...h]);
    setNotice('Kết toán trả sân thành công! Hóa đơn '+res.invoiceId+' đã lưu.');
@@ -157,7 +157,7 @@ export default function App(){
    const payload={
     supplierId:importForm.supplierId,
     importDate:new Date().toISOString().slice(0,10),
-    details:[{productId:importForm.productId||data.products[0]?.id,quantity:Number(importForm.quantity),importPrice:Number(importForm.importPrice)}]
+    details:[{productId:importForm.productId||data.products.find(p=>p.type==='GOODS')?.id||data.products[0]?.id,quantity:Number(importForm.quantity),importPrice:Number(importForm.importPrice)}]
    };
    await api('/import-orders','POST',payload);
    setImportModalOpen(false);
