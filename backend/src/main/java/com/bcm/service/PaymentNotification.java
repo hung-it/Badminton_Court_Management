@@ -7,4 +7,10 @@ import java.util.UUID;
 
 /** Authenticated provider result, runtime only; never a browser payment authority. */
 public record PaymentNotification(UUID attemptId, PaymentMethod method, BigDecimal amount,
-                                  boolean providerSuccess, String transactionId, LocalDateTime transactionDate) { }
+                                  boolean providerSuccess, String transactionId, LocalDateTime transactionDate,
+                                  boolean terminalFailure) {
+    public PaymentNotification(UUID attemptId, PaymentMethod method, BigDecimal amount,
+                               boolean providerSuccess, String transactionId, LocalDateTime transactionDate) {
+        this(attemptId, method, amount, providerSuccess, transactionId, transactionDate, false);
+    }
+}

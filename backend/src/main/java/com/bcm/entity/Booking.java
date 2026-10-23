@@ -36,6 +36,9 @@ public class Booking {
     @Column(name = "court_fee", nullable = false, precision = 10, scale = 2)
     private BigDecimal courtFee;
 
+    @Column(name = "customer_note", length = 1000)
+    private String customerNote;
+
     @Column(name = "expires_at")
     private LocalDateTime expiresAt;
 

@@ -51,7 +51,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @EnabledIfEnvironmentVariable(named = "BCM_TEST_DB_URL", matches = "jdbc:postgresql:.*")
 class AvailabilityPostgresTest {
 
-    private static final LocalDate DATE = LocalDate.of(2020, 2, 29);
+    private static final LocalDate DATE = LocalDate.now().plusDays(2);
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {

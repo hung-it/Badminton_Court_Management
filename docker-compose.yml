@@ -18,6 +18,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/migration.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./db/booking-ux-upgrade.sql:/docker-entrypoint-initdb.d/02-booking-ux-upgrade.sql:ro
 
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bcm_admin -d badminton_court_db"]
@@ -43,6 +44,13 @@ services:
       SPRING_DATASOURCE_USERNAME: bcm_admin
       SPRING_DATASOURCE_PASSWORD: "12345"
       SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      BOOKING_PAYMENT_ENABLED_METHODS: ${BOOKING_PAYMENT_ENABLED_METHODS:-VNPAY,BANK_TRANSFER}
+      BOOKING_HOLD_DURATION: ${BOOKING_HOLD_DURATION:-PT10M}
+      BOOKING_VNPAY_PAYMENT_URL: ${BOOKING_VNPAY_PAYMENT_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+      BOOKING_VNPAY_TMN_CODE: ${BOOKING_VNPAY_TMN_CODE:-}
+      BOOKING_VNPAY_HASH_SECRET: ${BOOKING_VNPAY_HASH_SECRET:-}
+      BOOKING_VNPAY_RETURN_URL: ${BOOKING_VNPAY_RETURN_URL:-}
+      BOOKING_PAYMENT_FRONTEND_RESULT_URL: ${BOOKING_PAYMENT_FRONTEND_RESULT_URL:-http://localhost:5174/payment-result}
 
     ports:
       - "8080:8080"

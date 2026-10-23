@@ -30,7 +30,7 @@ public class AvailabilityController {
     @SecurityRequirement(name = "Bearer Authentication")
     @Operation(summary = "Get availability by date",
             description = "Returns AVAILABLE, non-deleted courts and all time-slot templates. "
-                    + "An existing booking detail always occupies its slot. Past dates are allowed. "
+                    + "An existing booking detail always occupies its slot. Past dates may be queried but past start times are unavailable in Asia/Ho_Chi_Minh. "
                     + "Courts are ordered by court number; slots by start time, end time and ID.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Authentication required", content = @io.swagger.v3.oas.annotations.media.Content),

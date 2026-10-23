@@ -52,9 +52,12 @@ public class BookingHistoryService {
                         d.getTimeSlot().getStartTime(), d.getTimeSlot().getEndTime())).toList();
         var transactions = payments.findBookingHistory(bookingId).stream().map(p ->
                 new BookingHistoryDetailResponse.Payment(p.getId(), p.getPaymentMethod(), p.getStatus(),
-                        p.getAmount(), p.getTransactionId(), p.getTransactionDate(), p.getCreatedAt())).toList();
+                        p.getAmount(), p.getTransactionId(), p.getTransactionDate(), p.getCreatedAt(),
+                        p.getPaymentMethod() == com.bcm.entity.PaymentMethod.BANK_TRANSFER
+                                && p.getNote() != null && p.getNote().startsWith("CUSTOMER_DECLARED;")
+                                ? "CUSTOMER_DECLARED" : null)).toList();
         return new BookingHistoryDetailResponse(booking.getId(), booking.getCustomer().getId(), booking.getStatus(),
                 booking.getCourtFee(), booking.getExpiresAt(), booking.getCreatedAt(), booking.getUpdatedAt(),
-                slots, transactions);
+                slots, transactions, booking.getCustomerNote());
     }
 }

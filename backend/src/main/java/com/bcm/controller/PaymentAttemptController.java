@@ -27,12 +27,14 @@ public class PaymentAttemptController {
     @ResponseStatus(HttpStatus.CREATED)
     @SecurityRequirement(name = "Bearer Authentication")
     @Operation(summary = "Create/reuse a PENDING attempt and initiate sandbox checkout",
-            description = "Supports paymentMethod VNPAY only. Unsupported methods return 400 before persistence. Amount comes from booking courtFee. "
+            description = "Supports VNPAY and BANK_TRANSFER; CASH returns 400 before persistence. Amount comes from booking courtFee. "
                     + "Booking must be PENDING with expiresAt strictly after now. "
-                    + "Reuses the existing PENDING VNPay attempt. "
+                    + "Reuses the same-method PENDING attempt; different method returns 409. BANK_TRANSFER requires bankTransfer "
+                    + "with bankName/accountHolder/accountNumber/transferContent; validates but does not retain account information. "
+                    + "Transfer acceptance atomically confirms booking PAID under CUSTOMER_DECLARED policy; payment stays PENDING (receipt unverified). Expired transfers return 409 BOOKING_EXPIRED. Retries return the same declared attempt. "
                     + "Unknown JSON fields are ignored; clients cannot set amount, target, status or transaction ID. "
                     + "When configured, VNPay returns checkoutReady=true and a signed sandbox checkoutUrl. "
-                    + "Gateway artifacts are runtime only. Initiation leaves payment and booking PENDING. "
+                    + "Gateway artifacts are runtime only. VNPay initiation leaves payment and booking PENDING. "
                     + "Client IP is request remote address; forwarded headers are not trusted. "
                     + "Authenticated CUSTOMER ownership is required before creating or reusing an attempt; foreign bookings return 403.")
     @ApiResponses({

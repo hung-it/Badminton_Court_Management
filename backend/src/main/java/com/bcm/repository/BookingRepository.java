@@ -20,7 +20,7 @@ import java.util.UUID;
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
     @Query(value = """
             select new com.bcm.dto.response.BookingSummaryResponse(
-                b.id, b.customer.id, b.status, b.courtFee, b.expiresAt, b.createdAt, b.updatedAt)
+                b.id, b.customer.id, b.status, b.courtFee, b.expiresAt, b.createdAt, b.updatedAt, b.customerNote)
             from Booking b where b.customer.id = :customerId
               and (:status is null or b.status = :status)
             order by b.createdAt desc, b.id desc

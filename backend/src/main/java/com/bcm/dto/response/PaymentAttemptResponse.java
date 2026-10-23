@@ -10,7 +10,13 @@ import java.util.UUID;
 
 public record PaymentAttemptResponse(UUID paymentAttemptId, UUID bookingId, PaymentMethod paymentMethod,
                                      PaymentStatus status, BigDecimal amount, LocalDateTime bookingExpiresAt,
-                                     GatewayPreparation gatewayPreparation) {
+                                     GatewayPreparation gatewayPreparation,
+                                     com.bcm.entity.BookingStatus bookingStatus, String confirmationMethod) {
+    public PaymentAttemptResponse(UUID paymentAttemptId, UUID bookingId, PaymentMethod paymentMethod,
+                                  PaymentStatus status, BigDecimal amount, LocalDateTime bookingExpiresAt,
+                                  GatewayPreparation gatewayPreparation) {
+        this(paymentAttemptId, bookingId, paymentMethod, status, amount, bookingExpiresAt, gatewayPreparation, null, null);
+    }
     @Schema(description = "Runtime checkout artifacts. Checkout readiness means initiation only; payment remains PENDING.")
     public record GatewayPreparation(PaymentMethod provider, String merchantReference, BigDecimal amount,
                                      boolean checkoutReady, String checkoutUrl, String qrCodeData, String deeplink,

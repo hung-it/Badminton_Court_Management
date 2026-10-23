@@ -16,6 +16,9 @@ public class Court extends BaseEntity {
     @Column(nullable = false, length = 255)
     private String name;
 
+    @Column(name = "district", length = 150)
+    private String district;
+
     @Enumerated(EnumType.STRING)
     @Column(length = 100, nullable = false)
     private CourtType type;

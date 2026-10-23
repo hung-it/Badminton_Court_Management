@@ -9,7 +9,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: process.env.BCM_API_PROXY_TARGET || 'http://localhost:8080',
+        target: process.env.BCM_API_PROXY_TARGET || 'http://127.0.0.1:8080',
         changeOrigin: true,
       },
     },

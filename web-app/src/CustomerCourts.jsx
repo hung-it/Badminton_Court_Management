@@ -2,11 +2,12 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import './customer-courts.css';
 import {assets, GuideFooter, GuideHeader, GuideIcon, SupportBanner} from './CustomerLayout.jsx';
 import client, {tokenStore, toErrorMessage} from './lib/apiClient';
+import {useBookingClock} from './lib/useBookingClock';
+import {isFutureSlot, nextBookingDate} from './lib/bookingTime';
 
 export const SESSION_KEY = 'bcm-customer-session';
 export const BOOKING_DRAFT_KEY = 'bcm-booking-draft';
 const money = value => new Intl.NumberFormat('vi-VN', {style: 'currency', currency: 'VND', maximumFractionDigits: 0}).format(Number(value) || 0);
-const localDate = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const shortTime = value => String(value || '').slice(0, 5);
 
 export function readSession() {
@@ -54,6 +55,7 @@ function CourtIllustration() {
 }
 
 export default function CustomerCourts() {
+  const bookingClock = useBookingClock();
   const [session, setSession] = useState(readSession);
   const [courts, setCourts] = useState([]);
   const [slots, setSlots] = useState([]);
@@ -61,8 +63,8 @@ export default function CustomerCourts() {
   const [quotes, setQuotes] = useState({});
   const [bookings, setBookings] = useState({items: [], total: null, upcoming: null, error: false});
   const [date, setDate] = useState(() => {
-    try { return new URLSearchParams(window.location.search).get('date') || JSON.parse(sessionStorage.getItem(BOOKING_DRAFT_KEY))?.bookingDate || localDate(new Date()); }
-    catch { return localDate(new Date()); }
+    try { return new URLSearchParams(window.location.search).get('date') || JSON.parse(sessionStorage.getItem(BOOKING_DRAFT_KEY))?.bookingDate || ''; }
+    catch { return ''; }
   });
   const [selectedSlot, setSelectedSlot] = useState(() => {
     try { return new URLSearchParams(window.location.search).get('timeSlotId') || JSON.parse(sessionStorage.getItem(BOOKING_DRAFT_KEY))?.timeSlotId || ''; }
@@ -77,9 +79,21 @@ export default function CustomerCourts() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [extraSlots, setExtraSlots] = useState({});
+  const [courtSlots, setCourtSlots] = useState({});
+  const [districts, setDistricts] = useState([]);
+  const [districtSearch, setDistrictSearch] = useState('');
   const requestVersion = useRef(0);
+  const initializedSlot = useRef(false);
+  const eligibleSlots = useMemo(() => slots.filter(slot => isFutureSlot(date, slot.startTime, bookingClock.nowMs)), [slots, date, bookingClock.nowMs]);
+  const eligibleKey = eligibleSlots.map(slot => slot.id).join('|');
+
+  useEffect(() => {
+    if (bookingClock.ready && (!date || date < bookingClock.today)) setDate(bookingClock.today);
+  }, [bookingClock.ready, bookingClock.today, date]);
 
   const fetchPageData = useCallback(async () => {
+    if (!date || !bookingClock.ready) return;
     const version = ++requestVersion.current;
     setLoading(true);
     setError('');
@@ -88,23 +102,22 @@ export default function CustomerCourts() {
         api('/public/courts', null),
         api('/public/time-slots', null),
         session ? api(`/availability?date=${encodeURIComponent(date)}`, session.accessToken) : Promise.resolve(null),
-        session ? api('/bookings?page=0&size=20', session.accessToken).catch(() => null) : Promise.resolve(null),
+        session ? api(`/bookings?page=0&size=20`, session.accessToken).catch(() => null) : Promise.resolve(null),
       ]);
       if (version !== requestVersion.current) return;
       setCourts(Array.isArray(courtData) ? courtData : []);
       setSlots(Array.isArray(slotData) ? slotData : []);
       setAvailability(availabilityData);
       setBookings({items: bookingPage?.content || [], total: bookingPage ? Number(bookingPage.totalElements) || 0 : session ? null : 0, upcoming: null, error: Boolean(session && !bookingPage)});
-      setSelectedSlot(current => current || slotData?.[0]?.id || '');
       const candidates = (bookingPage?.content || []).filter(item => ['PENDING', 'PAID'].includes(item.status));
       let upcoming = null;
       for (const item of candidates.slice(0, 3)) {
         try {
           const detail = await api(`/bookings/${encodeURIComponent(item.bookingId)}`, session.accessToken);
-          const now = localDate(new Date());
+          const now = bookingClock.today;
           const future = (detail?.details || []).find(entry => entry.bookingDate >= now);
           if (future) {
-            upcoming = {header: item, detail: future};
+            upcoming = {header: item, detail: future, customerNote: detail.customerNote, declared: detail.payments?.some(payment => payment.confirmationMethod === 'CUSTOMER_DECLARED' && payment.paymentStatus === 'PENDING')};
             break;
           }
         } catch {
@@ -119,7 +132,26 @@ export default function CustomerCourts() {
     } finally {
       if (version === requestVersion.current) setLoading(false);
     }
-  }, [date, session]);
+  }, [date, session, bookingClock.ready, bookingClock.today]);
+
+  // A date change resets the grid. Time advancing only prunes expired IDs, preserving other selections/filters.
+  useEffect(() => { initializedSlot.current = false; setExtraSlots({}); setCourtSlots({}); }, [date]);
+  useEffect(() => {
+    if (!bookingClock.ready || !slots.length) return;
+    const valid = new Set(eligibleKey ? eligibleKey.split('|') : []);
+    const first = eligibleSlots[0]?.id || '';
+    const initialize = !initializedSlot.current;
+    setSelectedSlot(current => initialize || (current && !valid.has(current)) ? (valid.has(current) ? current : first) : current);
+    initializedSlot.current = true;
+    setCourtSlots(current => {
+      const kept = Object.fromEntries(Object.entries(current).filter(([, id]) => valid.has(id)));
+      return Object.keys(kept).length === Object.keys(current).length ? current : kept;
+    });
+    setExtraSlots(current => {
+      const kept = Object.fromEntries(Object.entries(current).map(([id, values]) => [id, values.filter(value => valid.has(value))]));
+      return Object.keys(kept).every(id => kept[id].length === current[id].length) ? current : kept;
+    });
+  }, [eligibleKey, bookingClock.ready, date, slots.length]);
 
   useEffect(() => {
     fetchPageData();
@@ -127,15 +159,26 @@ export default function CustomerCourts() {
   }, [fetchPageData]);
 
   useEffect(() => {
-    if (!selectedSlot || !courts.length) {
+    if (!session || !date || !bookingClock.ready) return;
+    let active = true;
+    const refresh = () => api(`/availability?date=${encodeURIComponent(date)}`, session.accessToken)
+      .then(grid => { if (active) setAvailability(grid); }).catch(() => { /* Retain last grid; backend rechecks all writes. */ });
+    const poll = window.setInterval(refresh, 15000);
+    window.addEventListener('focus', refresh);
+    return () => { active = false; window.clearInterval(poll); window.removeEventListener('focus', refresh); };
+  }, [session, date, bookingClock.ready]);
+
+  useEffect(() => {
+    if (!courts.length) {
       setQuotes({});
       return;
     }
     let active = true;
     setQuoteLoading(true);
     Promise.all(courts.map(async court => {
+      if (!courtSlots[court.id] && !selectedSlot) return [court.id, null];
       try {
-        const quote = await api(`/public/price-quote?courtId=${encodeURIComponent(court.id)}&timeSlotId=${encodeURIComponent(selectedSlot)}`, null);
+        const quote = await api(`/public/price-quote?courtId=${encodeURIComponent(court.id)}&timeSlotId=${encodeURIComponent(courtSlots[court.id] || selectedSlot)}`, null);
         return [court.id, quote];
       } catch {
         return [court.id, null];
@@ -144,22 +187,27 @@ export default function CustomerCourts() {
       if (active) setQuotes(Object.fromEntries(entries));
     }).finally(() => { if (active) setQuoteLoading(false); });
     return () => { active = false; };
-  }, [courts, selectedSlot]);
+  }, [courts, selectedSlot, courtSlots]);
+
+  // /public/courts returns the complete active catalog, without pagination.
+  const districtOptions = useMemo(() => [...new Set(courts.map(court => court.district).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'vi')), [courts]);
 
   const availabilityByCourt = useMemo(() => new Map((availability?.courts || []).map(court => [court.courtId, court])), [availability]);
   const visibleCourts = useMemo(() => courts.filter(court => {
     const term = query.trim().toLocaleLowerCase('vi');
     const courtAvailability = availabilityByCourt.get(court.id);
-    const availableSlots = courtAvailability?.slots?.filter(slot => slot.available) || [];
+    const availableSlots = courtAvailability?.slots?.filter(slot => slot.available && isFutureSlot(date, slot.startTime, bookingClock.nowMs)) || [];
     const slotAvailable = !session || !selectedSlot || availableSlots.some(slot => slot.timeSlotId === selectedSlot);
     const price = quotes[court.id]?.price;
     return (!term || `${court.name} ${court.courtNumber}`.toLocaleLowerCase('vi').includes(term))
       && (!courtFilter || court.id === courtFilter)
+      && (!districts.length || districts.includes(court.district))
       && (!onlyAvailable || slotAvailable)
       && (!maxPrice || (price != null && Number(price) <= Number(maxPrice)));
   }).sort((left, right) => sortOrder === 'price'
     ? Number(quotes[left.id]?.price ?? Infinity) - Number(quotes[right.id]?.price ?? Infinity)
-    : Number(left.courtNumber) - Number(right.courtNumber)), [availabilityByCourt, courts, courtFilter, maxPrice, onlyAvailable, query, quotes, selectedSlot, sortOrder]);
+    : Number(left.courtNumber) - Number(right.courtNumber)), [availabilityByCourt, courts, courtFilter, districts, maxPrice, onlyAvailable, query, quotes, selectedSlot, session, sortOrder, date, bookingClock.nowMs]);
 
   function logout() {
     clearSession();
@@ -184,7 +232,8 @@ export default function CustomerCourts() {
           {bookings.upcoming ? <>
             <strong>{bookings.upcoming.detail.courtName}</strong>
             <span>{bookings.upcoming.detail.bookingDate} • {shortTime(bookings.upcoming.detail.startTime)} – {shortTime(bookings.upcoming.detail.endTime)}</span>
-            <a href="#upcoming-booking">Mã đặt {bookings.upcoming.header.bookingId.slice(0, 8)} · {bookings.upcoming.header.status}</a>
+            {bookings.upcoming.customerNote && <span className="customer-upcoming-note">Ghi chú: {bookings.upcoming.customerNote.slice(0, 140)}{bookings.upcoming.customerNote.length > 140 && '…'}</span>}
+            <a href={`/payment-result?bookingId=${encodeURIComponent(bookings.upcoming.header.bookingId)}`}>Mã đặt {bookings.upcoming.header.bookingId.slice(0, 8)} · {bookings.upcoming.declared ? 'Đã xác nhận đặt sân — chuyển khoản do khách tự khai báo, chưa xác minh nhận tiền' : bookings.upcoming.header.status}</a>
           </> : <><strong>{!session ? 'Lịch chơi sắp tới' : loading ? 'Đang tải lịch đặt…' : bookings.error ? 'Không tải được lịch đặt' : 'Chưa có lịch chơi sắp tới'}</strong><span>{!session ? 'Đăng nhập để xem lịch đặt của bạn.' : loading ? ' ' : bookings.error ? 'Thử lại để xem các lịch đặt của bạn.' : 'Các lịch đặt sắp tới của bạn sẽ hiển thị ở đây.'}</span><a href={bookings.error ? '#upcoming-booking' : '#search-courts'} onClick={bookings.error ? event => {event.preventDefault(); fetchPageData();} : undefined}>{bookings.error ? 'Tải lại lịch đặt' : 'Tìm sân phù hợp →'}</a></>}
         </aside>
       </section>
@@ -192,22 +241,36 @@ export default function CustomerCourts() {
       <section className="customer-search-panel" id="search-courts" aria-label="Tìm sân">
         <div className="customer-search-fields">
           <label className="customer-search-field"><span>Địa điểm</span><span className="customer-input-display"><Icon name="pin" size={19}/><span>TP. Hồ Chí Minh</span></span></label>
-          <label className="customer-search-field"><span>Ngày chơi</span><span className="customer-input-display"><Icon name="calendar" size={19}/><input aria-label="Ngày chơi" type="date" value={date} onChange={event => setDate(event.target.value)}/></span></label>
-          <label className="customer-search-field"><span>Khung giờ</span><span className="customer-input-display"><Icon name="clock" size={20}/><select aria-label="Khung giờ" value={selectedSlot} onChange={event => setSelectedSlot(event.target.value)}><option value="">Tất cả khung giờ</option>{slots.map(slot => <option key={slot.id} value={slot.id}>{shortTime(slot.startTime)} – {shortTime(slot.endTime)}</option>)}</select><Icon name="chevron" size={16}/></span></label>
+          <label className="customer-search-field"><span>Ngày chơi</span><span className="customer-input-display"><Icon name="calendar" size={19}/><input aria-label="Ngày chơi" type="date" min={bookingClock.today} value={date} disabled={!bookingClock.ready} onChange={event => setDate(event.target.value >= bookingClock.today ? event.target.value : bookingClock.today)}/></span></label>
+          <label className="customer-search-field"><span>Khung giờ</span><span className="customer-input-display"><Icon name="clock" size={20}/><select aria-label="Khung giờ" value={selectedSlot} disabled={!bookingClock.ready || !eligibleSlots.length} onChange={event => {setSelectedSlot(event.target.value); setExtraSlots({}); setCourtSlots({});}}><option value="">Tất cả khung giờ</option>{eligibleSlots.map(slot => <option key={slot.id} value={slot.id}>{shortTime(slot.startTime)} – {shortTime(slot.endTime)}</option>)}</select><Icon name="chevron" size={16}/></span></label>
           <label className="customer-search-field"><span>Giá tối đa / khung giờ</span><span className="customer-input-display"><strong className="customer-dong">₫</strong><input aria-label="Giá tối đa mỗi khung giờ" type="number" min="0" step="10000" placeholder="Không giới hạn" value={maxPrice} onChange={event => setMaxPrice(event.target.value)}/></span></label>
           <button className="customer-button customer-button-primary customer-search-button" onClick={fetchPageData} disabled={loading}><Icon name="search" size={18}/> Tìm sân</button>
         </div>
-        <div className="customer-quick-filters"><span>Lọc nhanh:</span><label className={onlyAvailable ? 'selected' : ''}><input type="checkbox" checked={onlyAvailable} onChange={event => setOnlyAvailable(event.target.checked)}/><Icon name="check" size={13}/> Còn sân trong giờ đã chọn</label><button onClick={() => {setQuery(''); setCourtFilter(''); setMaxPrice(''); setOnlyAvailable(true); setSelectedSlot(slots[0]?.id || '');}}>Đặt lại bộ lọc</button></div>
+        <div className="customer-quick-filters"><span>Lọc nhanh:</span><label className={onlyAvailable ? 'selected' : ''}><input type="checkbox" checked={onlyAvailable} onChange={event => setOnlyAvailable(event.target.checked)}/><Icon name="check" size={13}/> Còn sân trong giờ đã chọn</label><button onClick={() => {setQuery(''); setCourtFilter(''); setDistricts([]); setDistrictSearch(''); setMaxPrice(''); setOnlyAvailable(true); setSelectedSlot(eligibleSlots[0]?.id || '');}}>Đặt lại bộ lọc</button></div>
       </section>
 
       {error && <div className="customer-alert customer-alert-error" role="alert">{error}<button onClick={fetchPageData}>Thử lại</button></div>}
       {notice && <div className="customer-alert customer-alert-info" role="status">{notice}</div>}
+      {(!bookingClock.ready || bookingClock.error) && <div className="customer-alert" role="status">{bookingClock.error || 'Đang đồng bộ giờ Việt Nam từ máy chủ…'}</div>}
+      {bookingClock.ready && date && !eligibleSlots.length && <div className="customer-alert customer-alert-info" role="status">{date === bookingClock.today ? 'Hôm nay không còn khung giờ bắt đầu trong tương lai.' : 'Không còn khung giờ hợp lệ cho ngày này.'} <button type="button" onClick={() => setDate(nextBookingDate(bookingClock.today))}>Chọn ngày mai</button></div>}
 
       <section className="customer-results-layout" id="court-results" aria-label="Danh sách sân">
         <aside className="customer-filter-card" aria-labelledby="filter-title">
           <h2 id="filter-title"><span className="customer-filter-glyph">☷</span> Bộ lọc chi tiết</h2>
           <label className="customer-filter-label" htmlFor="court-search">Tên sân</label>
           <input className="customer-text-filter" id="court-search" type="search" placeholder="Tìm theo tên sân" value={query} onChange={event => setQuery(event.target.value)}/>
+          <div className="customer-filter-separator"/>
+          <fieldset className="customer-district-filter">
+            <legend className="customer-filter-label">Quận / Huyện{districts.length > 0 && ` (${districts.length})`}</legend>
+            {districtOptions.length > 8 && <input className="customer-text-filter" type="search" aria-label="Tìm quận / huyện" placeholder="Tìm quận / huyện" value={districtSearch} onChange={event => setDistrictSearch(event.target.value)}/>}
+            <div className="customer-district-options">
+              {districtOptions.filter(value => value.toLocaleLowerCase('vi').includes(districtSearch.trim().toLocaleLowerCase('vi'))).map(value =>
+                <label className="customer-check-row" key={value}><input type="checkbox" checked={districts.includes(value)} onChange={event => setDistricts(current => event.target.checked ? [...current, value] : current.filter(item => item !== value))}/>{value}</label>)}
+            </div>
+            {!districtOptions.length && <p className="customer-filter-hint">Chưa có dữ liệu quận / huyện được xác minh.</p>}
+            {courts.some(court => !court.district) && <p className="customer-filter-hint">{courts.filter(court => !court.district).length} sân chưa cập nhật quận / huyện; vẫn hiển thị khi không lọc quận.</p>}
+            <button type="button" className="customer-clear-districts" disabled={!districts.length && !districtSearch} onClick={() => {setDistricts([]); setDistrictSearch('');}}>Xóa lựa chọn</button>
+          </fieldset>
           <div className="customer-filter-separator"/>
           <label className="customer-filter-label" htmlFor="max-price-range">Giá mỗi khung giờ</label>
           <input id="max-price-range" className="customer-range" type="range" min="0" max="1000000" step="10000" value={maxPrice || 1000000} onChange={event => setMaxPrice(Number(event.target.value) >= 1000000 ? '' : event.target.value)} aria-label="Giá tối đa mỗi khung giờ"/>
@@ -222,22 +285,28 @@ export default function CustomerCourts() {
 
           {loading && courts.length === 0 ? <div className="customer-state-card" role="status">Đang tải sân và khung giờ…</div> : !loading && !visibleCourts.length ? <div className="customer-state-card"><strong>Chưa tìm thấy sân phù hợp</strong><span>Thử đổi ngày, khung giờ hoặc bộ lọc giá.</span><button className="customer-button customer-button-outline" onClick={() => {setOnlyAvailable(false); setMaxPrice('');}}>Xem tất cả sân</button></div> : <div className="customer-court-list">
             {visibleCourts.map(court => {
+              const cardSlot = courtSlots[court.id] || selectedSlot;
               const courtAvailability = availabilityByCourt.get(court.id);
-              const availableSlots = courtAvailability?.slots?.filter(slot => slot.available) || [];
-              const selectedAvailable = !selectedSlot || availableSlots.some(slot => slot.timeSlotId === selectedSlot);
+              const availableSlots = courtAvailability?.slots?.filter(slot => slot.available && isFutureSlot(date, slot.startTime, bookingClock.nowMs)) || [];
+              const selectedAvailable = !cardSlot || availableSlots.some(slot => slot.timeSlotId === cardSlot);
               const quote = quotes[court.id];
               const priceText = quote ? money(quote.price) : quoteLoading ? 'Đang lấy giá…' : 'Giá chưa có';
-              return <article className="customer-court-card" key={court.id}>
+              return <article className="customer-court-card" data-court-id={court.id} key={court.id}>
                 <div className="customer-court-image"><CourtIllustration/><span className="customer-court-number">Sân {String(court.courtNumber).padStart(2, '0')}</span></div>
                 <div className="customer-court-info">
-                  <div className="customer-court-location"><Icon name="pin" size={15}/> TP. Hồ Chí Minh</div>
+                  <div className="customer-court-location"><Icon name="pin" size={15}/> {court.district || 'Chưa cập nhật quận / huyện'}</div>
                   <h3>{court.name}</h3>
                   <p className="customer-court-type">{court.type === 'WOODEN_FLOOR' ? 'Sàn gỗ' : 'Thảm tiêu chuẩn'} <span>•</span> Mã sân {String(court.courtNumber).padStart(2, '0')}</p>
-                  <div className="customer-slot-row"><span>{session ? 'Khung giờ còn:' : 'Khung giờ:'}</span>{!session ? <span>Đăng nhập để kiểm tra tình trạng trống</span> : availableSlots.length ? availableSlots.slice(0, 4).map(slot => <button key={slot.timeSlotId} className={slot.timeSlotId === selectedSlot ? 'customer-slot-chip selected' : 'customer-slot-chip'} onClick={() => setSelectedSlot(slot.timeSlotId)}>{shortTime(slot.startTime)} – {shortTime(slot.endTime)}</button>) : <span className="customer-no-slots">Không còn khung giờ trống trong ngày</span>}</div>
-                  <div className="customer-court-price-row"><div><strong>{priceText}</strong><span>/ khung giờ</span><small>{quote ? `Giá cho ${shortTime(quote.startTime || slots.find(slot => slot.id === selectedSlot)?.startTime)} – ${shortTime(quote.endTime || slots.find(slot => slot.id === selectedSlot)?.endTime)}` : 'Chọn khung giờ để xem giá'}</small></div><button className="customer-button customer-button-primary customer-book-button" disabled={!selectedSlot || (session && !selectedAvailable) || !quote || quoteLoading} onClick={() => {
+                  <div className="customer-slot-row"><span>{session ? 'Khung giờ còn:' : 'Khung giờ:'}</span>{!session ? <span>Đăng nhập để kiểm tra tình trạng trống</span> : availableSlots.length ? availableSlots.slice(0, 4).map(slot => <button type="button" key={`${court.id}:${slot.timeSlotId}`} aria-pressed={slot.timeSlotId === cardSlot} className={slot.timeSlotId === cardSlot ? 'customer-slot-chip selected' : 'customer-slot-chip'} onClick={() => {
+                    setCourtSlots(current => ({...current, [court.id]: slot.timeSlotId}));
+                    setExtraSlots(current => ({...current, [court.id]: (current[court.id] || []).filter(id => id !== slot.timeSlotId)}));
+                  }}>{shortTime(slot.startTime)} – {shortTime(slot.endTime)}</button>) : <span className="customer-no-slots">Không còn khung giờ trống trong ngày</span>}</div>
+                  {session && selectedAvailable && cardSlot && <div className="customer-slot-row customer-extra-slots"><span>Đặt thêm khung giờ:</span>{availableSlots.filter(slot => slot.timeSlotId !== cardSlot).map(slot => <label className="customer-slot-chip" key={`${court.id}:${slot.timeSlotId}`}><input type="checkbox" value={slot.timeSlotId} checked={(extraSlots[court.id] || []).includes(slot.timeSlotId)} onChange={event => setExtraSlots(current => ({...current, [court.id]: event.target.checked ? [...(current[court.id] || []), slot.timeSlotId] : (current[court.id] || []).filter(id => id !== slot.timeSlotId)}))}/>{shortTime(slot.startTime)} – {shortTime(slot.endTime)}</label>)}</div>}
+                  <div className="customer-court-price-row"><div><strong>{priceText}</strong><span>/ khung giờ</span><small>{quote ? `Giá cho ${shortTime(quote.startTime || slots.find(slot => slot.id === cardSlot)?.startTime)} – ${shortTime(quote.endTime || slots.find(slot => slot.id === cardSlot)?.endTime)}` : 'Chọn khung giờ để xem giá'}</small></div><button className="customer-button customer-button-primary customer-book-button" disabled={!bookingClock.ready || !eligibleSlots.some(slot => slot.id === cardSlot) || (session && !selectedAvailable) || !quote || quoteLoading} onClick={() => {
                     sessionStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify({
-                      courtId: court.id, bookingDate: date, timeSlotId: selectedSlot,
+                      courtId: court.id, bookingDate: date, timeSlotId: cardSlot,
                       courtName: court.name, courtNumber: court.courtNumber, courtType: court.type,
+                      details: [...new Set([cardSlot, ...(extraSlots[court.id] || []).filter(id => availableSlots.some(slot => slot.timeSlotId === id))])].map(timeSlotId => ({courtId: court.id, bookingDate: date, timeSlotId})),
                     }));
                     window.location.assign(session ? '/checkout' : '/login?redirect=%2Fcheckout');
                   }} aria-describedby={`booking-disabled-${court.id}`}><Icon name="arrow" size={17}/> Đặt sân</button><span className="customer-sr-only" id={`booking-disabled-${court.id}`}>Chọn ngày và khung giờ còn trống để xem lại thông tin đặt sân.</span></div>
@@ -248,6 +317,7 @@ export default function CustomerCourts() {
           {!loading && courts.length > 0 && <p className="customer-results-footnote">Giá hiển thị theo khung giờ đã chọn. Khung giờ chỉ được giữ sau khi máy chủ xác nhận đặt sân.</p>}
         </div>
       </section>
+
 
       <SupportBanner/>
     </main>

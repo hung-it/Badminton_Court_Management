@@ -3,6 +3,7 @@ package com.bcm.service;
 import com.bcm.dto.request.CreatePaymentAttemptRequest;
 import com.bcm.dto.response.PaymentAttemptResponse;
 import com.bcm.exception.BadRequestException;
+import com.bcm.entity.PaymentMethod;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -21,6 +22,9 @@ public class PaymentInitiationService {
     public PaymentAttemptResponse initiate(UUID bookingId, CreatePaymentAttemptRequest request, String remoteAddress) {
         if (request == null) { throw new BadRequestException("Payment method is required"); }
         preparation.validateMethod(request.getPaymentMethod());
+        if (request.getPaymentMethod() == PaymentMethod.BANK_TRANSFER) {
+            return attempts.createOrReuseAttempt(bookingId, request, () -> { });
+        }
         var created = attempts.createOrReuseAttempt(bookingId, request,
                 vnpay::validateConfiguration); // commits here, via proxy
         var checked = attempts.recheckForInitiation(created.paymentAttemptId()); // short lock, released before provider work

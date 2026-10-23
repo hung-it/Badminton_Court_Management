@@ -1,5 +1,97 @@
 # Kế hoạch Booking Engine — Thành viên 3
 
+## Khôi phục runtime, 7 khu vực demo và realtime slot — 2026-10-23
+
+- [x] Xác minh main backend đang restart vì thiếu customer_note; backup PostgreSQL dạng custom,
+  kiểm tra archive, áp dụng booking-ux-upgrade.sql trên main (không sửa migration lịch sử).
+- [x] Seed opt-in 7 cơ sở DEMO bằng UUID/số sân cố định; chạy lại thêm 0, bảo toàn 5 sân cũ.
+- [x] Public backend clock theo Asia/Ho_Chi_Minh, strict start > now giống availability/create/edit.
+  UI cập nhật 250ms + sync định kỳ/focus, ẩn hoàn toàn giờ quá khứ, prune lựa chọn và chuyển ngày.
+- [x] Giữ admin 5173/customer 5174 strictPort; proxy backend IPv4 8080 và Return về localhost:5174.
+- [x] Java 17/PostgreSQL full verify 394 tests PASS (0 failure/error/skip); Node clock tests 11 PASS.
+  Builds web-app/web-admin PASS; E2E realtime + 3 regression suites và smoke main runtime PASS.
+- [x] Rebuild/recreate riêng backend chính; main schema/data đã cập nhật, API/proxy 200,
+  restart count 0; giữ hai frontend chính chạy đúng port và PostgreSQL/volume.
+
+Backup, query số liệu, source mới sửa và giới hạn IPN thật: [báo cáo runtime](docs/runtime-realtime-2026-10-23.md).
+
+## Courts / Checkout UX — 2026-10-23
+
+- [x] Court-scoped primary slot và extraSlots theo courtId; card actions không reset sân khác;
+  stable keys, booking chỉ lấy slot của card được nhấn, spacing 10px và filter quận OR từ backend.
+- [x] Migration cộng cột nullable customer_note/district, chạy lặp trên schema gốc có dữ liệu;
+  không gán quận từ tên sân. DTO/API quản trị optional district, catalog trả toàn bộ dữ liệu.
+- [x] PATCH notes/details có owner/validation/transaction/locking; edit chỉ PENDING chưa có attempt,
+  không đổi sân/identity/payment/deadline, snapshot slot giữ nguyên và giá slot mới tính ở backend.
+- [x] Checkout note draft/save status, editor save/cancel, giá sau sửa, conflict giữ slot cũ,
+  chặn thanh toán khi có thay đổi chưa lưu/chưa đồng bộ; result/history đọc note thật.
+- [x] Playwright full stack: cô lập chọn slot, sort/filter, nhiều quận OR, cả hai card tạo đúng booking,
+  pending attempt khóa edit, note refresh/validation/ownership, edit giá/deadline/conflict,
+  BANK_TRANSFER sau edit và responsive 1440/820/375/320px PASS.
+- [x] Hai suite E2E booking-payment/checkout-expiration có sẵn và web-app build PASS.
+- [ ] Dữ liệu quận thực tế: cần quản trị viên xác minh và nhập; records cũ giữ NULL, không bịa vị trí.
+- [ ] VNPay Sandbox settlement E2E thật vẫn chưa chạy vì runtime test không có merchant config;
+  regression backend có ký URL theo tiền mới và chặn edit sau attempt.
+
+Lệnh/kết quả backend cuối và danh sách source: [báo cáo UX](docs/courts-checkout-ux-2026-10-23.md).
+
+Backend cuối: `mvn -o -B -f backend/pom.xml verify` PASS **384 tests, 0 failures/errors/skipped**,
+Java 17.0.15/Maven 3.9.9 Docker + PostgreSQL 15.19, gồm 21 edit tests và 1 migration test mới.
+
+## Khôi phục và hoàn thiện ngày 2026-10-23
+
+Giữ branch `feature/front-end-user` và toàn bộ diff cũ. Chính sách mới supersede checkpoint bank PENDING bên dưới:
+booking PAID theo CUSTOMER_DECLARED, payment PENDING/receipt UNVERIFIED; không cần staff/bank callback.
+Checkout dùng deadline gốc và server clock, khôi phục cùng booking từ URL ở tab mới, không gia hạn/tạo lại.
+
+- [x] Backend Java 17 Docker + PostgreSQL 15.19 riêng: `mvn -o -B -f backend/pom.xml verify`,
+  362 tests, 0 failures/errors/skipped; gồm 23 BookingPaymentLifecyclePostgresTest.
+- [x] `npm run build` tại web-app; E2E BANK_TRANSFER multi-slot/refresh/ownership và countdown
+  refresh/new tab/method switch/warning/natural expiry/API rejection/home route PASS với backend thật.
+- [x] Staff invoice không coi CUSTOMER_DECLARED/PENDING là bằng chứng đã thu tiền.
+- [ ] VNPay Sandbox E2E thật trong lượt này BLOCKED vì runtime test không có merchant credentials;
+  regression signature/IPN/callback/expiry tests PASS, không dùng browser Return làm bằng chứng settlement.
+
+Chi tiết file trước/sau, lệnh và giới hạn: [báo cáo khôi phục](docs/booking-payment-resume-2026-10-23.md).
+
+## Cập nhật phạm vi ngày 2026-10-22
+
+Yêu cầu trực tiếp mới áp dụng trên `feature/front-end-user`; không chuyển sang branch lịch sử bên dưới.
+Các checkpoint Phase 1–6/VNPay-only và ghi chú "chưa có frontend" được giữ làm lịch sử,
+không mô tả đầy đủ source hiện tại. Báo cáo và ma trận đối chiếu:
+[Booking/Payment audit 2026-10-22](docs/booking-payment-audit-2026-10-22.md).
+
+- Đã bổ sung kiểm tra giờ chơi tương lai ở availability và create booking, theo Asia/Ho_Chi_Minh.
+- Đã tích hợp BANK_TRANSFER: validate bốn trường form hiện có, ghi PENDING bằng target booking,
+  reuse attempt, không lưu thông tin tài khoản không cần thiết, không tự xác nhận đã nhận tiền.
+- CASH bị chặn ở API booking payment và UI; chốt staff checkout không bypass booking chưa trả tiền.
+  PosService bán sản phẩm CASH giữ nguyên và có kiểm thử PostgreSQL cho invoice/stock.
+- Giữ transaction/khóa Court/unique slot và khóa Booking khi payment/expiry; deadline mặc định PT10M.
+  Chuyển khoản chờ xác nhận dùng deadline booking; hết hạn xóa details, giữ payment history để đối soát.
+- VNPay lỗi terminal 02 cho phép retry trên cùng booking; success không bị callback muộn downgrade.
+  Verified late/non-payable receipt lưu note RECONCILIATION_REQUIRED, không hồi sinh EXPIRED.
+- Return giữ JSON displayOnly và hỗ trợ redirect cấu hình tới /payment-result sau verify; IPN mới settle.
+- UI hiện có đã được mở rộng: nhiều khung giờ, form bank, result pending/refresh, lịch sử/detail/resume.
+- BLOCKED: xác nhận nhận tiền chuyển khoản tự động/nhân viên — source không có bank API/confirmation flow;
+  không tạo màn hình hoặc quyền tự xác nhận cho khách.
+- BLOCKED: IPN Sandbox đầu cuối tới backend thử nghiệm — cần URL public và cấu hình merchant portal;
+  không suy từ Return thành SUCCESS trong DB. Chi tiết giao dịch test thật nằm trong audit.
+
+Kết quả test/build và trạng thái nghiệm thu cuối được ghi trong audit; không dùng checkpoint cũ
+làm bằng chứng cho thay đổi hiện tại. Không có migration, enum mới, invoice/POS rewrite hoặc mobile app.
+
+Nghiệm thu đã chạy trên source hiện tại:
+
+- [x] Java 17 + PostgreSQL 15.19: `mvn -o -B -f backend/pom.xml verify` — BUILD SUCCESS,
+  354 tests, 0 failures/errors/skipped; regression DB riêng `bcm_booking_verify`.
+- [x] `npm run build` web-app và `git diff --check` PASS.
+- [x] Playwright + API/JWT/PostgreSQL thật: multi-slot, bank PENDING/refresh, CASH 400,
+  slot conflict 409, owner 403/anonymous 401, history/detail, responsive 375px/320px PASS.
+- [x] VNPay Sandbox thật: signed checkout URL, trang NCB, thẻ/OTP test chính thức,
+  Return verified + redirect /payment-result PASS. Không dùng callback giả làm bằng chứng.
+- [ ] BLOCKED: nhận IPN thật và xác minh DB SUCCESS/PAID qua merchant public callback.
+  Sau Return thật chưa có IPN, DB vẫn PENDING và UI đang xác minh — đúng chính sách.
+
 Branch: `feature/booking-engine`. Mỗi phase phụ thuộc phase trước; chỉ tạo source khi thực hiện task.
 Đã có foundation Phase 1, Availability API Phase 2 và create booking/concurrency Phase 3, kèm test PostgreSQL.
 Đã có expiration/release slot tự động Phase 4 và payment attempt foundation Phase 5A.

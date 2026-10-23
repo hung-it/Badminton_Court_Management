@@ -30,6 +30,10 @@ public class BookingController {
     private final BookingService bookingService;
     private final BookingHistoryService historyService;
     private final CurrentCustomerService currentCustomer;
+    private final com.bcm.service.BookingModificationService modificationService;
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.beans.factory.annotation.Qualifier("bookingExpirationClock")
+    private java.time.Clock expirationClock;
 
     @GetMapping("/customer-profile")
     @SecurityRequirement(name = "Bearer Authentication")
@@ -88,12 +92,40 @@ public class BookingController {
         return ApiResponse.success(historyService.detail(bookingId));
     }
 
+    @PatchMapping("/{bookingId}/notes")
+    @SecurityRequirement(name = "Bearer Authentication")
+    @Operation(summary = "Save an owned pending booking note", description = "Maximum 1000 characters. Enforces original deadline under Booking lock. Independent of payment evidence; never renews the hold.")
+    public ApiResponse<BookingHistoryDetailResponse> updateNote(@PathVariable UUID bookingId,
+            @Valid @RequestBody com.bcm.dto.request.UpdateBookingNoteRequest request) {
+        return ApiResponse.success(modificationService.updateNote(bookingId, request));
+    }
+
+    @PatchMapping("/{bookingId}/details")
+    @SecurityRequirement(name = "Bearer Authentication")
+    @Operation(summary = "Edit date and slots of an owned pending single-court booking", description = "Same court only. Requires no payment attempts and an unexpired original deadline. Booking and Court locks plus unique slot index protect atomic replacement. Retained tuples keep snapshot prices; new tuples use current master prices rounded HALF_UP. Returns owned detail and authoritative total; never changes identity, payment state or deadline. 409 for unavailable slots, expiry, confirmed bookings or an existing payment attempt.")
+    public ApiResponse<BookingHistoryDetailResponse> updateDetails(@PathVariable UUID bookingId,
+            @Valid @RequestBody com.bcm.dto.request.UpdateBookingRequest request) {
+        return ApiResponse.success(modificationService.updateDetails(bookingId, request));
+    }
+
+    @GetMapping("/{bookingId}/checkout-clock")
+    @SecurityRequirement(name = "Bearer Authentication")
+    @Operation(summary = "Read owned booking deadline and server time", description = "No renewal or mutation. Local timestamps use the same clock as booking expiration.")
+    public ApiResponse<java.util.Map<String, Object>> checkoutClock(@PathVariable UUID bookingId) {
+        var booking = historyService.detail(bookingId); // Enforce authenticated ownership.
+        var result = new java.util.HashMap<String, Object>();
+        result.put("serverTime", java.time.LocalDateTime.now(expirationClock));
+        result.put("expiresAt", booking.expiresAt());
+        result.put("status", booking.status());
+        return ApiResponse.success(result);
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @SecurityRequirement(name = "Bearer Authentication")
     @Operation(summary = "Create a PENDING booking",
             description = "Creates all details atomically. Prices use master data, rounded HALF_UP per detail to scale 2. "
-                    + "Expiry uses configured hold duration. Past dates are allowed. "
+                    + "Expiry uses configured hold duration. Start time must be in the future in Asia/Ho_Chi_Minh. "
                     + "Only customerId and details (bookingDate, courtId, timeSlotId) are accepted inputs; "
                     + "unknown JSON fields are ignored and cannot override price, status or expiry. "
                     + "Authenticated CUSTOMER ownership is required: customerId must match the trusted customers.id; mismatch returns 403 before court locks. "

@@ -55,6 +55,7 @@ export default function App() {
             <Route path="/courts" element={<CustomerCourts />} />
             <Route path="/checkout" element={<CustomerCheckout />} />
             <Route path="/payment-result" element={<PaymentResult />} />
+            <Route path="/payment/result" element={<PaymentResult />} />
             <Route path="/guide" element={<CustomerGuide />} />
             <Route path="/contact" element={<CustomerContact />} />
             <Route path="/my-bookings" element={<Navigate to="/courts#upcoming-booking" replace />} />

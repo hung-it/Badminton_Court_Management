@@ -11,4 +11,5 @@ public record CourtRequest(
         @NotBlank @Size(max = 255) String name,
         @NotNull CourtType type,
         @NotNull CourtStatus status,
-        @NotNull @DecimalMin("0.00") @Digits(integer = 8, fraction = 2) BigDecimal basePrice) {}
+        @NotNull @DecimalMin("0.00") @Digits(integer = 8, fraction = 2) BigDecimal basePrice,
+        @Size(max = 150) @Pattern(regexp = "[^\\p{Cntrl}]*") String district) {}

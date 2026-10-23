@@ -48,7 +48,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @org.springframework.context.annotation.Import(com.bcm.service.BookingWebTestConfiguration.class)
 @EnabledIfEnvironmentVariable(named = "BCM_TEST_DB_URL", matches = "jdbc:postgresql:.*")
 class BookingConcurrencyPostgresTest {
-    private static final LocalDate DATE = LocalDate.of(2020, 2, 29);
+    private static final LocalDate DATE = LocalDate.now().plusDays(2);
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {

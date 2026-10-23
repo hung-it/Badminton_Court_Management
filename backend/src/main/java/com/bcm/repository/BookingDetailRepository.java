@@ -11,6 +11,21 @@ import java.util.List;
 import java.util.UUID;
 
 public interface BookingDetailRepository extends JpaRepository<BookingDetail, UUID> {
+    @Query("select distinct d.court.id from BookingDetail d where d.booking.id = :bookingId")
+    List<UUID> findCourtIdsForBooking(@Param("bookingId") UUID bookingId);
+
+    @Modifying(flushAutomatically = true)
+    @Query("delete from BookingDetail d where d.booking.id = :bookingId")
+    int deleteForReplacement(@Param("bookingId") UUID bookingId);
+
+    @Query("""
+            select d.timeSlot.id from BookingDetail d
+            where d.bookingDate = :date and d.court.id = :courtId
+              and d.timeSlot.id in :slotIds and d.booking.id <> :bookingId
+            """)
+    List<UUID> findConflictingReplacementSlots(@Param("bookingId") UUID bookingId,
+            @Param("date") LocalDate date, @Param("courtId") UUID courtId,
+            @Param("slotIds") List<UUID> slotIds);
     @Query("""
             select d from BookingDetail d join fetch d.court join fetch d.timeSlot
             where d.booking.id = :bookingId

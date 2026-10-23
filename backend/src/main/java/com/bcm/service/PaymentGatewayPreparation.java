@@ -17,8 +17,8 @@ public class PaymentGatewayPreparation {
     private final BookingPaymentConfig config;
 
     public void validateMethod(PaymentMethod method) {
-        if (method != PaymentMethod.VNPAY) {
-            throw new BadRequestException("Online booking payment supports VNPAY only");
+        if (method != PaymentMethod.VNPAY && method != PaymentMethod.BANK_TRANSFER) {
+            throw new BadRequestException("Booking payment supports VNPAY or BANK_TRANSFER; CASH is forbidden");
         }
         if (config.getEnabledMethods() == null || !config.getEnabledMethods().contains(method)) {
             throw new BadRequestException("Payment method is disabled");

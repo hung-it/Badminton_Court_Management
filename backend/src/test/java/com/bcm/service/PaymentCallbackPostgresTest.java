@@ -144,6 +144,8 @@ class PaymentCallbackPostgresTest {
         jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?", NOW.plusSeconds(seconds), booking);
         var before = payment(id); var beforeHeader = header();
         send(method, id, "99");
+        assertThat(payment(id).get("note").toString()).contains("RECONCILIATION_REQUIRED", "14226112");
+        before.put("note", payment(id).get("note"));
         assertThat(payment(id)).isEqualTo(before); assertThat(header()).isEqualTo(beforeHeader);
     }
 
@@ -176,6 +178,10 @@ class PaymentCallbackPostgresTest {
         jdbc.update("UPDATE payment_transactions SET status=?,transaction_id='existing' WHERE id=?", state.name(), id);
         var before = payment(id); var beforeHeader = header();
         send(PaymentMethod.VNPAY, id, "99");
+        if (state != PaymentStatus.SUCCESS) {
+            assertThat(payment(id).get("note").toString()).contains("RECONCILIATION_REQUIRED");
+            before.put("note", payment(id).get("note"));
+        }
         assertThat(payment(id)).isEqualTo(before); assertThat(header()).isEqualTo(beforeHeader);
     }
 

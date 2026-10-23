@@ -11,11 +11,14 @@ import com.bcm.exception.ResourceNotFoundException;
 import com.bcm.repository.BookingDetailRepository;
 import com.bcm.repository.CourtRepository;
 import com.bcm.repository.TimeSlotRepository;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.Clock;
+import java.time.ZoneId;
+import org.springframework.beans.factory.annotation.Qualifier;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -24,12 +27,20 @@ import java.util.Set;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class AvailabilityService {
 
     private final CourtRepository courtRepository;
     private final TimeSlotRepository timeSlotRepository;
     private final BookingDetailRepository bookingDetailRepository;
+    private final Clock clock;
+
+    public AvailabilityService(CourtRepository courts, TimeSlotRepository slots, BookingDetailRepository details,
+                               @Qualifier("bookingExpirationClock") Clock clock) {
+        this.courtRepository = courts;
+        this.timeSlotRepository = slots;
+        this.bookingDetailRepository = details;
+        this.clock = clock;
+    }
 
     @Transactional(readOnly = true)
     public AvailabilityResponse getAvailability(LocalDate date, UUID courtId) {
@@ -52,11 +63,13 @@ public class AvailabilityService {
             occupiedByCourt.computeIfAbsent(slot.getCourtId(), id -> new HashSet<>()).add(slot.getTimeSlotId());
         }
 
+        var now = LocalDateTime.ofInstant(clock.instant(), ZoneId.of("Asia/Ho_Chi_Minh"));
         List<CourtAvailability> result = courts.stream().map(court -> {
             Set<UUID> occupied = occupiedByCourt.getOrDefault(court.getId(), Set.of());
             List<SlotAvailability> slots = timeSlots.stream()
                     .map(slot -> new SlotAvailability(slot.getId(), slot.getStartTime(), slot.getEndTime(),
-                            slot.getPriceMultiplier(), !occupied.contains(slot.getId())))
+                            slot.getPriceMultiplier(), date.atTime(slot.getStartTime()).isAfter(now)
+                                    && !occupied.contains(slot.getId())))
                     .toList();
             return new CourtAvailability(court.getId(), court.getCourtNumber(), court.getName(), slots);
         }).toList();

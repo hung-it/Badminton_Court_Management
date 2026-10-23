@@ -14,27 +14,32 @@ import java.util.*;
 @RequiredArgsConstructor
 public class PublicCatalogController {
     private final MasterDataService service;
+    private final java.time.Clock bookingExpirationClock;
+
+    @GetMapping("/booking-clock")
+    @io.swagger.v3.oas.annotations.Operation(summary = "Read the authoritative booking clock", description = "Slot starts must be strictly after server time in Asia/Ho_Chi_Minh; equality is already started. Does not change master templates or booking history.")
+    public ApiResponse<com.bcm.dto.response.BookingClockResponse> bookingClock() {
+        var instant = bookingExpirationClock.instant();
+        return ApiResponse.success(new com.bcm.dto.response.BookingClockResponse(instant, "Asia/Ho_Chi_Minh",
+                java.time.LocalDate.ofInstant(instant, java.time.ZoneId.of("Asia/Ho_Chi_Minh"))));
+    }
 
     @GetMapping("/courts")
     public ApiResponse<?> courts() {
         return ApiResponse.success(
                 service.courts().stream()
                         .filter(c -> c.getStatus() == com.bcm.entity.CourtStatus.AVAILABLE)
-                        .map(
-                                c ->
-                                        Map.of(
-                                                "id",
-                                                c.getId(),
-                                                "courtNumber",
-                                                c.getCourtNumber(),
-                                                "name",
-                                                c.getName(),
-                                                "type",
-                                                c.getType(),
-                                                "status",
-                                                c.getStatus(),
-                                                "basePrice",
-                                                c.getBasePrice()))
+                        .map(c -> {
+                            Map<String, Object> court = new LinkedHashMap<>();
+                            court.put("id", c.getId());
+                            court.put("courtNumber", c.getCourtNumber());
+                            court.put("name", c.getName());
+                            court.put("type", c.getType());
+                            court.put("status", c.getStatus());
+                            court.put("basePrice", c.getBasePrice());
+                            court.put("district", c.getDistrict());
+                            return court;
+                        })
                         .toList());
     }
 

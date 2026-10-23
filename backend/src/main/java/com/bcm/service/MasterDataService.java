@@ -71,6 +71,8 @@ public class MasterDataService {
         c.setType(r.type());
         c.setStatus(r.status());
         c.setBasePrice(r.basePrice());
+        // Omitted optional field preserves legacy updates; an explicit blank clears the label.
+        if (r.district() != null) c.setDistrict(r.district().isBlank() ? null : r.district().strip());
         return courts.saveAndFlush(c);
     }
 

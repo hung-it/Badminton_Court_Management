@@ -15,7 +15,8 @@ public record BookingHistoryDetailResponse(UUID bookingId, UUID customerId, Book
         BigDecimal courtFee, @Schema(nullable = true) LocalDateTime expiresAt, LocalDateTime createdAt, LocalDateTime updatedAt,
         @Schema(description = "Persisted details only; empty after expiration deletes them") List<Detail> details,
         @Schema(description = "Booking-target payments, createdAt DESC then paymentAttemptId DESC; empty if none")
-        List<Payment> payments) {
+        List<Payment> payments,
+        @Schema(nullable = true, maxLength = 1000, description = "Customer booking note, independent of payment evidence") String customerNote) {
 
     @Schema(name = "BookingHistorySlot", description = "Snapshot price; display names/times use current master data")
     public record Detail(UUID detailId, LocalDate bookingDate, UUID courtId, UUID timeSlotId, BigDecimal price,
@@ -27,5 +28,5 @@ public record BookingHistoryDetailResponse(UUID bookingId, UUID customerId, Book
                           BigDecimal amount,
                           @Schema(nullable = true, description = "Gateway ID; null before confirmation") String transactionId,
                           @Schema(nullable = true, description = "Provider payment timestamp when verified; historical records may have no timestamp")
-                          LocalDateTime transactionDate, LocalDateTime createdAt) { }
+                          LocalDateTime transactionDate, LocalDateTime createdAt, String confirmationMethod) { }
 }

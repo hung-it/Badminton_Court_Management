@@ -1,12 +1,171 @@
 # Booking Engine backend contract — Phase 6
 
+## Runtime recovery / realtime slot clock — 2026-10-23
+
+`GET /api/public/booking-clock` (public) returns `serverTime` as an absolute ISO Instant,
+`timeZone=Asia/Ho_Chi_Minh` and `today` in that zone. It uses the same injectable Clock instant
+as availability/create/edit validation. Existing hold timestamps/deadlines are not reinterpreted.
+Start rule is strict: `bookingDate + startTime > serverNow` in Vietnam; equality is already started.
+Read availability retains all templates for compatibility/history but never marks past starts available.
+Create and edit reject past dates and started slots at the service boundary, after relevant locks.
+
+Customer UI anchors that clock to performance.now, updates every 250ms and resynchronizes every
+30 seconds/on focus/visibility. It uses Intl with the named timezone, not the device date or a
+manual seven-hour adjustment. Dropdowns/chips/extra checkboxes and checkout edit options completely
+omit past starts. Expired selection IDs are pruned without clearing other courts' future choices or
+name/district/price filters. At midnight the date/minimum advance; after the last start a next-day
+action remains available. Availability refreshes every 15 seconds/on focus; writes always recheck DB.
+Master time slots and historical booking details are never deleted by time-filtering UI.
+
+Runtime ports: admin `http://localhost:5173`, customer `http://localhost:5174`, backend 8080,
+PostgreSQL 5433. Both Vite servers use strictPort and IPv4 backend proxy; customer has an optional
+BCM_API_PROXY_TARGET override for isolated tests. Compose defaults Return destination to
+`http://localhost:5174/payment-result`; real merchant settings still come from environment.
+`db/demo-districts-seed.sql` is explicit opt-in only, adds seven labelled demo facilities and never
+backfills existing unknown locations. See db/README.md and the runtime report for backup/apply evidence.
+
+## Courts / Checkout edit contract — 2026-10-23
+
+Apply `db/booking-ux-upgrade.sql` after the historical schema before starting the new backend.
+It adds nullable `bookings.customer_note VARCHAR(1000)` and `courts.district VARCHAR(150)`;
+does not change historical migration, statuses, price/deadline or payment evidence. No Flyway/Liquibase
+is installed: upgrades follow the existing explicit SQL convention. See `db/README.md`.
+
+- `GET /public/courts` still returns the complete active catalog without pagination; now includes
+  nullable `district`. Client multi-select districts use OR; no selection means no district predicate.
+  Unknown locations are not guessed/backfilled from names. Admin CourtRequest optionally accepts
+  district (max 150, no control characters); omission on update preserves it, blank clears it.
+- `PATCH /bookings/{bookingId}/notes`, body `{ "note": "Customer request" }`: authenticated owner only,
+  PENDING and strictly before original deadline under Booking lock. Up to 1000 characters, control
+  characters rejected except tab/newline/CR; blank clears to NULL. Returns full owned detail with
+  `customerNote`; GET history summaries expose customerNote as well. Payment note/amount/status never change; notes can be saved during a pending
+  attempt because they do not change the payable obligation. Confirmed/expired bookings return 409.
+- `PATCH /bookings/{bookingId}/details`, body `{ "bookingDate": "2031-02-20", "timeSlotIds": ["<UUID>"] }`:
+  same owner and original deadline checks. Only single-court PENDING bookings without ANY historical
+  payment attempts can change details. No court/identity/amount/status/deadline fields are editable.
+  1..48 distinct active slots; all start times must be future in Asia/Ho_Chi_Minh.
+  Booking -> Court row locks serialize edits with initiation/expiry and create-booking Court locks.
+  Court state and deadline are rechecked after waiting; no Court entity is preloaded before the lock.
+  Replacement availability excludes only this booking's existing details. Validation precedes deletion;
+  deletion + insertion + courtFee commit atomically, with uq_booking_slot as the final 409 protection.
+  Unchanged date/court/slot tuples retain price snapshots. New tuples use current basePrice * multiplier,
+  HALF_UP to scale 2; total must fit NUMERIC(10,2). Returns full owned detail with authoritative courtFee.
+
+PATCH errors: 400 invalid input/past or deleted slot/unavailable Court; 401 unauthenticated;
+403 foreign owner/non-CUSTOMER; 404 missing booking; 409 occupied slot/confirmed booking,
+`BOOKING_EXPIRED` or `PAYMENT_ATTEMPT_EXISTS`. Commit failures never return success.
+Edits never create a booking or reset its hold. No gateway URL is invalidated or silently reused
+after a price change: an existing attempt locks editing, including FAILED/REFUNDED history.
+
+Checkout disables payment while editing/saving/unsaved notes or uncertain synchronization,
+persists unsaved notes in a booking-scoped session draft, and reads backend data after refresh.
+After a failed/lost edit response it reconciles persisted detail before payment is enabled.
+Payment preflight detects changes made by another tab and asks the customer to review the updated total.
+Payment initiation still uses the database amount and Booking lock; BANK_TRANSFER CUSTOMER_DECLARED,
+VNPay verification/Return, expiration and product-only CASH/POS rules remain unchanged.
+
+Verification and limitations: [Courts / Checkout UX report](courts-checkout-ux-2026-10-23.md).
+
 Local base URL: `http://localhost:8080/api`. OpenAPI: `/api/api-docs`;
 Swagger UI: `/api/swagger-ui.html`. Controller paths do not contain `/api`.
 
-Booking Engine currently supports VNPay Sandbox as its only online payment gateway.
-The current project decision supersedes the original multi-provider assignment.
+Booking Engine supports VNPay Sandbox and unverified BANK_TRANSFER requests.
+CASH is forbidden for booking payment and staff booking checkout. Product-only POS CASH remains supported.
 
-## Auth boundary
+## Contract update — 2026-10-22
+
+This section supersedes earlier Phase 6/VNPay-only limitations below and in historical plan checkpoints.
+No migration is needed: the existing payment_transactions method CHECK permits BANK_TRANSFER;
+payment target remains booking_id only, invoice_id NULL. ddl-auto remains validate, SQL init never.
+
+POST /bookings/{bookingId}/payments accepts:
+
+```json
+{
+  "paymentMethod": "BANK_TRANSFER",
+  "bankTransfer": {
+    "bankName": "Payer's bank",
+    "accountHolder": "Payer's account holder",
+    "accountNumber": "Digits only, 1..34 characters",
+    "transferContent": "Payer's transfer description"
+  }
+}
+```
+
+All four transfer fields are required. Maximum lengths: bankName 100, accountHolder 150,
+accountNumber 34, transferContent 255. This is payer input, not a configured recipient account
+or bank confirmation. No recipient account is invented. Account information is validated
+but not persisted or returned. A non-sensitive note records the declaration timestamp.
+Unknown amount/status/target/transaction fields cannot change server data.
+
+### Customer declaration policy — 2026-10-23
+
+HTTP 201 for BANK_TRANSFER atomically confirms booking PAID under the customer declaration
+policy, with payment still PENDING and checkoutReady false. PAID here confirms the reservation;
+it does not assert bank receipt. Payment SUCCESS retains its verified-receipt meaning.
+Note format: `CUSTOMER_DECLARED; receipt=UNVERIFIED; declaredAt=<server local timestamp>`.
+The payment response adds `bookingStatus=PAID` and `confirmationMethod=CUSTOMER_DECLARED`;
+owned detail payment entries expose the same confirmationMethod without exposing the note.
+the UI then opens /payment-result?bookingId=...&paymentAttemptId=... and reads the owned detail.
+It displays "Đã xác nhận đặt sân" and explicitly says the transfer is customer declared and bank
+receipt unverified. It never displays a paid-in-full receipt for this declaration.
+No staff or bank callback is required to accept the declaration. There is no bank reconciliation API.
+Retries, including after the deadline, return the same declared attempt for confirmed bookings;
+an overdue PENDING or EXPIRED booking returns 409 with BOOKING_EXPIRED before payment creation.
+Booking locks serialize declaration, competing methods and expiration; confirmed bookings retain
+their details and cannot be expired. An outstanding VNPay attempt prevents switching methods.
+A delayed VNPay receipt on a prior failed attempt is retained for reconciliation, never a second settlement.
+
+The hold starts when the backend creates the booking (default PT10M, environment override supported).
+GET /bookings/{bookingId}/checkout-clock enforces authenticated ownership and returns
+`serverTime`, original `expiresAt`, and current `status`; it never renews or mutates the booking.
+Checkout creates the hold once, then derives the countdown from these server timestamps using
+a monotonic timer, resynchronizing every 15 seconds and on focus. Refresh, another tab for that
+booking and method changes retain the original deadline. Before clock synchronization payment
+is disabled. Under one minute the warning is visible; at zero payment is disabled with an expired
+message and a link to `/`. No automatic booking recreation occurs. The backend remains authoritative.
+On expiry, only PENDING becomes EXPIRED and details are deleted atomically; payment history remains.
+
+The Booking row lock serializes payment initiation. Repeated same-method requests reuse the
+same PENDING attempt; requesting another method while one is PENDING returns 409. CASH returns 400.
+Non-positive courtFee is rejected. Staff checkout locks the same Booking row and requires
+PAID/CHECKED_IN; CASH and unpaid/expired/already completed bookings cannot bypass this policy.
+A PENDING customer declaration cannot be used to issue a paid staff invoice: actual receipt must
+be reconciled first. Reservation confirmation does not change invoice accounting or POS CASH.
+Product-only PosService is unchanged. Its CASH invoice and stock update are covered on PostgreSQL.
+
+A persisted SUCCESS payment blocks new initiation even if a legacy/inconsistent Booking header
+still says PENDING. Settlement checks this under the Booking lock as well, so another attempt cannot
+become SUCCESS for the same obligation. Existing successful history is preserved; conflicting verified
+receipt is noted for reconciliation rather than silently repairing the header or confirming twice.
+
+Availability still accepts historical dates for read compatibility but returns available=false
+for every start time at or before now in Asia/Ho_Chi_Minh. Creation repeats that check after Court locks.
+Multiple details, HALF_UP per-detail rounding, price snapshots and uq_booking_slot are preserved.
+
+VNPay success requires signed IPN and atomic SUCCESS + PAID before the deadline. Verified terminal
+TransactionStatus 02 with non-success response marks an unconfirmed attempt FAILED, allowing retry
+on the same eligible booking. Intermediate status 01 is ignored. Failed callbacks never downgrade
+SUCCESS. A success received after expiry or on a non-payable attempt is not settled: note records
+RECONCILIATION_REQUIRED plus verified transaction/amount/date for investigation, without new enum values.
+The existing global transaction_id index remains unchanged.
+
+GET /payments/vnpay/return verifies checksum and never settles. By default it retains JSON output.
+Optional BOOKING_PAYMENT_FRONTEND_RESULT_URL must be an absolute HTTP(S) URL with path /payment-result,
+without userinfo/query/fragment. When set, valid browser Return responds 303 to that configured URL,
+carrying the signed provider fields. displayOnly=true retains JSON for the frontend verification call.
+No caller-supplied redirect target is accepted. /payment/result remains a frontend alias.
+
+Docker Compose now forwards existing BOOKING_VNPAY_PAYMENT_URL/TMN_CODE/HASH_SECRET/RETURN_URL,
+BOOKING_PAYMENT_ENABLED_METHODS and the optional frontend-result URL. It does not supply credentials.
+Register public HTTPS IPN /api/payments/vnpay/ipn in the merchant portal; there is no IPN URL
+environment variable consumed by source. Backend Return and IPN must be reachable by the provider.
+
+See [audit and test evidence](booking-payment-audit-2026-10-22.md) for live connectivity and test limits.
+
+## Phase 6 reference (historical; updates above take precedence)
+
+### Auth boundary
 
 The owner JWT filter authenticates a DB-backed UserPrincipal. CurrentCustomerService
 uses its trusted users.id to query customers.user_id and returns the distinct
@@ -209,7 +368,7 @@ History queries use customer_id/created_at and booking_id filtering compatible w
 existing idx_bookings_customer_created, idx_payments_booking and detail FK/query
 paths. No new index, new status, fake transaction ID or Invoice payment API.
 
-## VNPay-only booking payment policy
+## Historical VNPay-only booking payment policy (superseded 2026-10-22)
 
 The shared `PaymentMethod` enum and payment-method CHECKs on
 invoices/payment_transactions allow VNPAY, CASH and BANK_TRANSFER. The Member 3

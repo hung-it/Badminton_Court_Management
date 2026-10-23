@@ -27,6 +27,7 @@
 .customer-page a.customer-button-primary:link,.customer-page a.customer-button-primary:visited{color:var(--color-surface)}
 .customer-page .customer-button-primary:focus-visible{outline:3px solid var(--color-focus);outline-offset:3px}
 .customer-page .customer-button-primary:active:not(:disabled){background:var(--color-primary-dark);border-color:var(--color-primary-dark);color:var(--color-surface)}
+@media(max-width:390px){.customer-page .guide-utility-row,.checkout-page .guide-utility-row,.payment-result-page .guide-utility-row{flex-wrap:wrap}}
 .customer-page .customer-slot-chip,.customer-page .customer-quick-filters label{transition:color .16s ease,background-color .16s ease,box-shadow .16s ease}
 .customer-page .customer-slot-chip:focus-visible,.customer-page .customer-quick-filters label:focus-within{outline:3px solid var(--color-focus);outline-offset:2px}
 @media(hover:hover) and (pointer:fine){
@@ -38,3 +39,15 @@
 @media(prefers-reduced-motion:reduce){.customer-page .customer-input-display,.customer-page .customer-button-primary,.customer-page .customer-slot-chip,.customer-page .customer-quick-filters label{transition:none}}
 
 
+.customer-slot-row { margin-bottom: 0; row-gap: 8px; }
+.customer-slot-row + .customer-slot-row { margin-top: 10px; }
+.customer-slot-row > span:first-child { flex: 0 0 100%; font-weight: 600; }
+.customer-slot-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; }
+.customer-slot-chip input { margin: 0; accent-color: var(--cc-green-600); }
+.customer-district-filter { border: 0; padding: 0; margin: 0; min-width: 0; }
+.customer-district-options { max-height: 216px; overflow-y: auto; margin-top: 6px; }
+.customer-district-options .customer-check-row { align-items: center; min-height: 40px; line-height: 1.5; padding: 6px 2px; }
+.customer-district-options input { flex: 0 0 auto; width: 17px; height: 17px; }
+.customer-clear-districts { color: var(--cc-green-800); background: transparent; border: 0; text-decoration: underline; padding: 8px 0; cursor: pointer; font: inherit; font-size: 12px; }
+.customer-clear-districts:disabled { color: var(--cc-muted); cursor: default; }
+.customer-upcoming-note { overflow-wrap: anywhere; white-space: pre-wrap; }

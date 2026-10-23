@@ -48,29 +48,55 @@ public class PaymentCallbackTransactionService {
         Result invalid = validate(payment, notification);
         if (invalid != null) { return invalid; }
         if (!bookingId.equals(payment.getBooking().getId())) { return Result.NOT_FOUND; }
-        // No policy maps failure/intermediate results to FAILED. Never downgrade a confirmed payment.
-        if (!notification.providerSuccess()) { return Result.IGNORED; }
+        if (!notification.providerSuccess()) {
+            if (notification.terminalFailure() && payment.getStatus() == PaymentStatus.PENDING) {
+                payment.setStatus(PaymentStatus.FAILED);
+                if (payment.getNote() == null || !payment.getNote().startsWith("RECONCILIATION_REQUIRED")) {
+                    payment.setNote("Verified VNPay terminal failure/cancellation; no receipt confirmed");
+                }
+                payments.flush();
+            }
+            return Result.IGNORED;
+        }
         if (payment.getStatus() == PaymentStatus.SUCCESS) {
             boolean same = Objects.equals(payment.getTransactionId(), notification.transactionId())
                     && Objects.equals(payment.getTransactionDate(), notification.transactionDate());
             return same && booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.EXPIRED
                     ? Result.ALREADY_CONFIRMED : Result.CONFLICT;
         }
-        if (payment.getStatus() != PaymentStatus.PENDING || payment.getTransactionId() != null
-                || payment.getTransactionDate() != null) { return Result.NOT_PAYABLE; }
         if (booking.getStatus() == BookingStatus.EXPIRED
                 || (booking.getStatus() == BookingStatus.PENDING && booking.getExpiresAt() != null
                 && !booking.getExpiresAt().isAfter(LocalDateTime.now(clock)))) {
-            // Expected domain outcome, not an infrastructure failure. Never restore details or settle late.
+            recordUnsettledReceipt(payment, notification);
             return Result.LATE_EXPIRED;
         }
-        if (booking.getStatus() != BookingStatus.PENDING || booking.getExpiresAt() == null) { return Result.NOT_PAYABLE; }
+        if (payment.getStatus() != PaymentStatus.PENDING || payment.getTransactionId() != null
+                || payment.getTransactionDate() != null) {
+            recordUnsettledReceipt(payment, notification);
+            return Result.NOT_PAYABLE;
+        }
+        if (booking.getStatus() != BookingStatus.PENDING || booking.getExpiresAt() == null) {
+            recordUnsettledReceipt(payment, notification);
+            return Result.NOT_PAYABLE;
+        }
+        if (payment.getAmount().compareTo(booking.getCourtFee()) != 0) { return Result.INVALID_AMOUNT; }
+        if (payments.existsByBookingIdAndStatus(bookingId, PaymentStatus.SUCCESS)) {
+            recordUnsettledReceipt(payment, notification);
+            return Result.CONFLICT;
+        }
         payment.setStatus(PaymentStatus.SUCCESS);
         payment.setTransactionId(notification.transactionId());
         payment.setTransactionDate(notification.transactionDate());
         booking.setStatus(BookingStatus.PAID);
         payments.flush(); // unique transaction ID/any persistence failure rolls back BOTH managed mutations.
         return Result.SUCCESS;
+    }
+
+    private void recordUnsettledReceipt(PaymentTransaction payment, PaymentNotification notification) {
+        payment.setNote("RECONCILIATION_REQUIRED: verified VNPay receipt; transaction=" + notification.transactionId()
+                + "; amount=" + notification.amount() + "; date=" + notification.transactionDate()
+                + "; booking not confirmed. Manual investigation required; no automatic refund.");
+        payments.flush();
     }
 
     private Result validate(PaymentTransaction payment, PaymentNotification notification) {

@@ -34,8 +34,9 @@ public class AvailabilityResponse {
         private final LocalTime endTime;
         private final BigDecimal priceMultiplier;
 
-        @Schema(description = "True when no booking detail exists for this date, court and time slot. "
-                + "False means occupied, regardless of booking status or expiry. This is not a reservation.")
+        @Schema(description = "True only when the slot starts strictly after server time in Asia/Ho_Chi_Minh "
+                + "and no booking detail occupies it. Equality is already started. Persisted details block "
+                + "regardless of header status or expiry. Historical templates remain readable; this is not a reservation.")
         private final boolean available;
     }
 }

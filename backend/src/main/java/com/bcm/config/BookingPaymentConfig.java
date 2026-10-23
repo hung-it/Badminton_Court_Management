@@ -14,7 +14,8 @@ import java.util.Set;
 @Getter
 @Setter
 public class BookingPaymentConfig {
-    private Set<PaymentMethod> enabledMethods = EnumSet.of(PaymentMethod.VNPAY);
+    private Set<PaymentMethod> enabledMethods = EnumSet.of(PaymentMethod.VNPAY, PaymentMethod.BANK_TRANSFER);
+    private String frontendResultUrl = "";
     private Vnpay vnpay = new Vnpay();
 
     @Getter

@@ -21,6 +21,7 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
     List<PaymentTransaction> findBookingHistory(@Param("bookingId") UUID bookingId);
 
     boolean existsByBookingIdAndStatus(UUID bookingId, PaymentStatus status);
+    boolean existsByBookingId(UUID bookingId);
     Optional<PaymentTransaction> findFirstByBookingIdAndStatusOrderByCreatedAtAscIdAsc(UUID bookingId, PaymentStatus status);
 
     @Query("select p.booking.id from PaymentTransaction p where p.id = :id")

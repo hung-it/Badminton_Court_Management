@@ -17,6 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
+import java.time.Clock;
+import java.time.ZoneId;
+import org.springframework.beans.factory.annotation.Qualifier;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -36,12 +39,14 @@ public class BookingService {
     private final Validator validator;
     private final Duration holdDuration;
     private final CurrentCustomerService currentCustomer;
+    private final Clock clock;
 
     public BookingService(BookingRepository bookings, BookingDetailRepository details,
                           CustomerRepository customers, CourtRepository courts,
                           TimeSlotRepository timeSlots, Validator validator,
                           @Value("${booking.hold-duration}") String holdDuration,
-                          CurrentCustomerService currentCustomer) {
+                          CurrentCustomerService currentCustomer,
+                          @Qualifier("bookingExpirationClock") Clock clock) {
         this.bookings = bookings;
         this.details = details;
         this.customers = customers;
@@ -49,6 +54,7 @@ public class BookingService {
         this.timeSlots = timeSlots;
         this.validator = validator;
         this.currentCustomer = currentCustomer;
+        this.clock = clock;
         this.holdDuration = Duration.parse(holdDuration);
         if (this.holdDuration.isZero() || this.holdDuration.isNegative()) {
             throw new IllegalArgumentException("booking.hold-duration must be positive");
@@ -103,6 +109,10 @@ public class BookingService {
             if (slot == null) {
                 throw new ResourceNotFoundException("Time slot not found: " + item.getTimeSlotId());
             }
+            if (!item.getBookingDate().atTime(slot.getStartTime())
+                    .isAfter(LocalDateTime.ofInstant(clock.instant(), ZoneId.of("Asia/Ho_Chi_Minh")))) {
+                throw new BadRequestException("Booking time must be in the future (Asia/Ho_Chi_Minh)");
+            }
             // Snapshot policy: round each detail HALF_UP to scale 2 before summing.
             BigDecimal price = court.getBasePrice().multiply(slot.getPriceMultiplier())
                     .setScale(2, RoundingMode.HALF_UP);
@@ -127,7 +137,7 @@ public class BookingService {
         }
         booking.setCourtFee(total);
         // TIMESTAMP without timezone: use the application local clock, as existing audit fields do.
-        booking.setExpiresAt(LocalDateTime.now().plus(holdDuration));
+        booking.setExpiresAt(LocalDateTime.now(clock).plus(holdDuration));
         bookings.save(booking);
         // Flush verifies the unique-index fallback before returning; any failure rolls back header and details.
         details.saveAllAndFlush(bookingDetails);

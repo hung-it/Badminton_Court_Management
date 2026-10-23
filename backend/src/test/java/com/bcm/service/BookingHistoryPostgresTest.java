@@ -148,7 +148,8 @@ class BookingHistoryPostgresTest {
 
     @Test
     void normalDetailUsesPersistedSnapshotAndCurrentDisplayDataWithNoPayment() throws Exception {
-        var detail = new CreateBookingRequest.Detail(LocalDate.of(2026, 10, 5), court, slot);
+        var futureDate = LocalDate.now().plusDays(2);
+        var detail = new CreateBookingRequest.Detail(futureDate, court, slot);
         var created = creation.createBooking(new CreateBookingRequest(customerA, List.of(detail)));
         jdbc.update("UPDATE courts SET base_price=99,name='Updated name' WHERE id=?", court);
         jdbc.update("UPDATE time_slots SET price_multiplier=2 WHERE id=?", slot);
@@ -158,7 +159,7 @@ class BookingHistoryPostgresTest {
                 .andExpect(jsonPath("$.data.createdAt").exists()).andExpect(jsonPath("$.data.updatedAt").exists())
                 .andExpect(jsonPath("$.data.details.length()").value(1))
                 .andExpect(jsonPath("$.data.details[0].detailId").isNotEmpty())
-                .andExpect(jsonPath("$.data.details[0].bookingDate").value("2026-10-05"))
+                .andExpect(jsonPath("$.data.details[0].bookingDate").value(futureDate.toString()))
                 .andExpect(jsonPath("$.data.details[0].courtId").value(court.toString()))
                 .andExpect(jsonPath("$.data.details[0].timeSlotId").value(slot.toString()))
                 .andExpect(jsonPath("$.data.details[0].price").value(11.06))
@@ -341,7 +342,7 @@ class BookingHistoryPostgresTest {
         assertThat(ackRef).isEqualTo("#/components/schemas/VnPayIpnAcknowledgment");
         JsonNode schemas = document.path("components").path("schemas");
         assertThat(schemas.path("CreatePaymentAttemptRequest").path("properties").path("paymentMethod").path("enum"))
-                .containsExactly(mapper.getNodeFactory().textNode("VNPAY"));
+                .containsExactly(mapper.getNodeFactory().textNode("VNPAY"), mapper.getNodeFactory().textNode("BANK_TRANSFER"));
         assertThat(schemas.path("VnPayIpnAcknowledgment").path("properties").fieldNames()).toIterable()
                 .containsExactlyInAnyOrder("RspCode", "Message");
         assertThat(schemas.has("BookingHistoryResponse")).isTrue();
@@ -366,7 +367,7 @@ class BookingHistoryPostgresTest {
         assertThat(paths.path("/payments/vnpay/return").path("get").path("description").asText())
                 .contains("never reads or writes the database");
         assertThat(paths.path("/bookings/{bookingId}/payments").path("post").path("description").asText())
-                .contains("VNPAY only", "checkoutReady=true", "Unsupported methods return 400 before persistence")
+                .contains("VNPAY and BANK_TRANSFER", "checkoutReady=true", "CASH returns 400 before persistence")
                 .doesNotContain("checkout blocker");
     }
 

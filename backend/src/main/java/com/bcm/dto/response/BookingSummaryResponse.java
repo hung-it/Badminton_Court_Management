@@ -9,4 +9,5 @@ import java.util.UUID;
 @Schema(description = "Persisted booking header; customerId is a domain reference, not authenticated ownership")
 public record BookingSummaryResponse(UUID bookingId, UUID customerId, BookingStatus status,
                                      BigDecimal courtFee, @Schema(nullable = true) LocalDateTime expiresAt,
-                                     LocalDateTime createdAt, LocalDateTime updatedAt) { }
+                                     LocalDateTime createdAt, LocalDateTime updatedAt,
+                                     @Schema(nullable = true, maxLength = 1000) String customerNote) { }
