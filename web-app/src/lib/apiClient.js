@@ -24,6 +24,7 @@ export const tokenStore = {
   },
   save({ accessToken, refreshToken, user }, { persist = true } = {}) {
     if (this.user?.id && this.user.id !== user?.id) sessionStorage.removeItem('bcm-booking-draft');
+    if (this.user?.id && this.user.id !== user?.id) sessionStorage.removeItem('bcm-checkout-replacement');
     this.clear();
     if (accessToken) sessionStorage.setItem(ACCESS_KEY, accessToken);
     if (refreshToken) {
@@ -47,6 +48,7 @@ export const tokenStore = {
     localStorage.removeItem(USER_KEY);
     sessionStorage.removeItem(USER_KEY);
     sessionStorage.removeItem('bcm-customer-session');
+    sessionStorage.removeItem('bcm-checkout-replacement');
   },
 };
 

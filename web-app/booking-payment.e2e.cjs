@@ -58,9 +58,10 @@ const dateAfter = days => { const date = new Date(); date.setDate(date.getDate()
     const freeCourt = availability.courts.find(court => court.slots.filter(slot => slot.available).length >= 2);
     assert.ok(freeCourt, 'A court with two available slots is required');
     await page.getByLabel('Khung giờ', {exact: true}).selectOption(freeCourt.slots.find(slot => slot.available).timeSlotId);
-    const article = page.locator('.customer-court-card').first();
+    const article = page.locator(`[data-court-id="${freeCourt.courtId}"]`);
+    await article.locator(`.customer-extra-slots input[value="${freeCourt.slots.find(slot => slot.available).timeSlotId}"]`).check();
     await expect(article.getByRole('button', {name: 'Đặt sân', exact: true})).toBeEnabled();
-    const extra = article.locator('input[type=checkbox]').first();
+    const extra = article.locator('.customer-extra-slots input[type=checkbox]:not(:checked)').first();
     await expect(extra).toBeVisible();
     await extra.check();
     await article.getByRole('button', {name: 'Đặt sân', exact: true}).click();
@@ -111,7 +112,8 @@ const dateAfter = days => { const date = new Date(); date.setDate(date.getDate()
     assert.equal(Number(detail.courtFee), detail.details.reduce((sum, d) => sum + Number(d.price), 0));
     assert.equal(detail.payments.length, 1); assert.equal(detail.payments[0].paymentStatus, 'PENDING');
     assert.equal(detail.payments[0].confirmationMethod, 'CUSTOMER_DECLARED');
-    await expect(page.getByText('Chuyển khoản do khách tự khai báo.', {exact: false})).toBeVisible();
+    await expect(page.getByText('Chuyển khoản do khách tự khai báo.', {exact: false})).toHaveCount(0);
+    await expect(page.locator('.payment-result-total span')).toHaveText('Chuyển khoản ngân hàng');
     await expect(page.getByText('Đã thanh toán toàn bộ', {exact: true})).toHaveCount(0);
     const previousWrites = writes; await page.reload();
     await expect(page.getByRole('heading', {name: 'Đã xác nhận đặt sân', exact: true})).toBeVisible();

@@ -31,8 +31,6 @@
 .checkout-card-heading h2{margin:0;color:#065f46;font-size:20px;line-height:1.3;font-weight:700}
 .checkout-card-heading a{display:inline-flex;align-items:center;gap:7px;color:#047857;font-size:14px;font-weight:600;text-decoration:none;white-space:nowrap}
 .checkout-card-heading a img{width:15px;height:15px}
-.checkout-card-heading .checkout-edit-disabled{padding:0;border:0;background:transparent;display:inline-flex;align-items:center;gap:7px;color:#047857;font:inherit;font-size:14px;font-weight:600;white-space:nowrap;opacity:.55;cursor:not-allowed}
-.checkout-card-heading .checkout-edit-disabled img{width:15px;height:15px}
 .checkout-court-summary{display:flex;align-items:center;gap:24px;min-width:0}
 .checkout-court-photo{width:248px;height:160px;flex:0 0 248px;display:block;object-fit:cover;border-radius:12px;background:#d1fae5}
 .checkout-court-copy{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:9px}
@@ -59,8 +57,7 @@
 .checkout-note span{color:#647c70}
 .checkout-bank-transfer-card{box-sizing:border-box;width:100%;margin-top:-6px;padding:18px;border:1px solid #e1eee6;border-radius:14px;background:#fff;box-shadow:none}
 .checkout-bank-transfer-card h2{margin:0;color:#006747;font-size:14px;font-weight:700}
-.checkout-bank-transfer-card>p{margin:6px 0 16px;color:#7c9287;font-size:12px}
-.checkout-bank-transfer-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 12px}
+.checkout-bank-transfer-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 12px;margin-top:14px}
 .checkout-bank-transfer-field{min-width:0;display:flex;flex-direction:column;gap:5px}
 .checkout-bank-transfer-accountNumber,.checkout-bank-transfer-transferContent{grid-column:1/-1}
 .checkout-bank-transfer-field label{color:#006747;font-size:12px}
@@ -69,10 +66,6 @@
 .checkout-bank-transfer-field input[aria-invalid="true"]{border-color:#b91c1c}
 .checkout-bank-transfer-error{color:#991b1b;font-size:12px;overflow-wrap:anywhere}
 @media(max-width:639px){.checkout-bank-transfer-fields{grid-template-columns:minmax(0,1fr)}}
-.checkout-arrival-note{display:flex;align-items:flex-start;gap:12px;padding:4px 8px}
-.checkout-arrival-note>img{width:20px;height:20px;flex:0 0 auto}
-.checkout-arrival-note strong{font-size:14px}
-.checkout-arrival-note p{margin:5px 0 0;color:#647c70;font-size:13px;line-height:1.6}
 .checkout-invoice-column{gap:16px}
 .checkout-invoice-card{border-radius:20px}
 .checkout-invoice-accent{height:4px;background:#16a34a}
@@ -99,7 +92,6 @@
 .checkout-grand-total{padding:20px;border-radius:12px;background:#f0fdf4;display:flex;flex-direction:column;gap:8px}
 .checkout-grand-total>strong{font-size:14px}
 .checkout-grand-total>b{color:#065f46;font-size:34px;line-height:1.2;overflow-wrap:anywhere}
-.checkout-grand-total>small{color:#047857;font-size:12px;line-height:1.5}
 .checkout-methods{min-width:0;margin:0;padding:0;border:0;display:flex;flex-direction:column;gap:10px}
 .checkout-methods legend{margin-bottom:12px;padding:0;color:#065f46;font-size:14px;font-weight:600}
 .checkout-method{min-width:0;min-height:78px;padding:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #dcede2;border-radius:12px;background:#fff;cursor:pointer}
@@ -118,8 +110,6 @@
 .checkout-payment-action>button:focus-visible,.checkout-primary-link:focus-visible,.checkout-back:focus-visible,.checkout-card-heading a:focus-visible,.checkout-footer a:focus-visible{outline:3px solid #047857;outline-offset:3px}
 .checkout-payment-action>button:active:not(:disabled){background:#065f46}
 .checkout-payment-action>button:disabled{opacity:.56;cursor:not-allowed}
-.checkout-security{display:flex;align-items:center;justify-content:center;gap:7px;color:#647c70;font-size:12px}
-.checkout-security img{width:15px;height:15px}
 .checkout-support{min-height:72px;padding:16px 20px;display:flex;align-items:center;gap:12px;border-radius:12px;background:#d1fae5}
 .checkout-support>img{width:24px;height:24px;flex:0 0 auto}
 .checkout-support>div{display:flex;flex-direction:column;gap:2px}
@@ -140,7 +130,7 @@
 .checkout-edit-button img { width: 16px; height: 16px; }
 .checkout-edit-button:disabled { opacity: .5; cursor: default; }
 .checkout-booking-editor { padding: 16px; margin-bottom: 20px; border: 1px solid #bbf7d0; border-radius: 10px; background: #f0fdf4; }
-.checkout-booking-editor > label, .checkout-booking-note > label { display: block; font-weight: 600; margin-bottom: 10px; }
+.checkout-booking-editor > label { display: block; font-weight: 600; margin-bottom: 10px; }
 .checkout-booking-editor > input { max-width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font: inherit; background: white; }
 .checkout-booking-editor fieldset { border: 0; padding: 0; margin: 16px 0; max-height: 300px; overflow: auto; }
 .checkout-booking-editor legend { font-weight: 600; margin-bottom: 8px; }
@@ -148,10 +138,27 @@
 .checkout-edit-slot input { accent-color: #15803d; }
 .checkout-edit-slot span:last-child { color: #52665a; }
 .checkout-editor-actions { display: flex; flex-wrap: wrap; gap: 10px; }
-.checkout-editor-actions button, .checkout-booking-note > button { padding: 10px 14px; border: 1px solid #15803d; border-radius: 8px; color: #166534; background: white; font: inherit; cursor: pointer; }
+.checkout-editor-actions button { padding: 10px 14px; border: 1px solid #15803d; border-radius: 8px; color: #166534; background: white; font: inherit; cursor: pointer; }
 .checkout-editor-actions button:first-child { background: #15803d; color: white; }
-.checkout-editor-actions button:disabled, .checkout-booking-note > button:disabled { opacity: .5; cursor: default; }
-.checkout-booking-note { margin-top: 20px; }
-.checkout-booking-note textarea { display: block; width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #d1d5db; border-radius: 9px; resize: vertical; min-height: 100px; font: inherit; font-size: 14px; }
-.checkout-booking-note textarea:focus-visible { outline: 2px solid #16a34a; outline-offset: 2px; }
-.checkout-note-status { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 8px 0 12px; font-size: 12px; color: #52665a; }
+.checkout-editor-actions button:disabled { opacity: .5; cursor: default; }
+.checkout-contact-editor .checkout-customer-fields { margin-bottom: 16px; }
+.checkout-contact-status { margin: 10px 0 0; color: #15803d; font-size: 13px; }
+.checkout-contact-editor label { min-width: 0; display: flex; flex-direction: column; gap: 8px; color: #244c3d; font-size: 13px; }
+.checkout-contact-editor input { box-sizing: border-box; min-width: 0; width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font: inherit; background: white; color: #244c3d; }
+.checkout-contact-editor input:focus { outline: 2px solid #15803d; outline-offset: 2px; }
+.checkout-contact-editor input[readonly] { background: #f1f5f3; color: #647c70; }
+.checkout-contact-editor input[aria-invalid="true"] { border-color: #b91c1c; }
+.checkout-contact-editor label small { color: #b91c1c; }
+.checkout-multi-courts{margin-top:16px;font-size:13px;line-height:1.6;overflow-wrap:anywhere}.checkout-multi-courts section{padding:12px 0;border-bottom:1px solid var(--cc-border,#dce8df)}.checkout-multi-courts h4{margin:0 0 8px}.checkout-multi-courts p{margin:5px 0}
+.checkout-promotions{margin:0;padding:0;border:0;min-width:0}
+.checkout-promotions legend{padding:0;margin-bottom:12px;font-size:14px;font-weight:600;color:#065f46}
+.checkout-promotions form{display:flex;gap:12px;min-width:0}
+.checkout-promotions input{box-sizing:border-box;flex:1;min-width:0;width:0;border:1px solid #dcede2;border-radius:12px;padding:14px 16px;font:inherit;font-size:14px;color:#244c3d;background:white}
+.checkout-promotions input::placeholder{color:#647c70}
+.checkout-promotions button{border:0;border-radius:12px;padding:14px 20px;font:inherit;font-weight:600;font-size:15px;color:white;background:#16a34a;cursor:pointer}
+.checkout-promotions button:disabled{opacity:.55;cursor:default}
+.checkout-promotions input:focus-visible,.checkout-promotions button:focus-visible{outline:2px solid #047857;outline-offset:2px}
+.checkout-promotions p{margin:10px 0 0;font-size:13px;line-height:1.5;color:#047857;overflow-wrap:anywhere}
+.checkout-promotions p:empty{display:none}
+.checkout-promotions .checkout-remove-voucher{padding:8px 0;background:transparent;color:#047857;font-size:13px}
+.checkout-discount strong{color:#047857;font-size:14px;text-align:right}

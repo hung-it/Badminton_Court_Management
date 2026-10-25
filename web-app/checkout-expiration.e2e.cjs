@@ -26,11 +26,13 @@ const bankTransfer = {bankName: 'Test bank', accountHolder: 'Test payer', accoun
   const booking = (await created.json()).data;
   assert.match(booking.bookingId, /^[0-9a-f-]{36}$/i);
   // Fixture mutation is constrained to this test-created ID in the dedicated audit database.
-  const setDeadline = seconds => {
+  const setDeadline = async seconds => {
     assert.ok(Number.isInteger(seconds));
-    const changed = execFileSync('docker', ['exec', 'bcm-booking-audit-20261022', 'psql', '-U', 'bcm_test',
-      '-d', 'bcm_booking_audit', '-v', 'ON_ERROR_STOP=1', '-c',
-      `UPDATE bookings SET expires_at=LOCALTIMESTAMP + interval '${seconds} seconds' WHERE id='${booking.bookingId}' AND customer_id='${customerId}' AND status='PENDING'`], {encoding: 'utf8'});
+    const state = (await (await api.get('/api/bookings/' + booking.bookingId + '/checkout-clock', {headers})).json()).data;
+    const deadline = new Date(Date.parse(state.serverTime + 'Z') + seconds * 1000).toISOString().replace('T', ' ').replace('Z', '');
+    const changed = execFileSync('docker', ['exec', process.env.BCM_E2E_DB_CONTAINER || 'bcm-booking-audit-20261022', 'psql', '-U', process.env.BCM_E2E_DB_USER || 'bcm_test',
+      '-d', process.env.BCM_E2E_DB_NAME || 'bcm_booking_audit', '-v', 'ON_ERROR_STOP=1', '-c',
+      `UPDATE bookings SET expires_at=TIMESTAMP '${deadline}' WHERE id='${booking.bookingId}' AND customer_id='${customerId}' AND status='PENDING'`], {encoding: 'utf8'});
     assert.match(changed, /UPDATE 1/);
   };
   const browser = await chromium.launch({channel: 'msedge', headless: true});
@@ -43,7 +45,7 @@ const bankTransfer = {bankName: 'Test bank', accountHolder: 'Test payer', accoun
     const page = await context.newPage();
     const errors = []; let writes = 0;
     page.on('pageerror', error => errors.push(error.message));
-    context.on('request', req => { if (req.method() === 'POST' && /\/bookings/.test(req.url())) writes++; });
+    context.on('request', req => { if (req.method() === 'POST' && /\/bookings(?:\?|$)|\/payments(?:\?|$)/.test(req.url())) writes++; });
     await page.goto(`${baseURL}/checkout?bookingId=${booking.bookingId}`);
     await expect(page.getByRole('button', {name: 'Thanh toán', exact: true})).toBeEnabled();
     const readClock = async p => {
@@ -63,16 +65,16 @@ const bankTransfer = {bankName: 'Test bank', accountHolder: 'Test payer', accoun
     assert.equal(writes, 0, 'StrictMode, refresh and new tab must not create a booking or payment');
     await page.locator('input[value=BANK_TRANSFER]').check();
     assert.ok(await readClock(page) <= after, 'Method switch must not reset the deadline');
-    setDeadline(330);
+    await setDeadline(330);
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect.poll(() => readClock(page)).toBeLessThanOrEqual(330);
     assert.ok(await readClock(page) >= 325);
-    setDeadline(59);
+    await setDeadline(59);
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(page.locator('.checkout-alert-error')).toContainText('Sắp hết thời gian giữ sân');
     assert.ok(await readClock(page) <= 59);
     for (const [name, value] of Object.entries(bankTransfer)) await page.locator(`#checkout-${name}`).fill(value);
-    setDeadline(2);
+    await setDeadline(2);
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect.poll(() => readClock(page)).toBeLessThanOrEqual(2);
     await expect(page.getByRole('button', {name: 'Thanh toán', exact: true})).toBeDisabled({timeout: 5000});

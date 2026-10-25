@@ -1,6 +1,5 @@
 package com.bcm.service;
 
-import com.bcm.dto.request.UpdateBookingNoteRequest;
 import com.bcm.dto.request.UpdateBookingRequest;
 import com.bcm.dto.response.BookingHistoryDetailResponse;
 import com.bcm.entity.*;
@@ -32,24 +31,16 @@ public class BookingModificationService {
     private final BookingHistoryService history;
     private final Validator validator;
     private final Clock clock;
+    private final BookingPromotionService promotions;
 
     public BookingModificationService(BookingRepository bookings, BookingDetailRepository details,
             CourtRepository courts, TimeSlotRepository slots, PaymentTransactionRepository payments,
             CurrentCustomerService customer, BookingHistoryService history, Validator validator,
-            @Qualifier("bookingExpirationClock") Clock clock) {
+            @Qualifier("bookingExpirationClock") Clock clock, BookingPromotionService promotions) {
         this.bookings = bookings; this.details = details; this.courts = courts; this.slots = slots;
         this.payments = payments; this.customer = customer; this.history = history;
         this.validator = validator; this.clock = clock;
-    }
-
-    @Transactional
-    public BookingHistoryDetailResponse updateNote(UUID bookingId, UpdateBookingNoteRequest request) {
-        validate(request);
-        var booking = lockOwned(bookingId);
-        requireEditable(booking);
-        booking.setCustomerNote(request.note().isBlank() ? null : request.note().strip());
-        bookings.flush();
-        return history.detail(bookingId);
+        this.promotions = promotions;
     }
 
     @Transactional
@@ -108,8 +99,44 @@ public class BookingModificationService {
         // insertion roll back together on unique-slot errors at flush/commit.
         details.deleteForReplacement(bookingId);
         booking.setCourtFee(total);
+        var quote = promotions.calculate(booking, booking.getRequestedVoucher());
+        requireEditable(booking);
+        booking.setDiscountAmount(quote.discountAmount());
+        booking.setPromotionCode(quote.promotionCode());
+        booking.setRequestedVoucher(quote.requestedVoucher());
         details.saveAllAndFlush(replacements);
         return history.detail(bookingId);
+    }
+
+    @Transactional(readOnly = true)
+    public com.bcm.dto.response.BookingContactResponse getContact(UUID bookingId) {
+        UUID trustedCustomer = customer.requireCustomerId();
+        var booking = bookings.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
+        if (!trustedCustomer.equals(booking.getCustomer().getId())) throw new AccessDeniedException("Booking not owned");
+        return contactOf(booking);
+    }
+
+    @Transactional
+    public com.bcm.dto.response.BookingContactResponse updateContact(UUID bookingId,
+            com.bcm.dto.request.UpdateBookingContactRequest request) {
+        validate(request);
+        var booking = lockOwned(bookingId);
+        requireEditable(booking);
+        if (payments.existsByBookingId(bookingId)) {
+            throw new DuplicateResourceException("PAYMENT_ATTEMPT_EXISTS: Booking contact is locked after payment initiation");
+        }
+        booking.setContactFullName(request.fullName());
+        booking.setContactPhone(request.phone());
+        return contactOf(booking);
+    }
+
+    private com.bcm.dto.response.BookingContactResponse contactOf(Booking booking) {
+        var profile = booking.getCustomer();
+        return new com.bcm.dto.response.BookingContactResponse(
+                booking.getContactFullName() == null ? profile.getFullName() : booking.getContactFullName(),
+                booking.getContactPhone() == null ? profile.getPhone() : booking.getContactPhone(),
+                profile.getUser().getEmail());
     }
 
     private Booking lockOwned(UUID bookingId) {

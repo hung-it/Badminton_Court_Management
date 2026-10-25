@@ -84,7 +84,7 @@ class BookingHistoryPostgresTest {
         jdbc.update("INSERT INTO user_roles(user_id,role_id) SELECT ?,id FROM roles WHERE role_name='CUSTOMER'", userA);
         jdbc.update("INSERT INTO user_roles(user_id,role_id) SELECT ?,id FROM roles WHERE role_name='CUSTOMER'", userB);
         authenticate(userA);
-        jdbc.update("INSERT INTO courts(id,court_number,name,base_price) VALUES (?,999601,'History court',10.05)", court);
+        jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?,999601,'History court',10.05)", court);
         jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier) VALUES (?,'00:00','01:00',1.10)", slot);
     }
 
@@ -182,6 +182,39 @@ class BookingHistoryPostgresTest {
                 .andExpect(jsonPath("$.data.payments[0].paymentStatus").value("PENDING"));
         authenticate(userA);
         assertThat(history.history(customerA, null, 0, 20).content()).extracting("bookingId").contains(id);
+    }
+
+    @Test
+    void checkoutMetadataAndTimeOrderingSurviveIndependentReads() throws Exception {
+        UUID branch=UUID.randomUUID(), early=UUID.randomUUID();
+        UUID id=booking(customerA,BookingStatus.PENDING,NOW);
+        jdbc.update("INSERT INTO branches(id,code,name,district,address) VALUES (?,?,'Branch history','Bình Thạnh','Branch address')",branch,branch.toString());
+        try {
+            jdbc.update("UPDATE courts SET branch_id=?,court_number=4,type='WOODEN_FLOOR',district='Bình Thạnh',address='Court address' WHERE id=?",branch,court);
+            jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier) VALUES (?,'08:00','09:00',1)",early);
+            jdbc.update("UPDATE time_slots SET start_time='10:00',end_time='11:00' WHERE id=?",slot);
+            var date=LocalDate.of(2035,1,2);
+            jdbc.update("INSERT INTO booking_details(booking_id,court_id,time_slot_id,booking_date,price) VALUES (?,?,?,?,11.06)",id,court,slot,date);
+            jdbc.update("INSERT INTO booking_details(booking_id,court_id,time_slot_id,booking_date,price) VALUES (?,?,?,?,11.06)",id,court,early,date);
+            for (int read=0;read<2;read++) {
+                mvc.perform(get("/api/bookings/"+id).contextPath("/api")).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.details[0].startTime").value("08:00:00"))
+                    .andExpect(jsonPath("$.data.details[1].startTime").value("10:00:00"))
+                    .andExpect(jsonPath("$.data.details[0].courtNumber").value(4))
+                    .andExpect(jsonPath("$.data.details[0].courtCode").value(999601))
+                    .andExpect(jsonPath("$.data.details[0].branchCourtNumber").value(4))
+                    .andExpect(jsonPath("$.data.details[0].branchId").value(branch.toString()))
+                    .andExpect(jsonPath("$.data.details[0].branchName").value("Branch history"))
+                    .andExpect(jsonPath("$.data.details[0].district").value("Bình Thạnh"))
+                    .andExpect(jsonPath("$.data.details[0].address").value("Court address"))
+                    .andExpect(jsonPath("$.data.details[0].type").value("WOODEN_FLOOR"));
+            }
+        } finally {
+            jdbc.update("DELETE FROM booking_details WHERE booking_id=?",id);
+            jdbc.update("DELETE FROM time_slots WHERE id=?",early);
+            jdbc.update("UPDATE courts SET branch_id=NULL,court_number=NULL WHERE id=?",court);
+            jdbc.update("DELETE FROM branches WHERE id=?",branch);
+        }
     }
 
     @Test

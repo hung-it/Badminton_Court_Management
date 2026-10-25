@@ -98,7 +98,7 @@ class BookingExpirationPostgresTest {
         jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,?,'Booking fixture','0900000000')", userId, userId + "@expiration.test", "test-only");
         jdbc.update("INSERT INTO customers(id,user_id,full_name,phone) VALUES (?,?,?,?)",
                 customerId, userId, "Expiration test", "0900000000");
-        jdbc.update("INSERT INTO courts(id,court_number,name,base_price) VALUES (?, -501, 'Expiration test', 10.00)", courtId);
+        jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?, -501, 'Expiration test', 10.00)", courtId);
         jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier) VALUES (?, '00:00', '01:00', 1.00)", slotId);
     }
 

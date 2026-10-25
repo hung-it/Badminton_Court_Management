@@ -12,4 +12,11 @@ public record CourtRequest(
         @NotNull CourtType type,
         @NotNull CourtStatus status,
         @NotNull @DecimalMin("0.00") @Digits(integer = 8, fraction = 2) BigDecimal basePrice,
-        @Size(max = 150) @Pattern(regexp = "[^\\p{Cntrl}]*") String district) {}
+        @Size(max = 150) @Pattern(regexp = "[^\\p{Cntrl}]*") String district,
+        @Size(max = 500) @Pattern(regexp = "[^\\p{Cntrl}]*") String address) {
+    // Preserve source compatibility for existing callers that omit the optional address.
+    public CourtRequest(Integer courtNumber, String name, CourtType type, CourtStatus status,
+                        BigDecimal basePrice, String district) {
+        this(courtNumber, name, type, status, basePrice, district, null);
+    }
+}

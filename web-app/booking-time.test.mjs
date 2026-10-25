@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import {bookingToday, isFutureSlot, nextBookingDate, anchorBookingClock} from './src/lib/bookingTime.js';
 
 const date = '2031-02-20';
-const cases = ['00:00', '06:59', '07:00', '11:59', '12:00', '12:30', '23:59'];
+const cases = ['00:00', '06:59', '07:00', '11:59', '12:00', '12:30', '17:59', '18:00', '23:59'];
 for (const time of cases) {
   test(`Vietnam clock ${time}: yesterday/today/tomorrow and exact start boundary`, () => {
     const now = Date.parse(`${date}T${time}:00+07:00`); // Fixed test fixture, never the host clock.
     assert.equal(bookingToday(now), date);
-    for (const start of ['00:00:00', '06:00:00', '07:00:00', '08:00:00', '12:00:00', '13:00:00', '23:00:00']) {
+    for (const start of ['00:00:00', '06:00:00', '07:00:00', '08:00:00', '12:00:00', '13:00:00', '17:00:00', '18:00:00', '19:00:00', '23:00:00']) {
       assert.equal(isFutureSlot('2031-02-19', start, now), false);
       assert.equal(isFutureSlot('2031-02-21', start, now), true);
       assert.equal(isFutureSlot(date, start, now), start > `${time}:00`);

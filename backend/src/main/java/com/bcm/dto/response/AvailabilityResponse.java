@@ -33,10 +33,15 @@ public class AvailabilityResponse {
         private final LocalTime startTime;
         private final LocalTime endTime;
         private final BigDecimal priceMultiplier;
+        @Schema(description = "Server preview: court base price times slot multiplier, HALF_UP scale 2. Booking recalculates and snapshots this amount.")
+        private final BigDecimal price;
 
         @Schema(description = "True only when the slot starts strictly after server time in Asia/Ho_Chi_Minh "
                 + "and no booking detail occupies it. Equality is already started. Persisted details block "
                 + "regardless of header status or expiry. Historical templates remain readable; this is not a reservation.")
         private final boolean available;
+
+        @Schema(description = "Same persisted occupancy for every customer. HELD = PENDING detail; BOOKED = confirmed booking; BLOCKED = retained detail of an inactive booking; AVAILABLE = no detail and future start; PAST = no detail but already started.", allowableValues = {"AVAILABLE", "HELD", "BOOKED", "BLOCKED", "PAST"})
+        private final String occupancy;
     }
 }

@@ -2,10 +2,11 @@ import React, {useEffect, useRef, useState} from 'react';
 import './payment-result.css';
 import {api, readSession, clearSession, BOOKING_DRAFT_KEY} from './CustomerCourts.jsx';
 import {GuideHeader} from './CustomerLayout.jsx';
+import {courtImageSource, COURT_FALLBACK_IMAGE} from './lib/courtImages';
+import {sortBookingDetails, bookingCourtGroups, bookingTimeLabel, bookingDuration, courtLabel as labelCourt, compareCourtNumbers, surfaceLabel} from './lib/bookingPresentation';
 
 const asset = name => `/assets/checkout-${name}`;
 const formatMoney = value => `${new Intl.NumberFormat('vi-VN', {maximumFractionDigits: 0}).format(Number(value) || 0)}₫`;
-const timeText = value => String(value || '').slice(0, 5);
 const normalizedId = value => String(value || '').replaceAll('-', '').toLowerCase();
 
 function formatDate(value) {
@@ -14,16 +15,6 @@ function formatDate(value) {
   const date = new Date(year, month - 1, day);
   const weekday = new Intl.DateTimeFormat('vi-VN', {weekday: 'long'}).format(date);
   return `${weekday.charAt(0).toLocaleUpperCase('vi-VN')}${weekday.slice(1)}, ${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
-}
-
-function durationText(detail, count) {
-  const toMinutes = value => Number(String(value || '').slice(0, 2)) * 60 + Number(String(value || '').slice(3, 5));
-  const entries = Array.isArray(detail) ? detail : [detail];
-  const minutes = entries.reduce((sum, entry) => sum + Math.max(0, toMinutes(entry?.endTime) - toMinutes(entry?.startTime)), 0);
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  const duration = [hours ? `${hours} giờ` : '', remainder ? `${remainder} phút` : ''].filter(Boolean).join(' ') || 'Chưa có dữ liệu';
-  return count > 1 ? `${duration} • ${count} sân` : duration;
 }
 
 function ResultStep({done, current, label, number}) {
@@ -68,11 +59,18 @@ export default function PaymentResult() {
   const [bookingCountError, setBookingCountError] = useState(null);
   const [state, setState] = useState('checking');
   const [booking, setBooking] = useState(null);
+  const [imageCatalog, setImageCatalog] = useState([]);
   const [payment, setPayment] = useState(null);
   const [notice, setNotice] = useState('Đang xác minh giao dịch với máy chủ…');
   const [retry, setRetry] = useState(0);
   const [paying, setPaying] = useState(false);
   const paymentStarted = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    api('/public/courts', null).then(catalog => { if (active) setImageCatalog(catalog); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!session?.accessToken) return undefined;
@@ -123,7 +121,7 @@ export default function PaymentResult() {
       let foundPayment = null;
       for (let index = 0; index < attempts; index += 1) {
         foundBooking = await findBooking(session, bookingId, attemptId);
-        foundPayment = foundBooking?.payments?.find(item => normalizedId(item.paymentAttemptId) === normalizedId(attemptId)) || (!attemptId ? foundBooking?.payments?.find(item => item.confirmationMethod === 'CUSTOMER_DECLARED' || item.paymentStatus === 'SUCCESS') : null) || null;
+        foundPayment = foundBooking?.payments?.find(item => normalizedId(item.paymentAttemptId) === normalizedId(attemptId)) || (!attemptId ? foundBooking?.payments?.find(item => item.paymentStatus === 'SUCCESS') || foundBooking?.payments?.find(item => item.confirmationMethod === 'CUSTOMER_DECLARED') : null) || null;
         if (!providerResult && !foundPayment && !bookingId) break;
         if (foundBooking?.status === 'EXPIRED' || foundPayment?.paymentStatus === 'SUCCESS'
           || ['FAILED', 'REFUNDED'].includes(foundPayment?.paymentStatus) || foundPayment?.paymentMethod === 'BANK_TRANSFER') break;
@@ -148,7 +146,7 @@ export default function PaymentResult() {
         setNotice('Thời gian giữ sân đã hết hạn. Trạng thái thanh toán cần được bộ phận hỗ trợ kiểm tra.');
       } else if (['PAID', 'CHECKED_IN', 'COMPLETED', 'NO_SHOW'].includes(foundBooking.status) && (foundPayment.paymentStatus === 'SUCCESS' || (foundPayment.paymentStatus === 'PENDING' && foundPayment.confirmationMethod === 'CUSTOMER_DECLARED'))) {
         setState('success');
-        setNotice('Thanh toán thành công');
+        setNotice(foundPayment.paymentStatus === 'SUCCESS' ? 'Thanh toán thành công' : 'Thanh toán chờ xác nhận');
       } else if (foundPayment.paymentStatus === 'REFUNDED') {
         setState('refunded');
         setNotice('Máy chủ ghi nhận giao dịch đã được hoàn tiền. Vui lòng kiểm tra lịch đặt hoặc liên hệ hỗ trợ.');
@@ -200,14 +198,14 @@ export default function PaymentResult() {
 
   if (!session) return <div className="payment-result-page"><GuideHeader session={null} activePage="checkout"/><main className="payment-result-main"><section className="payment-result-state-card payment-result-signed-out"><div className="payment-result-signed-out-content"><span className="payment-result-notice-icon" aria-hidden="true">i</span><div className="payment-result-signed-out-copy"><h1>Đăng nhập để xem trạng thái thanh toán</h1><p>Trạng thái giao dịch được đối chiếu với tài khoản đã đặt sân. Hiện chưa thể xác minh giao dịch khi bạn chưa đăng nhập.</p></div></div><a className="payment-result-home-link" href="/courts">Về trang chủ</a></section><div className="payment-result-support">Cần hỗ trợ? <a href="tel:19001000">1900 1000</a></div></main><ResultFooter/></div>;
 
-  const details = booking?.details || [];
+  const details = sortBookingDetails(booking?.details);
   const firstDetail = details[0];
-  const uniqueCourts = [...new Map(details.map(detail => [detail.courtId, detail])).values()];
-  const uniqueSlots = [...new Map(details.map(detail => [`${detail.startTime}-${detail.endTime}`, detail])).values()];
-  const courtLabel = uniqueCourts.map(detail => `Sân ${String(detail.courtNumber ?? '').padStart(2, '0')}`).join(' và ') || 'Không có chi tiết sân';
-  const slotLabel = uniqueSlots.map(detail => `${timeText(detail.startTime)} – ${timeText(detail.endTime)}`).join(', ') || 'Không có dữ liệu';
+  const groups = bookingCourtGroups(details);
+  const uniqueCourts = groups.map(group => group.details[0]);
+  const courtLabel = [...uniqueCourts].sort(compareCourtNumbers).map(labelCourt).join(', ') || 'Không có chi tiết sân';
+  const slotLabel = bookingTimeLabel(details) || 'Không có dữ liệu';
   const isSuccess = state === 'success';
-  const declared = payment?.confirmationMethod === 'CUSTOMER_DECLARED';
+  const declared = payment?.confirmationMethod === 'CUSTOMER_DECLARED' && payment?.paymentStatus !== 'SUCCESS';
   const pageTitle = isSuccess ? (declared ? 'Đã xác nhận đặt sân' : 'Thanh toán thành công') : state === 'bank-pending' ? 'Đã ghi nhận yêu cầu chuyển khoản' : state === 'refunded' ? 'Giao dịch đã được hoàn tiền' : state === 'checking' || state === 'pending' ? 'Đang xác minh kết quả thanh toán' : state === 'failed' ? 'Thanh toán không thành công' : state === 'expired' ? 'Đơn đặt sân đã hết thời gian thanh toán' : 'Chưa xác minh được thanh toán';
 
   return <div className="payment-result-page">
@@ -226,7 +224,6 @@ export default function PaymentResult() {
         <div className="payment-result-success-icon" aria-hidden="true"><img src={asset('check-selected.svg')} alt=""/></div>
         <div className="payment-result-message">
           <h1>{pageTitle}</h1>
-          {declared && <p>Chuyển khoản do khách tự khai báo. Ngân hàng chưa xác minh nhận tiền; đây không phải biên nhận tiền.</p>}
           {isSuccess ? <p>Cảm ơn {session.user?.fullName?.trim().split(/\s+/)[0] || 'bạn'}! Lịch đặt sân của bạn đã được xác nhận.<br className="payment-result-desktop-break"/> Hẹn gặp bạn trên sân và chúc bạn có một buổi chơi thật vui!</p> : <p>{notice}</p>}
         </div>
       </section>
@@ -236,31 +233,31 @@ export default function PaymentResult() {
           <div className="payment-result-summary-details">
             <div className="payment-result-court">
               <div className="payment-result-photo-wrap">
-                <img src="/assets/checkout-court-star-city.png" alt="Sân cầu lông trong nhà" onError={event => {event.currentTarget.hidden = true; event.currentTarget.nextElementSibling.hidden = false;}}/>
-                <span hidden aria-hidden="true">Sân cầu lông</span>
+                {firstDetail && courtImageSource(firstDetail, imageCatalog) && <img src={courtImageSource(firstDetail, imageCatalog)} alt={firstDetail.courtName || 'Sân đã chọn'} onError={event => {if (event.currentTarget.getAttribute('src') !== COURT_FALLBACK_IMAGE) event.currentTarget.src = COURT_FALLBACK_IMAGE; else {event.currentTarget.hidden = true; event.currentTarget.nextElementSibling.hidden = false;}}}/>}
+                <span hidden={Boolean(firstDetail && courtImageSource(firstDetail, imageCatalog))}>Chưa có ảnh sân</span>
               </div>
               <div className="payment-result-court-copy">
-                <h2>{uniqueCourts.map(detail => detail.courtName).filter(Boolean).filter((name, index, all) => all.indexOf(name) === index).join(' · ') || 'Sân cầu lông'}</h2>
-                <p>Địa chỉ sân chưa được cung cấp trong dữ liệu đặt sân.</p>
-                <strong>{isSuccess ? 'Đã xác nhận đặt sân' : 'Chưa xác nhận thanh toán'}</strong>
+                <h2>{firstDetail?.branchName || uniqueCourts.map(detail => detail.courtName).filter(Boolean).filter((name, index, all) => all.indexOf(name) === index).join(' · ') || 'Sân cầu lông'}</h2>
+                <p>{[...new Set(uniqueCourts.map(detail => detail.address).filter(Boolean))].join(' · ') || 'Chưa có địa chỉ sân'}</p>
+                <p>{uniqueCourts.map(detail => `${labelCourt(detail)} · ${surfaceLabel(detail.type)}`).join('; ')}</p>
+                <strong>{isSuccess ? declared ? 'Đã xác nhận đặt sân' : 'Đặt sân thành công' : 'Chưa xác nhận thanh toán'}</strong>
               </div>
             </div>
             <div className="payment-result-divider"/>
             <div className="payment-result-facts">
-              <div><span>Ngày chơi</span><strong>{formatDate(firstDetail?.bookingDate)}</strong></div>
+              <div><span>Ngày chơi</span><strong>{[...new Set(details.map(detail => detail.bookingDate))].map(formatDate).join('; ')}</strong></div>
               <div><span>Khung giờ</span><strong>{slotLabel}</strong></div>
               <div><span>Sân cụ thể</span><strong>{courtLabel}</strong></div>
-              <div><span>Thời lượng</span><strong>{durationText(details, uniqueCourts.length)}</strong></div>
+              <div><span>{uniqueCourts.length > 1 ? 'Tổng thời lượng sân đặt' : 'Thời lượng'}</span><strong>{bookingDuration(details)}{uniqueCourts.length > 1 ? ' (giờ-sân)' : ''}</strong></div>
             </div>
           </div>
           <div className="payment-result-total">
-            <div><strong>{isSuccess && !declared ? 'Đã thanh toán toàn bộ' : 'Tổng tiền đặt sân'}</strong><span>{payment.paymentMethod === 'BANK_TRANSFER' ? 'Chuyển khoản ngân hàng' : 'VNPay'} • {payment.paymentStatus}</span><small>Mã đặt sân: {booking.bookingId}</small>{payment.transactionDate && <small>Thời điểm giao dịch: {payment.transactionDate}</small>}</div>
+            <div><strong>Tổng tiền đặt sân</strong><span>{payment.paymentMethod === 'BANK_TRANSFER' ? 'Chuyển khoản ngân hàng' : 'VNPay'}</span><small>Mã đặt sân: {booking.bookingId}</small>{payment.transactionDate && <small>Thời điểm giao dịch: {payment.transactionDate}</small>}</div>
             <b>{formatMoney(payment.amount)}</b>
           </div>
         </section>
 
         <section className="payment-result-actions">
-          {booking.customerNote && <div><strong>Ghi chú cho đơn đặt sân</strong><p style={{whiteSpace: 'pre-wrap', overflowWrap: 'anywhere'}}>{booking.customerNote}</p></div>}
           <div className="payment-result-email">
             <span>Email tài khoản: <strong>{session.user?.email || 'Chưa có email trong hồ sơ tài khoản'}</strong></span>
           </div>

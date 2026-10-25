@@ -124,7 +124,7 @@ class PaymentCallbackConcurrencyPostgresTest {
         for (int i = 0; i < 2; i++) {
             jdbc.update("INSERT INTO bookings(id,customer_id,status,court_fee,expires_at) VALUES (?,?,'PENDING',10000.00,?)",
                     bookings[i], customer, NOW.plusMinutes(5));
-            jdbc.update("INSERT INTO courts(id,court_number,name,base_price) VALUES (?,?,?,10000.00)",
+            jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?,?,?,10000.00)",
                     courts[i], 999501 + i, "Callback race court " + i);
             jdbc.update("INSERT INTO booking_details(id,booking_id,court_id,time_slot_id,booking_date,price) "
                     + "VALUES (?,?,?,?,'2030-10-05',10000.00)", UUID.randomUUID(), bookings[i], courts[i], slot);

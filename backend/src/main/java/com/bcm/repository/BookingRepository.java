@@ -20,7 +20,7 @@ import java.util.UUID;
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
     @Query(value = """
             select new com.bcm.dto.response.BookingSummaryResponse(
-                b.id, b.customer.id, b.status, b.courtFee, b.expiresAt, b.createdAt, b.updatedAt, b.customerNote)
+                b.id, b.customer.id, b.status, b.courtFee, b.expiresAt, b.createdAt, b.updatedAt)
             from Booking b where b.customer.id = :customerId
               and (:status is null or b.status = :status)
             order by b.createdAt desc, b.id desc
@@ -33,7 +33,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     @Query("""
             select b.id from Booking b
-            where b.status = :status and b.expiresAt is not null and b.expiresAt <= :now
+            where b.status = :status and ((b.expiresAt is not null and b.expiresAt <= :now)
+              or (b.checkoutReleaseAt is not null and b.checkoutReleaseAt <= :now))
             order by b.expiresAt, b.id
             """)
     List<UUID> findExpirationCandidates(@Param("status") BookingStatus status, @Param("now") LocalDateTime now);

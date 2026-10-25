@@ -74,7 +74,7 @@ class BookingWriteAuthorizationPostgresTest {
                     pair.get(1), pair.get(0));
             jdbc.update("INSERT INTO user_roles(user_id,role_id) SELECT ?,id FROM roles WHERE role_name='CUSTOMER'", pair.get(0));
         }
-        jdbc.update("INSERT INTO courts(id,court_number,name,base_price) VALUES (?,999701,'Write auth',10.05)", court);
+        jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?,999701,'Write auth',10.05)", court);
         jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier) VALUES (?,'00:00','01:00',1.10)", slot);
         tokenA = token(userA);
         assertThat(customerA).isNotEqualTo(userA);

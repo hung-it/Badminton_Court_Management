@@ -86,6 +86,9 @@ class AvailabilityPostgresTest {
 
     @BeforeEach
     void fixtures() {
+        // This test transaction rolls back. Exclude bootstrap catalog rows from assertions
+        // about this scenario's exact eligible court count; retain all original data.
+        jdbc.update("UPDATE courts SET status='CLOSED' WHERE status='AVAILABLE'");
         UUID userId = UUID.randomUUID();
         customerId = UUID.randomUUID();
         jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,?,'Booking fixture','0900000000')",
@@ -126,7 +129,37 @@ class AvailabilityPostgresTest {
         AvailabilityResponse response = service.getAvailability(DATE, courtId);
 
         assertThat(slot(response, courtId, slotId).isAvailable()).isFalse();
+        assertThat(slot(response, courtId, slotId).getOccupancy()).isEqualTo("BOOKED");
         assertThat(slot(response, courtId, otherSlotId).isAvailable()).isTrue();
+        assertThat(slot(response, courtId, otherSlotId).getOccupancy()).isEqualTo("AVAILABLE");
+    }
+
+    @Test
+    void pendingAndRetainedExpiredDetailsRemainBlockedWithExplicitOccupancy() {
+        insertDetail(courtId, slotId, DATE, BookingStatus.PENDING);
+        insertDetail(courtId, otherSlotId, DATE, BookingStatus.EXPIRED);
+        var response=service.getAvailability(DATE,courtId);
+        assertThat(slot(response,courtId,slotId).getOccupancy()).isEqualTo("HELD");
+        assertThat(slot(response,courtId,otherSlotId).getOccupancy()).isEqualTo("BLOCKED");
+        assertThat(slot(response,courtId,slotId).isAvailable()).isFalse();
+        assertThat(slot(response,courtId,otherSlotId).isAvailable()).isFalse();
+    }
+
+    @Test
+    void publicGridIncludesRoundedServerPricesAndNoBookingIdentity() throws Exception {
+        jdbc.update("UPDATE courts SET base_price=10000.01 WHERE id=?", courtId);
+        jdbc.update("UPDATE time_slots SET price_multiplier=1.50 WHERE id=?", slotId);
+        insertDetail(courtId, otherSlotId, DATE, BookingStatus.PAID);
+        assertThat(slot(service.getAvailability(DATE, courtId), courtId, slotId).getPrice())
+                .isEqualByComparingTo("15000.02");
+        mvc.perform(get("/api/public/availability").contextPath("/api")
+                        .param("date", DATE.toString()).param("courtId", courtId.toString())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous()))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")))
+                .andExpect(jsonPath("$.data.courts[0].slots[?(@.timeSlotId == '" + slotId + "')].price").value(org.hamcrest.Matchers.hasItem(15000.02)))
+                .andExpect(jsonPath("$.data.courts[0].customerId").doesNotExist())
+                .andExpect(jsonPath("$.data.courts[0].bookingId").doesNotExist());
     }
 
     @Test
@@ -293,7 +326,7 @@ class AvailabilityPostgresTest {
     private UUID insertCourt(int number, String status, LocalDateTime deletedAt) {
         UUID id = UUID.randomUUID();
         jdbc.update("""
-                INSERT INTO courts (id, court_number, name, status, base_price, deleted_at)
+                INSERT INTO courts (id, court_code, name, status, base_price, deleted_at)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """, id, number, "Court " + number, status, new BigDecimal("100000.00"), deletedAt);
         return id;

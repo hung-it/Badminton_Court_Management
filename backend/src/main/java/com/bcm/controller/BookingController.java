@@ -31,6 +31,7 @@ public class BookingController {
     private final BookingHistoryService historyService;
     private final CurrentCustomerService currentCustomer;
     private final com.bcm.service.BookingModificationService modificationService;
+    private final com.bcm.service.CheckoutHoldService checkoutHolds;
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.beans.factory.annotation.Qualifier("bookingExpirationClock")
     private java.time.Clock expirationClock;
@@ -92,12 +93,19 @@ public class BookingController {
         return ApiResponse.success(historyService.detail(bookingId));
     }
 
-    @PatchMapping("/{bookingId}/notes")
+    @GetMapping("/{bookingId}/contact")
     @SecurityRequirement(name = "Bearer Authentication")
-    @Operation(summary = "Save an owned pending booking note", description = "Maximum 1000 characters. Enforces original deadline under Booking lock. Independent of payment evidence; never renews the hold.")
-    public ApiResponse<BookingHistoryDetailResponse> updateNote(@PathVariable UUID bookingId,
-            @Valid @RequestBody com.bcm.dto.request.UpdateBookingNoteRequest request) {
-        return ApiResponse.success(modificationService.updateNote(bookingId, request));
+    @Operation(summary = "Read the owned booking contact", description = "Booking-specific name and phone, with legacy profile fallback. Email is read-only account data. 401 anonymous, 403 foreign booking, 404 missing booking.")
+    public ApiResponse<com.bcm.dto.response.BookingContactResponse> contact(@PathVariable UUID bookingId) {
+        return ApiResponse.success(modificationService.getContact(bookingId));
+    }
+
+    @PatchMapping("/{bookingId}/contact")
+    @SecurityRequirement(name = "Bearer Authentication")
+    @Operation(summary = "Edit only name and phone for an owned checkout booking", description = "Only fullName (2–255 characters) and phone (10–20 digits) are accepted; email/unknown fields return 400. PENDING, unexpired and no payment attempts required (409 otherwise). Own CUSTOMER identity is enforced (401/403). Holds/prices/details/account profile and email are preserved.")
+    public ApiResponse<com.bcm.dto.response.BookingContactResponse> updateContact(@PathVariable UUID bookingId,
+            @Valid @RequestBody com.bcm.dto.request.UpdateBookingContactRequest request) {
+        return ApiResponse.success(modificationService.updateContact(bookingId, request));
     }
 
     @PatchMapping("/{bookingId}/details")
@@ -106,6 +114,27 @@ public class BookingController {
     public ApiResponse<BookingHistoryDetailResponse> updateDetails(@PathVariable UUID bookingId,
             @Valid @RequestBody com.bcm.dto.request.UpdateBookingRequest request) {
         return ApiResponse.success(modificationService.updateDetails(bookingId, request));
+    }
+
+    @PostMapping("/{bookingId}/checkout/leave")
+    @SecurityRequirement(name = "Bearer Authentication")
+    @Operation(summary = "Schedule release of an owned checkout hold", description = "Idempotent: retains the first deadline, min(now + 60 seconds, original expiresAt). PENDING/SUCCESS payment attempts and confirmed bookings are protected. No renewal or history deletion. Booking row lock serializes payment, resume, replacement and expiration.")
+    public ApiResponse<com.bcm.service.CheckoutHoldService.State> leaveCheckout(@PathVariable UUID bookingId) {
+        return ApiResponse.success(checkoutHolds.leave(bookingId));
+    }
+
+    @GetMapping("/{bookingId}/checkout/hold")
+    @SecurityRequirement(name = "Bearer Authentication")
+    @Operation(summary = "Inspect an owned checkout hold", description = "Legacy diagnostic endpoint: replaceable is always false. Held details never override public availability, even for the owner. No renewal, expiration or payment mutation. 403 foreign booking, 404 missing booking.")
+    public ApiResponse<com.bcm.service.CheckoutHoldService.ReplacementHold> replacementHold(@PathVariable UUID bookingId) {
+        return ApiResponse.success(checkoutHolds.replacementHold(bookingId));
+    }
+
+    @PostMapping("/{bookingId}/checkout/resume")
+    @SecurityRequirement(name = "Bearer Authentication")
+    @Operation(summary = "Resume an owned checkout hold before release", description = "Idempotently clears the scheduled release only while still eligible. Due bookings are expired atomically, all their details released, and EXPIRED returned; payment cannot resume. Original expiresAt is never extended. Ownership errors return 403, missing booking 404.")
+    public ApiResponse<com.bcm.service.CheckoutHoldService.State> resumeCheckout(@PathVariable UUID bookingId) {
+        return ApiResponse.success(checkoutHolds.resume(bookingId));
     }
 
     @GetMapping("/{bookingId}/checkout-clock")
@@ -126,7 +155,8 @@ public class BookingController {
     @Operation(summary = "Create a PENDING booking",
             description = "Creates all details atomically. Prices use master data, rounded HALF_UP per detail to scale 2. "
                     + "Expiry uses configured hold duration. Start time must be in the future in Asia/Ho_Chi_Minh. "
-                    + "Only customerId and details (bookingDate, courtId, timeSlotId) are accepted inputs; "
+                    + "Inputs are customerId, optional branchId/replacesBookingId, and details (bookingDate, courtId, timeSlotId); "
+                    + "A legacy replacesBookingId asserts ownership only: creating a new booking never releases or renews the old hold. Occupied slots conflict for every customer, including their owner. Old holds expire independently through the backend scheduler. "
                     + "unknown JSON fields are ignored and cannot override price, status or expiry. "
                     + "Authenticated CUSTOMER ownership is required: customerId must match the trusted customers.id; mismatch returns 403 before court locks. "
                     + "Court rows are locked in UUID order and occupied slots are re-checked before insert. "

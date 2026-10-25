@@ -68,7 +68,7 @@ class BookingPaymentLifecyclePostgresTest {
                 user, user + "@lifecycle.test", "test-only");
         jdbc.update("INSERT INTO customers(id,user_id,full_name,phone) VALUES (?,?,'Lifecycle','0900000000')", customer, user);
         jdbc.update("INSERT INTO user_roles(user_id,role_id) SELECT ?,id FROM roles WHERE role_name='CUSTOMER'", user);
-        jdbc.update("INSERT INTO courts(id,court_number,name,base_price) VALUES (?,999801,'Lifecycle',100000)", court);
+        jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?,999801,'Lifecycle',100000)", court);
         jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier) VALUES (?,'08:00','09:00',1.25)", slot);
         jdbc.update("INSERT INTO bookings(id,customer_id,status,court_fee,expires_at) VALUES (?,?,'PENDING',125000,?)",
                 booking, customer, LocalDateTime.ofInstant(NOW, java.time.ZoneOffset.UTC).plusMinutes(10));
@@ -306,7 +306,7 @@ class BookingPaymentLifecyclePostgresTest {
         assertThat(jdbc.queryForObject("SELECT status FROM payment_transactions WHERE id=?", String.class, id)).isEqualTo("PENDING");
     }
     @Test void rejectsPastBookingAndAvailabilityDoesNotOfferPastSlots() throws Exception {
-        var yesterday = LocalDate.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).minusDays(1);
+        var yesterday = LocalDate.ofInstant(clock.instant(), java.time.ZoneId.of("Asia/Ho_Chi_Minh")).minusDays(1);
         var body = mapper.createObjectNode().put("customerId", customer.toString());
         body.putArray("details").addObject().put("courtId", court.toString()).put("timeSlotId", slot.toString()).put("bookingDate", yesterday.toString());
         mvc.perform(post("/api/bookings").contextPath("/api").header("Authorization", "Bearer " + token)

@@ -11,12 +11,12 @@ const prices = [200000, 100000, 300000];
 const dateAfter = days => { const d = new Date(); d.setDate(d.getDate() + days); return d.toLocaleDateString('en-CA'); };
 const pass = name => console.log(`PASS ${name}`);
 const bankTransfer = {bankName: 'Test bank', accountHolder: 'Test payer', accountNumber: '123456', transferContent: 'Test court booking'};
-const sql = text => execFileSync('docker', ['exec', 'bcm-booking-audit-20261022', 'psql', '-U', 'bcm_test',
-  '-d', 'bcm_booking_audit', '-v', 'ON_ERROR_STOP=1', '-c', text], {encoding: 'utf8'});
+const sql = text => execFileSync('docker', ['exec', process.env.BCM_E2E_DB_CONTAINER || 'bcm-booking-audit-20261022', 'psql', '-U', process.env.BCM_E2E_DB_USER || 'bcm_test',
+  '-d', process.env.BCM_E2E_DB_NAME || 'bcm_booking_audit', '-v', 'ON_ERROR_STOP=1', '-c', text], {encoding: 'utf8'});
 
 (async () => {
   const number = crypto.randomInt(1000000, 1900000000);
-  sql(`INSERT INTO courts(id,court_number,name,type,status,base_price,district) VALUES ${ids.map((id, i) =>
+  sql(`INSERT INTO courts(id,court_code,name,type,status,base_price,district) VALUES ${ids.map((id, i) =>
     `('${id}',${number + i},'${names[i]}','WOODEN_FLOOR','AVAILABLE',${prices[i]},${i === 2 ? 'NULL' : `'Khu kiểm thử ${i === 0 ? 'A' : 'B'}'`})`).join(',')}`);
   const api = await request.newContext({baseURL});
   const register = async suffix => {
@@ -42,23 +42,23 @@ const sql = text => execFileSync('docker', ['exec', 'bcm-booking-audit-20261022'
     const cards = page.locator('.customer-court-card');
     const card = index => page.locator(`[data-court-id="${ids[index]}"]`);
     await expect(cards).toHaveCount(3);
-    await card(0).locator('.customer-extra-slots input').nth(0).check();
-    await expect(card(1).locator('.customer-extra-slots input:checked')).toHaveCount(0);
-    await card(1).locator('.customer-extra-slots input').nth(1).check();
-    await expect(card(0).locator('.customer-extra-slots input:checked')).toHaveCount(1);
-    await card(0).locator('.customer-extra-slots input').nth(0).uncheck();
+    await card(0).locator('.customer-extra-slots input').nth(1).check();
     await expect(card(1).locator('.customer-extra-slots input:checked')).toHaveCount(1);
-    await card(0).locator('.customer-extra-slots input').nth(0).check();
-    await card(0).locator('.customer-slot-row').first().getByRole('button').nth(2).click();
-    await expect(card(1).locator('.customer-slot-row').first().getByRole('button').first()).toHaveAttribute('aria-pressed', 'true');
+    await card(1).locator('.customer-extra-slots input:not(:disabled)').nth(1).check();
+    await expect(card(0).locator('.customer-extra-slots input:checked')).toHaveCount(2);
+    await card(0).locator('.customer-extra-slots input').nth(1).uncheck();
+    await expect(card(1).locator('.customer-extra-slots input:checked')).toHaveCount(2);
+    await card(0).locator('.customer-extra-slots input').nth(2).check();
+    await card(0).locator('.customer-extra-slots input').first().uncheck();
+    await expect(card(1).locator('.customer-extra-slots input').first()).toBeChecked();
     await expect(card(0).locator('.customer-extra-slots input:checked')).toHaveCount(1);
-    await expect(card(1).locator('.customer-extra-slots input:checked')).toHaveCount(1);
+    await expect(card(1).locator('.customer-extra-slots input:checked')).toHaveCount(2);
     await page.getByLabel('Sắp xếp sân').selectOption('price');
     await expect(cards.first()).toHaveAttribute('data-court-id', ids[1]);
-    await expect(card(0).locator('.customer-extra-slots input:checked')).toHaveCount(1);
+    await expect(card(0).locator('.customer-extra-slots input:not(:disabled):checked')).toHaveCount(1);
     await page.getByLabel('Tên sân', {exact: true}).fill(names[0]); await expect(cards).toHaveCount(1);
     await page.getByLabel('Tên sân', {exact: true}).fill(`UX ${run}`);
-    await expect(card(1).locator('.customer-extra-slots input:checked')).toHaveCount(1);
+    await expect(card(1).locator('.customer-extra-slots input:checked')).toHaveCount(2);
     pass('Court UUID/slot state isolation: select, deselect, card primary time, sorting and filtering');
 
     const district = page.locator('.customer-district-filter');
@@ -76,14 +76,14 @@ const sql = text => execFileSync('docker', ['exec', 'bcm-booking-audit-20261022'
       await page.setViewportSize({width, height: 1000});
       const layout = await card(0).evaluate(node => {
         const rows = node.querySelectorAll('.customer-slot-row');
-        return {gap: rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().bottom,
+        return {count: rows.length,
           overlap: [...rows].some(row => [...row.querySelectorAll('.customer-slot-chip')].some(chip => chip.getBoundingClientRect().top < row.firstElementChild.getBoundingClientRect().bottom - 1))};
       });
-      assert.ok(layout.gap >= 8 && layout.gap <= 12, `Spacing at ${width}: ${layout.gap}`);
+      assert.equal(layout.count, 1, `One time selection list at ${width}`);
       assert.equal(layout.overlap, false);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     }
-    pass('Courts desktop/tablet/mobile: 10px spacing, labels/chips do not overlap, no horizontal overflow');
+    pass('Courts desktop/tablet/mobile: one checkbox list, labels do not overlap, no horizontal overflow');
     await page.setViewportSize({width: 1440, height: 1000});
     await card(1).getByRole('button', {name: 'Đặt sân', exact: true}).click();
     await expect(page.getByRole('button', {name: 'Thanh toán', exact: true})).toBeEnabled();
@@ -97,8 +97,8 @@ const sql = text => execFileSync('docker', ['exec', 'bcm-booking-audit-20261022'
     await page.goto(`${baseURL}/courts?date=${dateAfter(150)}`);
     await page.getByLabel('Tên sân', {exact: true}).fill(`UX ${run}`);
     await expect(card(0)).toBeVisible();
-    await expect(card(0).locator('.customer-extra-slots input:checked')).toHaveCount(0);
-    await card(0).locator('.customer-extra-slots input').first().check();
+    await expect(card(0).locator('.customer-extra-slots input:checked')).toHaveCount(1);
+    await card(0).locator('.customer-extra-slots input:not(:checked)').first().check();
     await card(0).getByRole('button', {name: 'Đặt sân', exact: true}).click();
     await expect(page.getByRole('button', {name: 'Thanh toán', exact: true})).toBeEnabled();
     let draft = await page.evaluate(() => JSON.parse(sessionStorage.getItem('bcm-booking-draft')));
@@ -109,21 +109,14 @@ const sql = text => execFileSync('docker', ['exec', 'bcm-booking-audit-20261022'
     assert.equal(original.details.length, 2); assert.ok(original.details.every(d => d.courtId === ids[0]));
     pass('Each card books only its own slots; returning does not copy another court selection; pending payment locks editing');
 
-    const note = page.getByLabel('Ghi chú cho đơn đặt sân', {exact: true});
-    await note.fill('Ghi chú chưa lưu — giữ sau refresh');
+    await expect(page.locator('#checkout-customer-note')).toHaveCount(0);
+    assert.equal(Object.hasOwn(await getBooking(), 'customerNote'), false);
     await page.reload();
-    await expect(note).toHaveValue('Ghi chú chưa lưu — giữ sau refresh');
-    await expect(page.getByRole('button', {name: 'Thanh toán', exact: true})).toBeDisabled();
-    await page.getByRole('button', {name: 'Lưu ghi chú', exact: true}).click();
-    await expect(page.getByText('Đã lưu ghi chú.', {exact: true})).toBeVisible();
-    assert.equal((await getBooking()).customerNote, 'Ghi chú chưa lưu — giữ sau refresh');
+    await expect(page.getByRole('button', {name: 'Thanh toán', exact: true})).toBeEnabled();
     await page.locator('input[value=BANK_TRANSFER]').check();
     await page.getByRole('button', {name: 'Thanh toán', exact: true}).click();
     await expect(page.locator('.checkout-bank-transfer-error')).toHaveCount(4);
-    await expect(note).toHaveValue('Ghi chú chưa lưu — giữ sau refresh');
-    const forbidden = await api.patch(`/api/bookings/${bookingId}/notes`, {headers: foreignHeaders, data: {note: 'foreign'}});
-    assert.equal(forbidden.status(), 403);
-    pass('Booking note: real persistence, draft refresh, method switch/invalid bank form retention and ownership');
+    pass('Checkout has no customer note; reload and bank form validation work');
 
     await page.getByRole('button', {name: 'Chỉnh sửa thông tin', exact: true}).click();
     await expect(page.getByRole('button', {name: 'Thanh toán', exact: true})).toBeDisabled();
@@ -141,7 +134,6 @@ const sql = text => execFileSync('docker', ['exec', 'bcm-booking-audit-20261022'
     assert.equal(Number(current.courtFee), expected);
     await expect(page.locator('.checkout-grand-total b')).toContainText(new Intl.NumberFormat('vi-VN').format(expected));
     await page.reload(); await expect(page.getByRole('button', {name: 'Thanh toán', exact: true})).toBeEnabled();
-    await expect(note).toHaveValue(current.customerNote);
     pass('Edit date/multiple slots: server price, original deadline and authoritative draft after refresh');
 
     await page.getByRole('button', {name: 'Chỉnh sửa thông tin', exact: true}).click();
@@ -171,12 +163,11 @@ const sql = text => execFileSync('docker', ['exec', 'bcm-booking-audit-20261022'
     assert.equal(Number(current.payments[0].amount), expected);
     assert.equal(current.payments[0].confirmationMethod, 'CUSTOMER_DECLARED');
     assert.equal(current.payments[0].paymentStatus, 'PENDING');
-    await expect(page.getByText('Ghi chú chưa lưu — giữ sau refresh', {exact: true})).toBeVisible();
     const confirmedEdit = await api.patch(`/api/bookings/${bookingId}/details`, {headers, data: {bookingDate: dateAfter(153), timeSlotIds: [publicSlots[0].id]}});
     assert.equal(confirmedEdit.status(), 409);
     await page.reload(); await expect(page.getByRole('heading', {name: 'Đã xác nhận đặt sân', exact: true})).toBeVisible();
     assert.deepEqual(errors, []);
-    pass('BANK_TRANSFER after editing uses new amount; note remains separate, confirmed booking immutable, result refresh and responsive UI pass');
+    pass('BANK_TRANSFER after editing uses new amount; payment evidence preserved, confirmed booking immutable, result refresh and responsive UI pass');
     console.log(`Fixtures retained in audit DB only: ${ids.join(', ')}`);
   } finally { await browser.close(); await api.dispose(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

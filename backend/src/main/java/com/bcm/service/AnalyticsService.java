@@ -39,7 +39,7 @@ public class AnalyticsService {
                 .to(range.toInclusive())
                 .courtFee(courtFee)
                 .productFee(productFee)
-                .totalAmount(courtFee.add(productFee))
+                .totalAmount(valueOrZero(totals.getTotalAmount()))
                 .build();
     }
 

@@ -17,8 +17,24 @@ services:
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/migration.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
-      - ./db/booking-ux-upgrade.sql:/docker-entrypoint-initdb.d/02-booking-ux-upgrade.sql:ro
+      - type: bind
+        source: ./db/migration.sql
+        target: /docker-entrypoint-initdb.d/01-init.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./db/booking-ux-upgrade.sql
+        target: /docker-entrypoint-initdb.d/02-booking-ux-upgrade.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./db/branches-seed.sql
+        target: /docker-entrypoint-initdb.d/03-branches-seed.sql
+        read_only: true
+        bind:
+          create_host_path: false
 
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bcm_admin -d badminton_court_db"]
@@ -58,4 +74,5 @@ services:
 
 volumes:
   postgres_data:
-    driver: local
+    external: true
+    name: badminton_court_management_postgres_data

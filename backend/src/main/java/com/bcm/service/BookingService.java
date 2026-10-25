@@ -40,13 +40,14 @@ public class BookingService {
     private final Duration holdDuration;
     private final CurrentCustomerService currentCustomer;
     private final Clock clock;
+    private final CheckoutHoldService checkoutHolds;
 
     public BookingService(BookingRepository bookings, BookingDetailRepository details,
                           CustomerRepository customers, CourtRepository courts,
                           TimeSlotRepository timeSlots, Validator validator,
                           @Value("${booking.hold-duration}") String holdDuration,
                           CurrentCustomerService currentCustomer,
-                          @Qualifier("bookingExpirationClock") Clock clock) {
+                          @Qualifier("bookingExpirationClock") Clock clock, CheckoutHoldService checkoutHolds) {
         this.bookings = bookings;
         this.details = details;
         this.customers = customers;
@@ -55,6 +56,7 @@ public class BookingService {
         this.validator = validator;
         this.currentCustomer = currentCustomer;
         this.clock = clock;
+        this.checkoutHolds = checkoutHolds;
         this.holdDuration = Duration.parse(holdDuration);
         if (this.holdDuration.isZero() || this.holdDuration.isNegative()) {
             throw new IllegalArgumentException("booking.hold-duration must be positive");
@@ -81,10 +83,27 @@ public class BookingService {
         }
 
         // Canonical UUID text order matches PostgreSQL UUID order. SQL ORDER BY controls lock acquisition.
+        // Booking -> Courts is the same order used by checkout modification and payment/expiration.
+        if (request.getReplacesBookingId() != null) {
+            checkoutHolds.lockReplacement(request.getReplacesBookingId());
+        }
         var courtIds = request.getDetails().stream().map(CreateBookingRequest.Detail::getCourtId)
                 .distinct().sorted(Comparator.comparing(UUID::toString)).toList();
         var courtById = courts.findAllForBookingWithLock(courtIds)
                 .stream().collect(Collectors.toMap(Court::getId, Function.identity()));
+        // A new booking never releases an earlier hold. Only its own release/expiry
+        // deadline can do that; the unique slot index rejects overlap for every customer.
+        // Existing multi-court transaction/locking is reused. Branch validation uses locked courts.
+        UUID branchId = request.getBranchId();
+        if (branchId == null) {
+            branchId = courtById.values().stream().map(Court::getBranchId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        }
+        if (branchId != null) {
+            final UUID selectedBranch = branchId;
+            if (!courts.isBranchActive(branchId) || courtById.values().stream().anyMatch(c -> !selectedBranch.equals(c.getBranchId()))) {
+                throw new BadRequestException("All courts must belong to the selected active branch");
+            }
+        }
         // No Court is loaded before this lock query; validation below uses the locked state.
         Customer customer = customers.findById(trustedCustomerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found: " + trustedCustomerId));
@@ -94,6 +113,8 @@ public class BookingService {
 
         Booking booking = new Booking();
         booking.setCustomer(customer);
+        booking.setContactFullName(customer.getFullName());
+        booking.setContactPhone(customer.getPhone());
         booking.setStatus(BookingStatus.PENDING);
         var bookingDetails = new ArrayList<BookingDetail>();
         BigDecimal total = new BigDecimal("0.00");
@@ -136,6 +157,7 @@ public class BookingService {
             }
         }
         booking.setCourtFee(total);
+        BookingPromotionService.automatic(booking);
         // TIMESTAMP without timezone: use the application local clock, as existing audit fields do.
         booking.setExpiresAt(LocalDateTime.now(clock).plus(holdDuration));
         bookings.save(booking);

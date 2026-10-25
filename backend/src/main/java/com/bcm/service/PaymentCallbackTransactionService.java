@@ -79,7 +79,7 @@ public class PaymentCallbackTransactionService {
             recordUnsettledReceipt(payment, notification);
             return Result.NOT_PAYABLE;
         }
-        if (payment.getAmount().compareTo(booking.getCourtFee()) != 0) { return Result.INVALID_AMOUNT; }
+        if (payment.getAmount().compareTo(booking.getFinalAmount()) != 0) { return Result.INVALID_AMOUNT; }
         if (payments.existsByBookingIdAndStatus(bookingId, PaymentStatus.SUCCESS)) {
             recordUnsettledReceipt(payment, notification);
             return Result.CONFLICT;

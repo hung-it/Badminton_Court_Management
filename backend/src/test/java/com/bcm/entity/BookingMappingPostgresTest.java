@@ -82,7 +82,7 @@ class BookingMappingPostgresTest {
         jdbc.update("INSERT INTO staffs (id, user_id, full_name, phone, position) VALUES (?, ?, ?, ?, ?)",
                 staffId, userId, "Mapping staff", "0900000001", "Test");
         jdbc.update("""
-                INSERT INTO courts (id, court_number, name, type, status, base_price)
+                INSERT INTO courts (id, court_code, name, type, status, base_price)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """, courtId, -1, "Mapping court", "STANDARD_MAT", "AVAILABLE", new BigDecimal("123456.78"));
         jdbc.update("INSERT INTO time_slots (id, start_time, end_time, price_multiplier) VALUES (?, ?, ?, ?)",

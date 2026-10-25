@@ -1,9 +1,11 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import './customer-checkout.css';
-import {api, readSession, clearSession, BOOKING_DRAFT_KEY} from './CustomerCourts.jsx';
+import {api, readSession, clearSession, BOOKING_DRAFT_KEY, CHECKOUT_REPLACEMENT_KEY} from './CustomerCourts.jsx';
 import {GuideFooter, GuideHeader} from './CustomerLayout.jsx';
 import {useBookingClock} from './lib/useBookingClock';
 import {isFutureSlot} from './lib/bookingTime';
+import {courtImageSource, COURT_FALLBACK_IMAGE} from './lib/courtImages';
+import {sortBookingDetails, bookingCourtGroups, bookingTimeLabel, bookingDuration, courtLabel, compareCourtNumbers, surfaceLabel, rangesLabel} from './lib/bookingPresentation';
 
 const asset = name => `/assets/checkout-${name}`;
 const formatMoney = value => new Intl.NumberFormat('vi-VN', {style: 'currency', currency: 'VND', maximumFractionDigits: 0}).format(Number(value) || 0);
@@ -15,16 +17,6 @@ function formattedDate(value) {
   const date = new Date(year, month - 1, day);
   const weekday = new Intl.DateTimeFormat('vi-VN', {weekday: 'long'}).format(date);
   return `${weekday.charAt(0).toLocaleUpperCase('vi-VN')}${weekday.slice(1)}, ${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
-}
-
-function durationText(slot) {
-  const slots = Array.isArray(slot) ? slot : [slot];
-  if (!slots.length || slots.some(item => !item?.startTime || !item?.endTime)) return 'Chưa có dữ liệu';
-  const minutes = (time) => Number(String(time).slice(0, 2)) * 60 + Number(String(time).slice(3, 5));
-  const total = slots.reduce((sum, item) => sum + Math.max(0, minutes(item.endTime) - minutes(item.startTime)), 0);
-  const hours = Math.floor(total / 60);
-  const rest = total % 60;
-  return [hours ? `${hours} giờ` : '', rest ? `${rest} phút` : ''].filter(Boolean).join(' ') || '0 phút';
 }
 
 function Step({state, number, label}) {
@@ -48,9 +40,14 @@ export default function CustomerCheckout() {
     return bookingId && bookingId !== saved?.bookingId ? {bookingId} : saved;
   });
   const [court, setCourt] = useState(null);
+  const [imageCatalog, setImageCatalog] = useState([]);
   const [slot, setSlot] = useState(null);
   const [selectedDetails, setSelectedDetails] = useState([]);
   const [price, setPrice] = useState(null);
+  const [promotion, setPromotion] = useState(null);
+  const [voucher, setVoucher] = useState('');
+  const [promotionBusy, setPromotionBusy] = useState(false);
+  const [promotionMessage, setPromotionMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [submitError, setSubmitError] = useState('');
@@ -63,13 +60,10 @@ export default function CustomerCheckout() {
   const [bookingError, setBookingError] = useState(null);
   const submitted = useRef(false);
   const holdCreating = useRef(false);
+  const resumeRequest = useRef(null);
+  const [checkoutReady, setCheckoutReady] = useState(false);
   const [remaining, setRemaining] = useState(null);
   const [expired, setExpired] = useState(false);
-  const [note, setNote] = useState('');
-  const [savedNote, setSavedNote] = useState('');
-  const [noteLoaded, setNoteLoaded] = useState(false);
-  const [noteStatus, setNoteStatus] = useState('');
-  const [noteSaving, setNoteSaving] = useState(false);
   const [paymentAttempts, setPaymentAttempts] = useState(0);
   const [editing, setEditing] = useState(false);
   const [editDate, setEditDate] = useState('');
@@ -80,12 +74,56 @@ export default function CustomerCheckout() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [bookingSyncRequired, setBookingSyncRequired] = useState(false);
+  const [contact, setContact] = useState(null);
+  const [contactReady, setContactReady] = useState(false);
+  const [contactEditing, setContactEditing] = useState(false);
+  const [contactSaving, setContactSaving] = useState(false);
+  const [contactFields, setContactFields] = useState({fullName: '', phone: ''});
+  const [contactErrors, setContactErrors] = useState({});
+  const [contactMessage, setContactMessage] = useState('');
+  const [contactError, setContactError] = useState('');
+  const [contactReload, setContactReload] = useState(0);
   const mutationStarted = useRef(false);
-  const noteDirty = note !== savedNote;
   const visibleEditOptions = editOptions.filter(option => isFutureSlot(editDate, option.startTime, bookingClock.nowMs));
   const visibleEditKey = visibleEditOptions.map(option => option.timeSlotId).join('|');
   const editSelectionValid = editOptionsDate === editDate && editSlotIds.length > 0 && editSlotIds.every(id => visibleEditOptions.some(option => option.timeSlotId === id && option.available));
   const expiryMessage = 'Thời gian giữ sân 10 phút đã hết. Đơn đặt sân của bạn đã hết hạn và không thể tiếp tục thanh toán. Vui lòng quay về trang chủ để đặt sân lại.';
+
+  useEffect(() => {
+    setContactReady(false); setContact(null); setContactEditing(false); setContactError('');
+    if (!session || !draft?.bookingId) return;
+    let active = true;
+    api(`/bookings/${encodeURIComponent(draft.bookingId)}/contact`, session.accessToken)
+      .then(value => { if (active) { setContact(value); setContactReady(true); } })
+      .catch(reason => { if (active) setContactError(reason.message || 'Không tải được thông tin người đặt.'); });
+    return () => { active = false; };
+  }, [draft?.bookingId, session, contactReload]);
+
+  async function saveContact(event) {
+    event.preventDefault();
+    if (mutationStarted.current || submitted.current || expired || !contactReady) return;
+    const body = {fullName: contactFields.fullName.trim(), phone: contactFields.phone.trim()};
+    const errors = {};
+    if (body.fullName.length < 2 || body.fullName.length > 255) errors.fullName = 'Họ và tên phải từ 2 đến 255 ký tự.';
+    if (!/^[0-9]{10,20}$/.test(body.phone)) errors.phone = 'Số điện thoại phải gồm 10–20 chữ số.';
+    setContactErrors(errors); setContactError(''); setContactMessage('');
+    if (Object.keys(errors).length) return;
+    mutationStarted.current = true; setContactSaving(true);
+    try {
+      const saved = await api(`/bookings/${encodeURIComponent(draft.bookingId)}/contact`, session.accessToken,
+        {method: 'PATCH', body: JSON.stringify(body)});
+      setContact(saved); setContactEditing(false); setContactMessage('Đã lưu.');
+    } catch (reason) {
+      if (reason.message?.includes('BOOKING_EXPIRED')) setExpired(true);
+      setContactError(reason.status === 409 ? 'Đơn đã hết hạn hoặc đã khởi tạo thanh toán; không thể sửa thông tin người đặt.' : reason.message || 'Chưa lưu được thông tin. Vui lòng thử lại.');
+      // A lost response may follow a committed PATCH. Reload before allowing payment.
+      setContactReady(false);
+      try {
+        const latest = await api(`/bookings/${encodeURIComponent(draft.bookingId)}/contact`, session.accessToken);
+        setContact(latest); setContactReady(true);
+      } catch { setContactError('Chưa đồng bộ được thông tin người đặt. Vui lòng tải lại trước khi thanh toán.'); }
+    } finally { mutationStarted.current = false; setContactSaving(false); }
+  }
 
   useEffect(() => {
     if (!editing || !bookingClock.ready || editLoading || editOptionsDate !== editDate) return;
@@ -98,38 +136,25 @@ export default function CustomerCheckout() {
   }, [editing, bookingClock.ready, bookingClock.today, visibleEditKey, editDate, editLoading, editOptionsDate]);
 
   function applyBooking(booking) {
-    const first = booking.details?.[0];
+    const sorted = sortBookingDetails(booking.details);
+    const first = sorted[0];
     if (!first) return;
-    setSelectedDetails(booking.details);
-    setCourt({id: first.courtId, name: first.courtName, courtNumber: first.courtNumber});
+    setSelectedDetails(sorted);
+    setCourt({...first, id: first.courtId, name: first.courtName});
     setSlot({id: first.timeSlotId, startTime: first.startTime, endTime: first.endTime});
     setPrice(Number(booking.courtFee));
+    setPromotion({subtotal: booking.courtFee, discountAmount: booking.discountAmount, finalAmount: booking.finalAmount,
+      promotionCode: booking.promotionCode, requestedVoucher: booking.requestedVoucher});
+    setVoucher(booking.requestedVoucher || '');
     setPaymentAttempts(booking.payments?.length || 0);
     setDraft(current => {
       const latest = {...current, bookingId: booking.bookingId, courtId: first.courtId,
-        timeSlotId: first.timeSlotId, bookingDate: first.bookingDate, details: booking.details};
+        timeSlotId: first.timeSlotId, bookingDate: first.bookingDate, details: sorted};
       sessionStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify(latest));
       return latest;
     });
   }
 
-  useEffect(() => {
-    if (!session || !draft?.bookingId) return;
-    let active = true;
-    setNoteLoaded(false);
-    api(`/bookings/${encodeURIComponent(draft.bookingId)}`, session.accessToken).then(booking => {
-      if (!active) return;
-      const persisted = booking.customerNote || '';
-      let pending = null;
-      try { pending = JSON.parse(sessionStorage.getItem(`bcm-booking-note:${booking.bookingId}`)); } catch { /* Ignore malformed drafts. */ }
-      setSavedNote(persisted);
-      setNote(typeof pending?.text === 'string' ? pending.text.slice(0, 1000) : persisted);
-      setNoteStatus(pending?.text !== undefined && pending.text !== persisted ? 'Có ghi chú chưa lưu từ lần trước.' : 'Đã đồng bộ với máy chủ.');
-      setPaymentAttempts(booking.payments?.length || 0);
-      setNoteLoaded(true);
-    }).catch(reason => { if (active) setNoteStatus(`Không tải được ghi chú: ${reason.message}. Vui lòng tải lại trang.`); });
-    return () => { active = false; };
-  }, [draft?.bookingId, session]);
 
   useEffect(() => {
     if (!editing || !editDate || !court?.id) return;
@@ -157,20 +182,6 @@ export default function CustomerCheckout() {
       : reason.status === 409 && !reason.message?.includes('BOOKING_EXPIRED')
         ? 'Không thể lưu thay đổi. Khung giờ có thể đã được đặt hoặc đơn không còn được phép chỉnh sửa. Vui lòng kiểm tra lại.'
         : reason.message || 'Lưu thất bại. Nội dung của bạn vẫn được giữ lại để thử lại.';
-  }
-
-  async function saveNote() {
-    if (mutationStarted.current || submitted.current || !noteLoaded || expired || !draft?.bookingId) return;
-    mutationStarted.current = true;
-    setNoteSaving(true); setNoteStatus('Đang lưu…');
-    try {
-      const booking = await api(`/bookings/${encodeURIComponent(draft.bookingId)}/notes`, session.accessToken,
-        {method: 'PATCH', body: JSON.stringify({note})});
-      setNote(booking.customerNote || ''); setSavedNote(booking.customerNote || '');
-      sessionStorage.removeItem(`bcm-booking-note:${draft.bookingId}`);
-      setNoteStatus('Đã lưu ghi chú.');
-    } catch (reason) { setNoteStatus(`Lưu thất bại: ${showMutationError(reason)}`); }
-    finally { mutationStarted.current = false; setNoteSaving(false); }
   }
 
   async function saveDetails() {
@@ -215,6 +226,49 @@ export default function CustomerCheckout() {
   }, [draft?.bookingId, draft?.courtId, draft?.timeSlotId, draft?.bookingDate, session]);
 
   useEffect(() => {
+    if (!session || !draft?.bookingId) return;
+    let active = true;
+    setCheckoutReady(false);
+    // Reuse the in-flight request across StrictMode setup/cleanup so an older resume
+    // cannot arrive after leave and silently cancel the newly scheduled release.
+    if (resumeRequest.current?.bookingId !== draft.bookingId) {
+      resumeRequest.current = {bookingId: draft.bookingId,
+        promise: api(`/bookings/${encodeURIComponent(draft.bookingId)}/checkout/resume`, session.accessToken, {method: 'POST'})};
+    }
+    const request = resumeRequest.current.promise;
+    request.then(state => {
+      if (!active) return;
+      if (state.status === 'EXPIRED') setExpired(true);
+      else {
+        if (sessionStorage.getItem(CHECKOUT_REPLACEMENT_KEY) === draft.bookingId) sessionStorage.removeItem(CHECKOUT_REPLACEMENT_KEY);
+        setCheckoutReady(true);
+      }
+    }).catch(reason => { if (active) setError(reason.message); });
+    return () => { active = false; };
+  }, [draft?.bookingId, session]);
+
+  useEffect(() => {
+    const restore = event => { if (event.persisted) window.location.reload(); };
+    window.addEventListener('pageshow', restore);
+    return () => window.removeEventListener('pageshow', restore);
+  }, []);
+
+  async function leaveCheckout(event) {
+    event.preventDefault();
+    if (mutationStarted.current || submitting) return;
+    mutationStarted.current = true;
+    try {
+      if (draft?.bookingId && session) {
+        await resumeRequest.current?.promise;
+        await api(`/bookings/${encodeURIComponent(draft.bookingId)}/checkout/leave`, session.accessToken, {method: 'POST'});
+        sessionStorage.removeItem(CHECKOUT_REPLACEMENT_KEY);
+      }
+      window.location.assign('/courts#search-courts');
+    } catch (reason) { setSubmitError(reason.message); }
+    finally { mutationStarted.current = false; }
+  }
+
+  useEffect(() => {
     if (!session || loading || error || !price || draft?.bookingId || holdCreating.current) return;
     if (draft?.bookingCreateStarted) {
       setError('Yêu cầu đặt sân trước đó chưa có xác nhận. Vui lòng kiểm tra lịch đặt trước khi thử lại.');
@@ -226,6 +280,7 @@ export default function CustomerCheckout() {
     (async () => {
       const {customerId} = await api('/bookings/customer-profile', session.accessToken);
       const booking = await api('/bookings', session.accessToken, {method: 'POST', body: JSON.stringify({customerId,
+        ...(draft.branchId ? {branchId: draft.branchId} : {}),
         details: draft.details?.length ? draft.details : [{bookingDate: draft.bookingDate, courtId: draft.courtId, timeSlotId: draft.timeSlotId}]})});
       const saved = {...started, bookingId: booking.bookingId};
       sessionStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify(saved));
@@ -291,8 +346,9 @@ export default function CustomerCheckout() {
     setError('');
     const requestedDetails = draft.details?.length ? draft.details : [{courtId: draft.courtId, timeSlotId: draft.timeSlotId, bookingDate: draft.bookingDate}];
     if (draft.bookingId) {
-      api(`/bookings/${encodeURIComponent(draft.bookingId)}`, session.accessToken).then(booking => {
+      Promise.all([api(`/bookings/${encodeURIComponent(draft.bookingId)}`, session.accessToken), api('/public/courts', null).catch(() => [])]).then(([booking, catalog]) => {
         if (!active) return;
+        setImageCatalog(catalog);
         if (booking.status === 'EXPIRED') { setExpired(true); return; }
         if (booking.status !== 'PENDING') return;
         if (!booking.details?.length) throw new Error('Không tìm thấy chi tiết đặt sân.');
@@ -308,11 +364,13 @@ export default function CustomerCheckout() {
       Promise.all([...new Set(requestedDetails.map(item => item.bookingDate))].map(date => api(`/availability?date=${encodeURIComponent(date)}`, session.accessToken))),
     ]).then(([courtList, slotList, quotes, availabilityGrids]) => {
       if (!active) return;
+      setImageCatalog(courtList);
       const selectedCourt = courtList.find(item => item.id === draft.courtId);
       const selectedSlot = slotList.find(item => item.id === draft.timeSlotId);
+      if (requestedDetails.some(item => !courtList.some(court => court.id === item.courtId && court.branchId === selectedCourt?.branchId))) throw new Error('Chỉ chọn nhiều sân trong cùng một địa điểm.');
       if (!selectedCourt || !selectedSlot) throw new Error('Không còn tìm thấy sân hoặc khung giờ đã chọn. Vui lòng quay lại chọn lại.');
       if (!requestedDetails.every(item => availabilityGrids.find(grid => grid.date === item.bookingDate)?.courts?.find(court => court.courtId === item.courtId)?.slots?.some(slot => slot.timeSlotId === item.timeSlotId && slot.available))) throw new Error('Sân đã có người đặt. Vui lòng chọn khung giờ khác.');
-      setSelectedDetails(requestedDetails.map((item, index) => ({...item, ...slotList.find(slot => slot.id === item.timeSlotId), courtName: courtList.find(court => court.id === item.courtId)?.name, price: quotes[index]?.price})));
+      setSelectedDetails(sortBookingDetails(requestedDetails.map((item, index) => ({...courtList.find(court => court.id === item.courtId), ...item, ...slotList.find(slot => slot.id === item.timeSlotId), courtName: courtList.find(court => court.id === item.courtId)?.name, price: quotes[index]?.price}))));
       setCourt(selectedCourt);
       setSlot(selectedSlot);
       setPrice(quotes.every(quote => quote?.price != null) ? quotes.reduce((total, quote) => total + Number(quote.price), 0) : null);
@@ -321,8 +379,10 @@ export default function CustomerCheckout() {
     return () => { active = false; };
   }, [draft?.bookingId, draft?.courtId, draft?.timeSlotId, draft?.bookingDate, session]);
 
-  const duration = useMemo(() => durationText(selectedDetails.length ? selectedDetails : slot), [selectedDetails, slot]);
-  const customer = session?.user || {};
+  const duration = useMemo(() => bookingDuration(selectedDetails), [selectedDetails]);
+  const courtGroups = useMemo(() => bookingCourtGroups(selectedDetails), [selectedDetails]);
+  const multiCourt = courtGroups.length > 1;
+  const customer = contact || session?.user || {};
 
   function logout() {
     clearSession();
@@ -331,7 +391,7 @@ export default function CustomerCheckout() {
 
   async function continueToPayment() {
     setSubmitError('');
-    if (expired || remaining === null || remaining === 0 || !draft?.bookingId || !noteLoaded || noteDirty || editing || bookingSyncRequired || mutationStarted.current) return;
+    if (!checkoutReady || expired || remaining === null || remaining === 0 || !draft?.bookingId || editing || contactEditing || !contactReady || bookingSyncRequired || mutationStarted.current) return;
     if (paymentMethod === 'BANK_TRANSFER') {
       const errors = {};
       if (!bankTransfer.bankName.trim()) errors.bankName = 'Vui lòng nhập tên ngân hàng.';
@@ -369,9 +429,15 @@ export default function CustomerCheckout() {
         return;
       }
       const signature = details => details.map(detail => `${detail.courtId}:${detail.bookingDate}:${detail.timeSlotId}:${Number(detail.price)}`).sort().join('|');
-      if (Number(latest.courtFee) !== price || signature(latest.details) !== signature(selectedDetails)) {
+      if (Number(latest.courtFee) !== price || Number(latest.finalAmount) !== Number(promotion?.finalAmount)
+          || latest.promotionCode !== promotion?.promotionCode || signature(latest.details) !== signature(selectedDetails)) {
         applyBooking(latest);
         throw new Error('Thông tin đặt sân đã được cập nhật. Vui lòng kiểm tra ngày, khung giờ và tổng tiền mới trước khi thanh toán.');
+      }
+      const latestContact = await api(`/bookings/${encodeURIComponent(bookingId)}/contact`, session.accessToken);
+      if (['fullName', 'phone', 'email'].some(key => latestContact[key] !== contact?.[key])) {
+        setContact(latestContact);
+        throw new Error('Thông tin người đặt đã được cập nhật. Vui lòng kiểm tra lại trước khi thanh toán.');
       }
       const payment = await api(`/bookings/${encodeURIComponent(bookingId)}/payments`, session.accessToken, {
         method: 'POST', body: JSON.stringify({paymentMethod, ...(paymentMethod === 'BANK_TRANSFER' ? {bankTransfer} : {})}),
@@ -411,14 +477,32 @@ export default function CustomerCheckout() {
     return <div className="checkout-page"><GuideHeader session={session} bookingCount={bookingCount} bookingError={bookingError} bookingLoading={bookingLoading} onLogout={logout} activePage="checkout"/><main className="checkout-empty"><h1>Chưa có sân để xác nhận</h1><p>Hãy chọn sân, ngày và khung giờ còn trống trước khi xem lại đặt sân.</p><a className="checkout-primary-link" href="/courts#search-courts">Tìm sân cầu lông</a></main><GuideFooter activePage="courts"/></div>;
   }
 
-  const courtName = court?.name || draft.courtName || 'Sân đã chọn';
-  const courtNumber = court?.courtNumber ?? draft.courtNumber;
-  const quotePrice = price ?? (Number(draft.price) || 0);
+  const courtName = court?.branchName || court?.name || 'Sân đã chọn';
+  const selectedCourtLabel = courtGroups.map(group => group.details[0]).sort(compareCourtNumbers).map(courtLabel).join(', ') || 'Đang tải…';
+  const selectedDates = [...new Set(selectedDetails.map(detail => detail.bookingDate))].map(formattedDate).join('; ') || formattedDate(draft.bookingDate);
+  const quotePrice = promotion?.finalAmount;
+
+  async function applyVoucher(remove = false) {
+    if (mutationStarted.current || submitted.current || expired || !draft?.bookingId) return;
+    mutationStarted.current = true; setPromotionBusy(true); setPromotionMessage('');
+    try {
+      const quote = await api(`/bookings/${encodeURIComponent(draft.bookingId)}/promotion${remove ? '' : '/apply'}`, session.accessToken,
+        remove ? {method: 'DELETE'} : {method: 'POST', body: JSON.stringify({code: voucher})});
+      setPromotion(quote); setPrice(Number(quote.subtotal));
+      setPromotionMessage(quote.message || (remove ? 'Đã xóa mã khuyến mãi.' : 'Đã cập nhật ưu đãi.'));
+      if (remove) setVoucher('');
+    } catch (reason) {
+      setPromotionMessage(reason.message || 'Không kiểm tra được mã. Vui lòng thử lại.');
+      // Recover a committed apply if its response was lost; block payment if recovery fails.
+      try { applyBooking(await api(`/bookings/${encodeURIComponent(draft.bookingId)}`, session.accessToken)); }
+      catch { setBookingSyncRequired(true); }
+    } finally { mutationStarted.current = false; setPromotionBusy(false); }
+  }
 
   return <div className="checkout-page">
     <GuideHeader session={session} bookingCount={bookingCount} bookingError={bookingError} bookingLoading={bookingLoading} onLogout={logout} activePage="checkout"/>
     <main className="checkout-main">
-      <a className="checkout-back" href="/courts#search-courts"><CheckoutIcon name="arrow-left"/> Quay lại</a>
+      <a className="checkout-back" href="/courts#search-courts" onClick={leaveCheckout}><CheckoutIcon name="arrow-left"/> Quay lại</a>
       <div className="checkout-heading-row">
         <div className="checkout-heading"><h1>Xác nhận đặt sân</h1><p>Kiểm tra lịch chơi và chi phí trước khi thanh toán.</p></div>
         <div className="checkout-progress" aria-label="Tiến trình đặt sân">
@@ -437,10 +521,11 @@ export default function CustomerCheckout() {
       <div className="checkout-columns">
         <div className="checkout-details-column">
           <section className="checkout-card checkout-court-card">
-            <div className="checkout-card-heading"><h2>Thông tin đặt sân</h2><button type="button" className="checkout-edit-button" disabled={loading || !bookingClock.ready || !draft?.bookingId || expired || submitting || noteSaving || editSaving || editing || paymentAttempts > 0 || new Set(selectedDetails.map(detail => detail.courtId)).size !== 1} onClick={() => {
+            <div className="checkout-card-heading"><h2>Thông tin đặt sân</h2><button type="button" className="checkout-edit-button" disabled={loading || !bookingClock.ready || !draft?.bookingId || expired || submitting || editSaving || editing || contactEditing || contactSaving || paymentAttempts > 0 || new Set(selectedDetails.map(detail => detail.courtId)).size !== 1} onClick={() => {
               setEditDate(draft.bookingDate >= bookingClock.today ? draft.bookingDate : bookingClock.today); setEditSlotIds(selectedDetails.filter(detail => isFutureSlot(detail.bookingDate, detail.startTime, bookingClock.nowMs)).map(detail => detail.timeSlotId)); setEditing(true);
             }}><CheckoutIcon name="pencil"/> Chỉnh sửa thông tin</button></div>
             {paymentAttempts > 0 && <p className="checkout-note">Đã khởi tạo thanh toán; ngày và khung giờ của đơn này không thể thay đổi.</p>}
+            {multiCourt && <p className="checkout-note">Đơn gồm {courtGroups.length} sân. Kiểm tra giờ của từng sân bên dưới; thanh toán một lần cho toàn bộ đơn.</p>}
             {editing && <div className="checkout-booking-editor" aria-label="Chỉnh sửa thông tin đặt sân">
               <label htmlFor="checkout-edit-date">Ngày chơi</label>
               <input id="checkout-edit-date" type="date" min={bookingClock.today} value={editDate} disabled={editSaving} onChange={event => {setEditDate(event.target.value >= bookingClock.today ? event.target.value : bookingClock.today); setEditSlotIds([]);}}/>
@@ -452,51 +537,54 @@ export default function CustomerCheckout() {
                 {!editLoading && bookingClock.ready && !visibleEditOptions.length && <p role="status">Ngày này không còn khung giờ bắt đầu trong tương lai. Vui lòng chọn ngày khác.</p>}
               </fieldset>
               <p>Giá sau chỉnh sửa: <strong>{editLoading || !editSlotIds.length ? '—' : formatMoney(visibleEditOptions.filter(option => editSlotIds.includes(option.timeSlotId)).reduce((sum, option) => sum + option.price, 0))}</strong></p>
-              <p className="checkout-note">Giá cuối cùng do máy chủ tính. Thời gian giữ sân ban đầu được giữ nguyên.</p>
               {editError && <p className="checkout-submit-error" role="alert">{editError}</p>}
               <div className="checkout-editor-actions"><button type="button" disabled={editSaving || editLoading || expired || !editDate || !editSelectionValid} onClick={saveDetails}>{editSaving ? 'Đang lưu…' : 'Lưu thay đổi'}</button><button type="button" disabled={editSaving} onClick={() => {setEditing(false); setEditError('');}}>Hủy</button></div>
             </div>}
             <div className="checkout-court-summary">
-              <img className="checkout-court-photo" src="/assets/checkout-court-star-city.png" alt="Sân cầu lông trong nhà" onError={event => {event.currentTarget.hidden = true;}}/>
+              {court && courtImageSource(court, imageCatalog) ? <img key={court.id} className="checkout-court-photo" src={courtImageSource(court, imageCatalog)} alt={court.name || 'Sân đã chọn'} onError={event => {if (event.currentTarget.getAttribute('src') !== COURT_FALLBACK_IMAGE) event.currentTarget.src = COURT_FALLBACK_IMAGE; else event.currentTarget.hidden = true;}}/> : <div className="checkout-court-photo" role="img" aria-label="Chưa có ảnh sân">Chưa có ảnh sân</div>}
               <div className="checkout-court-copy">
-                <span className="checkout-region">KHU VỰC CHƯA CÓ DỮ LIỆU</span>
+                <span className="checkout-region">{court?.district || 'Chưa có dữ liệu khu vực'}</span>
                 <h3>{courtName}</h3>
-                <p className="checkout-address"><CheckoutIcon name="map-pin"/> Địa chỉ chưa được cung cấp bởi dữ liệu sân.</p>
-                <div className="checkout-tags"><span>{court?.type === 'WOODEN_FLOOR' ? 'Sàn gỗ' : court?.type ? 'Thảm tiêu chuẩn' : 'Loại sân chưa có dữ liệu'}</span></div>
+                <p className="checkout-address"><CheckoutIcon name="map-pin"/> {court?.address || 'Chưa có địa chỉ sân'}</p>
+                <div className="checkout-tags">{[...new Set(selectedDetails.map(detail => surfaceLabel(detail.type)))].map(label => <span key={label}>{label}</span>)}</div>
               </div>
             </div>
             <div className="checkout-divider"/>
             <div className="checkout-booking-facts">
-              <div className="checkout-fact"><span className="checkout-fact-icon"><CheckoutIcon name="calendar-days"/></span><div><small>Ngày chơi</small><strong>{formattedDate(draft.bookingDate)}</strong></div></div>
-              <div className="checkout-fact"><span className="checkout-fact-icon"><CheckoutIcon name="clock-3"/></span><div><small>Khung giờ</small><strong>{slot ? `${timeText(slot.startTime)} – ${timeText(slot.endTime)}` : 'Đang tải…'}</strong></div></div>
-              <div className="checkout-fact"><span className="checkout-fact-icon"><CheckoutIcon name="layout-grid"/></span><div><small>Sân cụ thể</small><strong>{courtNumber != null ? `Sân ${String(courtNumber).padStart(2, '0')}` : 'Chưa có dữ liệu'}</strong></div></div>
-              <div className="checkout-fact"><span className="checkout-fact-icon"><CheckoutIcon name="timer"/></span><div><small>Thời lượng</small><strong>{duration}</strong></div></div>
+              <div className="checkout-fact"><span className="checkout-fact-icon"><CheckoutIcon name="calendar-days"/></span><div><small>Ngày chơi</small><strong>{selectedDates}</strong></div></div>
+              <div className="checkout-fact"><span className="checkout-fact-icon"><CheckoutIcon name="clock-3"/></span><div><small>Khung giờ</small><strong>{bookingTimeLabel(selectedDetails) || 'Đang tải…'}</strong></div></div>
+              <div className="checkout-fact"><span className="checkout-fact-icon"><CheckoutIcon name="layout-grid"/></span><div><small>Sân cụ thể</small><strong>{selectedCourtLabel}</strong></div></div>
+              <div className="checkout-fact"><span className="checkout-fact-icon"><CheckoutIcon name="timer"/></span><div><small>{multiCourt ? 'Tổng thời lượng sân đặt' : 'Thời lượng'}</small><strong>{duration}{multiCourt ? ' (giờ-sân)' : ''}</strong></div></div>
             </div>
-            {selectedDetails.length > 1 && <div className="checkout-note"><strong>{selectedDetails.length} khung giờ đã chọn</strong>{selectedDetails.map((detail, index) => <p key={index}>{detail.courtName} · {detail.bookingDate} · {timeText(detail.startTime)} – {timeText(detail.endTime)} · {formatMoney(detail.price)}</p>)}</div>}
+            {multiCourt ? <div className="checkout-multi-courts"><strong>{selectedDetails.length} khung giờ đã chọn</strong>{courtGroups.map(group => <section key={group.courtId} data-checkout-court-id={group.courtId}>
+              <h4>{courtLabel(group.details[0])} · {group.details[0].courtName}</h4><p>{surfaceLabel(group.details[0].type)} · {rangesLabel(group.ranges)}</p>{group.details.map(detail => <p key={`${detail.bookingDate}:${detail.timeSlotId}`}>{detail.bookingDate} · {timeText(detail.startTime)} – {timeText(detail.endTime)} · {formatMoney(detail.price)}</p>)}
+            </section>)}</div> : selectedDetails.length > 1 && <div className="checkout-note"><strong>{selectedDetails.length} khung giờ đã chọn</strong>{selectedDetails.map((detail, index) => <p key={index}>{detail.courtName} · {detail.bookingDate} · {timeText(detail.startTime)} – {timeText(detail.endTime)} · {formatMoney(detail.price)}</p>)}</div>}
           </section>
 
           <section className="checkout-card checkout-customer-card">
-            <div className="checkout-card-heading"><h2>Thông tin người đặt</h2><button className="checkout-edit-disabled" type="button" disabled title="Ứng dụng chưa có chức năng chỉnh sửa hồ sơ."><CheckoutIcon name="pencil"/> Chỉnh sửa</button></div>
-            <div className="checkout-customer-fields">
+            <div className="checkout-card-heading"><h2>Thông tin người đặt</h2><button className="checkout-edit-button" type="button" disabled={loading || !contactReady || expired || submitting || editing || editSaving || contactEditing || contactSaving || paymentAttempts > 0} onClick={() => {
+              setContactFields({fullName: customer.fullName || '', phone: customer.phone || ''});
+              setContactErrors({}); setContactError(''); setContactMessage(''); setContactEditing(true);
+            }}><CheckoutIcon name="pencil"/> Chỉnh sửa</button></div>
+            {contactEditing ? <form className="checkout-contact-editor" aria-label="Chỉnh sửa thông tin người đặt" noValidate onSubmit={saveContact}>
+              <div className="checkout-customer-fields">
+                <label>Họ và tên<input autoComplete="name" maxLength={255} value={contactFields.fullName} disabled={contactSaving || expired} aria-invalid={Boolean(contactErrors.fullName)} onChange={event => setContactFields(current => ({...current, fullName: event.target.value}))}/>{contactErrors.fullName && <small role="alert">{contactErrors.fullName}</small>}</label>
+                <label>Số điện thoại<input type="tel" inputMode="numeric" autoComplete="tel" maxLength={20} value={contactFields.phone} disabled={contactSaving || expired} aria-invalid={Boolean(contactErrors.phone)} onChange={event => setContactFields(current => ({...current, phone: event.target.value}))}/>{contactErrors.phone && <small role="alert">{contactErrors.phone}</small>}</label>
+                <label>Email nhận xác nhận<input type="email" value={customer.email || ''} readOnly aria-readonly="true"/></label>
+              </div>
+              <div className="checkout-editor-actions"><button type="submit" disabled={contactSaving || expired || !contactReady}>{contactSaving ? 'Đang lưu…' : 'Lưu thông tin người đặt'}</button><button type="button" disabled={contactSaving} onClick={() => {setContactEditing(false); setContactErrors({});}}>Hủy</button></div>
+            </form> : <div className="checkout-customer-fields">
               <div><small>Họ và tên</small><strong>{customer.fullName || 'Chưa cập nhật'}</strong></div>
               <div><small>Số điện thoại</small><strong>{customer.phone || 'Chưa cập nhật'}</strong></div>
               <div><small>Email nhận xác nhận</small><strong>{customer.email || 'Chưa cập nhật'}</strong></div>
-            </div>
-            <div className="checkout-booking-note">
-              <label htmlFor="checkout-customer-note">Ghi chú cho đơn đặt sân</label>
-              <textarea id="checkout-customer-note" rows="4" maxLength={1000} placeholder="Nhập ghi chú cho sân hoặc yêu cầu thêm của bạn..." value={note} disabled={!noteLoaded || expired || submitting || noteSaving || editSaving} onChange={event => {
-                const text = event.target.value; setNote(text); setNoteStatus('Chưa lưu thay đổi.');
-                sessionStorage.setItem(`bcm-booking-note:${draft.bookingId}`, JSON.stringify({text}));
-              }}/>
-              <div className="checkout-note-status"><span>{note.length}/1000 ký tự</span><span role="status">{noteStatus}</span></div>
-              <button type="button" disabled={!noteLoaded || !noteDirty || noteSaving || submitting || expired || editing} onClick={saveNote}>{noteSaving ? 'Đang lưu…' : 'Lưu ghi chú'}</button>
-              {noteDirty && <p className="checkout-note">Vui lòng lưu ghi chú trước khi thanh toán.</p>}
-            </div>
+            </div>}
+            {!contactReady && !contactError && <p role="status">Đang tải thông tin người đặt…</p>}
+            {contactMessage && <p role="status" className="checkout-contact-status">{contactMessage}</p>}
+            {contactError && <div role="alert" className="checkout-submit-error">{contactError}{!contactReady && <button type="button" onClick={() => setContactReload(value => value + 1)}>Thử lại</button>}</div>}
           </section>
 
           {paymentMethod === 'BANK_TRANSFER' && <section className="checkout-card checkout-bank-transfer-card" aria-labelledby="checkout-bank-transfer-heading">
             <h2 id="checkout-bank-transfer-heading">Thông tin chuyển khoản</h2>
-            <p>Vui lòng điền thông tin chuyển khoản ngân hàng trước khi thanh toán.</p>
             <div className="checkout-bank-transfer-fields">
               {[
                 {name: 'bankName', label: 'Ngân hàng', placeholder: 'Nhập tên ngân hàng'},
@@ -521,22 +609,34 @@ export default function CustomerCheckout() {
             </div>
           </section>}
 
-            <div className="checkout-arrival-note"><CheckoutIcon name="info"/><div><strong>Sẵn sàng cho buổi chơi của bạn</strong><p>Vui lòng đến trước 10 phút và mang giày thể thao đế mềm. Kiểm tra kết quả thanh toán trong lịch đặt; hệ thống hiện chưa gửi email tự động.</p></div></div>
         </div>
 
         <aside className="checkout-invoice-column">
           <section className="checkout-card checkout-invoice-card">
             <div className="checkout-invoice-accent"/>
             <div className="checkout-invoice-content">
-              <div className="checkout-invoice-heading"><div><CheckoutIcon name="receipt-text"/><h2>Chi tiết hóa đơn</h2></div><span className="checkout-payment-status"><CheckoutIcon name="clock-4"/> Chưa thanh toán</span><p>{courtNumber != null ? '1 sân' : 'Sân đã chọn'} • {duration} • {formattedDate(draft.bookingDate)}</p></div>
+              <div className="checkout-invoice-heading"><div><CheckoutIcon name="receipt-text"/><h2>Chi tiết hóa đơn</h2></div><span className="checkout-payment-status"><CheckoutIcon name="clock-4"/> Chưa thanh toán</span><p>{courtGroups.length} sân • {duration}{multiCourt ? ' (giờ-sân)' : ''} • {selectedDates}</p></div>
               <div className="checkout-divider"/>
               <div className="checkout-price-table">
                 <div className="checkout-price-head"><span>CHI PHÍ THUÊ SÂN</span><span>THÀNH TIỀN</span></div>
-                <div className="checkout-price-item"><div><strong>{courtNumber != null ? `Sân ${String(courtNumber).padStart(2, '0')}` : courtName}</strong><small>{price == null ? 'Đang lấy báo giá từ máy chủ…' : `Giá theo khung giờ · ${duration}`}</small></div><strong>{price == null ? '—' : formatMoney(price)}</strong></div>
+                <div className="checkout-price-item"><div><strong>{selectedCourtLabel}</strong><small>{price == null ? 'Đang lấy báo giá từ máy chủ…' : `Giá theo khung giờ · ${duration}${multiCourt ? ' (giờ-sân)' : ''}`}</small></div><strong>{price == null ? '—' : formatMoney(price)}</strong></div>
               </div>
               <div className="checkout-divider"/>
               <div className="checkout-totals"><div><span>Tạm tính</span><strong>{price == null ? '—' : formatMoney(price)}</strong></div><div><span>Phí đặt sân</span><strong>{formatMoney(0)}</strong></div></div>
-              <div className="checkout-grand-total"><strong>Tổng thanh toán</strong><b>{price == null ? '—' : formatMoney(quotePrice)}</b><small>Số tiền được xác nhận lại từ máy chủ khi tạo booking.</small></div>
+              <fieldset className="checkout-promotions" disabled={loading || submitting || promotionBusy || expired || editing || contactEditing || paymentAttempts > 0 || !promotion}>
+                <legend>KHUYẾN MÃI</legend>
+                <form onSubmit={event => { event.preventDefault(); applyVoucher(); }}>
+                  <input aria-label="Mã khuyến mãi" placeholder="Mã khuyến mãi" maxLength={50} value={voucher} onChange={event => setVoucher(event.target.value)}/>
+                  <button type="submit" disabled={!voucher.trim()}>{promotionBusy ? 'Đang kiểm tra…' : 'Áp dụng'}</button>
+                </form>
+                {promotion?.requestedVoucher && <button type="button" className="checkout-remove-voucher" onClick={() => applyVoucher(true)}>Xóa mã {promotion.requestedVoucher}</button>}
+                <p role="status" aria-live="polite">{promotionMessage}</p>
+              </fieldset>
+              {Number(promotion?.discountAmount) > 0 && <div className="checkout-totals checkout-discount">
+                <div><span>Giảm giá</span><strong>-{formatMoney(promotion.discountAmount)}</strong></div>
+                <div><span>Ưu đãi áp dụng</span><strong>{promotion.promotionCode === 'INVOICE_TOTAL' ? 'Ưu đãi hóa đơn' : `${promotion.promotionCode} · ${promotion.promotionCode === 'NEWMEMBER' ? '5%' : '10%'}`}</strong></div>
+              </div>}
+              <div className="checkout-grand-total"><strong>Tổng thanh toán</strong><b>{quotePrice == null ? '—' : formatMoney(quotePrice)}</b></div>
 
               <fieldset className="checkout-methods" disabled={loading || Boolean(error) || submitting}>
                 <legend>Phương thức thanh toán</legend>
@@ -547,7 +647,7 @@ export default function CustomerCheckout() {
                 <label className="checkout-method unavailable"><span><strong>Tiền mặt</strong><small>Không áp dụng cho đặt sân; chỉ hỗ trợ mua sản phẩm tại quầy</small></span><input type="radio" name="paymentMethod" value="CASH" disabled aria-label="Tiền mặt không áp dụng cho đặt sân"/></label>
               </fieldset>
 
-              <div className="checkout-payment-action"><p>Bằng việc tiếp tục, bạn đồng ý với điều khoản sử dụng và chính sách hủy của sân.</p>{submitError && <div className="checkout-submit-error" role="alert">{submitError}</div>}<button type="button" disabled={loading || Boolean(error) || !price || submitting || expired || !draft?.bookingId || remaining === null || !noteLoaded || noteDirty || noteSaving || editing || editSaving || bookingSyncRequired} onClick={continueToPayment}>{submitting ? 'Đang khởi tạo…' : 'Thanh toán'} <CheckoutIcon name="arrow-right"/></button><div className="checkout-security"><CheckoutIcon name="shield-check"/> Thanh toán an toàn, thông tin được bảo mật</div></div>
+              <div className="checkout-payment-action"><p>Bằng việc tiếp tục, bạn đồng ý với điều khoản sử dụng và chính sách hủy của sân.</p>{submitError && <div className="checkout-submit-error" role="alert">{submitError}</div>}<button type="button" disabled={!checkoutReady || loading || Boolean(error) || !price || submitting || expired || !draft?.bookingId || remaining === null || editing || editSaving || contactEditing || contactSaving || !contactReady || bookingSyncRequired || promotionBusy || !promotion} onClick={continueToPayment}>{submitting ? 'Đang khởi tạo…' : 'Thanh toán'} <CheckoutIcon name="arrow-right"/></button></div>
             </div>
           </section>
           <div className="checkout-support"><CheckoutIcon name="headset"/><div><span>Cần hỗ trợ về lịch đặt?</span><strong>1900 1000 • Hỗ trợ 24/7</strong></div></div>

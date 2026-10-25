@@ -22,6 +22,7 @@ public class BookingHistoryService {
     private final BookingRepository bookings;
     private final BookingDetailRepository details;
     private final PaymentTransactionRepository payments;
+    private final com.bcm.repository.BranchRepository branches;
     private final com.bcm.security.CurrentCustomerService currentCustomer;
 
     public BookingHistoryResponse history(UUID customerId, BookingStatus status, int page, int size) {
@@ -46,10 +47,21 @@ public class BookingHistoryService {
             throw new org.springframework.security.access.AccessDeniedException("Booking not owned");
         }
         // One consistent PostgreSQL snapshot across header, details and payments; no lifecycle locks.
-        var slots = details.findHistoryDetails(bookingId).stream().map(d ->
-                new BookingHistoryDetailResponse.Detail(d.getId(), d.getBookingDate(), d.getCourt().getId(),
+        var persistedDetails = details.findHistoryDetails(bookingId);
+        var branchIds = persistedDetails.stream().map(d -> d.getCourt().getBranchId())
+                .filter(java.util.Objects::nonNull).distinct().toList();
+        var branchMap = (branchIds.isEmpty() ? java.util.stream.Stream.<com.bcm.entity.Branch>empty()
+                : branches.findAllById(branchIds).stream()).collect(java.util.stream.Collectors.toMap(
+                com.bcm.entity.Branch::getId, java.util.function.Function.identity()));
+        var slots = persistedDetails.stream().map(d -> {
+                var court = d.getCourt();
+                var branch = branchMap.get(court.getBranchId());
+                return new BookingHistoryDetailResponse.Detail(d.getId(), d.getBookingDate(), court.getId(),
                         d.getTimeSlot().getId(), d.getPrice(), d.getCourt().getCourtNumber(), d.getCourt().getName(),
-                        d.getTimeSlot().getStartTime(), d.getTimeSlot().getEndTime())).toList();
+                        d.getTimeSlot().getStartTime(), d.getTimeSlot().getEndTime(), court.getBranchId(),
+                        court.getBranchCourtNumber(), branch == null ? null : branch.getName(),
+                        court.getDistrict(), court.getAddress(), court.getType(), court.getCourtCode());
+        }).toList();
         var transactions = payments.findBookingHistory(bookingId).stream().map(p ->
                 new BookingHistoryDetailResponse.Payment(p.getId(), p.getPaymentMethod(), p.getStatus(),
                         p.getAmount(), p.getTransactionId(), p.getTransactionDate(), p.getCreatedAt(),
@@ -58,6 +70,7 @@ public class BookingHistoryService {
                                 ? "CUSTOMER_DECLARED" : null)).toList();
         return new BookingHistoryDetailResponse(booking.getId(), booking.getCustomer().getId(), booking.getStatus(),
                 booking.getCourtFee(), booking.getExpiresAt(), booking.getCreatedAt(), booking.getUpdatedAt(),
-                slots, transactions, booking.getCustomerNote());
+                slots, transactions, booking.getDiscountAmount(), booking.getFinalAmount(),
+                booking.getPromotionCode(), booking.getRequestedVoucher());
     }
 }

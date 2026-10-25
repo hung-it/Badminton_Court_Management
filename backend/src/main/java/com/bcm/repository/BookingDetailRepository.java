@@ -29,7 +29,8 @@ public interface BookingDetailRepository extends JpaRepository<BookingDetail, UU
     @Query("""
             select d from BookingDetail d join fetch d.court join fetch d.timeSlot
             where d.booking.id = :bookingId
-            order by d.bookingDate, d.court.id, d.timeSlot.id, d.id
+            order by d.bookingDate, d.timeSlot.startTime, d.court.branchId,
+                     d.court.branchCourtNumber, d.court.courtCode, d.court.id, d.id
             """)
     List<BookingDetail> findHistoryDetails(@Param("bookingId") UUID bookingId);
 
@@ -39,7 +40,7 @@ public interface BookingDetailRepository extends JpaRepository<BookingDetail, UU
     int deleteAllForExpiredBooking(@Param("bookingId") UUID bookingId);
 
     @Query("""
-            select d.court.id as courtId, d.timeSlot.id as timeSlotId
+            select d.court.id as courtId, d.timeSlot.id as timeSlotId, d.booking.status as bookingStatus
             from BookingDetail d
             where d.bookingDate = :date
               and (:courtId is null or d.court.id = :courtId)
@@ -50,10 +51,12 @@ public interface BookingDetailRepository extends JpaRepository<BookingDetail, UU
     interface OccupiedSlot {
         UUID getCourtId();
         UUID getTimeSlotId();
+        com.bcm.entity.BookingStatus getBookingStatus();
     }
 
     @Query("""
-            select d.bookingDate as bookingDate, d.court.id as courtId, d.timeSlot.id as timeSlotId
+            select d.bookingDate as bookingDate, d.court.id as courtId, d.timeSlot.id as timeSlotId,
+                   d.booking.status as bookingStatus
             from BookingDetail d
             where d.bookingDate in :dates and d.court.id in :courtIds and d.timeSlot.id in :slotIds
             """)

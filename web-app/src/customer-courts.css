@@ -40,14 +40,22 @@
 
 
 .customer-slot-row { margin-bottom: 0; row-gap: 8px; }
-.customer-slot-row + .customer-slot-row { margin-top: 10px; }
 .customer-slot-row > span:first-child { flex: 0 0 100%; font-weight: 600; }
 .customer-slot-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; }
 .customer-slot-chip input { margin: 0; accent-color: var(--cc-green-600); }
 .customer-district-filter { border: 0; padding: 0; margin: 0; min-width: 0; }
-.customer-district-options { max-height: 216px; overflow-y: auto; margin-top: 6px; }
+.customer-district-options { max-height: 320px; overflow-y: auto; margin-top: 6px; }
 .customer-district-options .customer-check-row { align-items: center; min-height: 40px; line-height: 1.5; padding: 6px 2px; }
 .customer-district-options input { flex: 0 0 auto; width: 17px; height: 17px; }
 .customer-clear-districts { color: var(--cc-green-800); background: transparent; border: 0; text-decoration: underline; padding: 8px 0; cursor: pointer; font: inherit; font-size: 12px; }
 .customer-clear-districts:disabled { color: var(--cc-muted); cursor: default; }
-.customer-upcoming-note { overflow-wrap: anywhere; white-space: pre-wrap; }
+
+.customer-court-address{font-size:11px;line-height:1.5;color:var(--cc-muted);margin:0 0 10px;overflow-wrap:anywhere}.customer-court-type{margin-bottom:5px}
+
+.customer-branch-courts{border:0;padding:0;margin:10px 0 0;display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.customer-branch-courts legend{font-size:10px;font-weight:600;color:var(--cc-muted);padding:0;margin-bottom:8px}
+.customer-branch-context{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.customer-branch-context button{border:1px solid var(--cc-border);border-radius:6px;background:var(--color-surface);padding:5px 7px;font-size:10px;cursor:pointer}.customer-branch-context button[aria-pressed=true]{background:var(--color-mint);border-color:var(--cc-green-600)}
+.customer-branch-instruction{font-size:10px;line-height:1.6;margin:8px 0 0;color:var(--cc-muted)}
+.customer-active-court{flex:0 0 100%;font-size:10px;line-height:1.6;overflow-wrap:anywhere}
+
+.customer-court-image > .customer-court-photo{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover}

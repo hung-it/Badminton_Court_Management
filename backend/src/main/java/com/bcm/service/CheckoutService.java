@@ -53,7 +53,8 @@ public class CheckoutService {
         BigDecimal productFee = valueOrZero(
                 invoiceRepository.sumProductFeeByBookingIdAndStatus(bookingId, PENDING_POS_STATUS));
         BigDecimal discountAmount = valueOrZero(
-                invoiceRepository.sumDiscountAmountByBookingIdAndStatus(bookingId, PENDING_POS_STATUS));
+                invoiceRepository.sumDiscountAmountByBookingIdAndStatus(bookingId, PENDING_POS_STATUS))
+                .add(booking.getDiscountAmount());
         BigDecimal totalAmount = courtFee.add(productFee).subtract(discountAmount);
         UUID customerId = booking.getCustomer() != null ? booking.getCustomer().getId() : null;
 

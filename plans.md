@@ -1,5 +1,27 @@
 # Kế hoạch Booking Engine — Thành viên 3
 
+## Loại mặt sân và địa chỉ — 2026-10-24
+
+Yêu cầu trực tiếp của người dùng mở rộng phần tích hợp metadata/admin và giữ nhánh
+`feature/front-end-user`; các hạn chế cũ về branch/scope được thay thế riêng cho task này.
+
+- [x] Khảo sát runtime PostgreSQL 15.19: 15 sân đã có đúng type, chưa có address;
+  backup custom ngoài target, đọc archive và restore thành công trên DB E2E riêng.
+- [x] Tái sử dụng courts.type, CHECK hai mã; thêm nullable address varchar(500),
+  seed UPDATE-only 15 fixture theo UUID/signature, idempotent UPDATE 0 lần hai.
+- [x] Database chính đủ 15 địa chỉ mô phỏng theo district; snapshot cuối giữ UUID,
+  tên/type/giá/district/status và toàn bộ bookings/details/payments/slots (6/0/0/16).
+- [x] Public catalog/admin DTO/entity/service đồng bộ address; validation length,
+  control characters và quận rõ ràng; bỏ/null/blank address giữ dữ liệu cũ.
+- [x] /courts hiển thị đúng hai nhãn tiếng Việt + địa chỉ; admin xem/tạo/sửa/preload,
+  320px địa chỉ dài không tràn; không khôi phục tổng dự kiến/cảnh báo/checkout note.
+- [x] Java 17 Maven verify: 423 tests PASS, không failure/error/skip; 13 clock tests PASS;
+  hai frontend build PASS; 8 suite E2E/35 nhóm kiểm tra PASS; git diff --check PASS.
+- [x] Build/recreate riêng backend, RestartCount=0; 8080/5173/5174 HTTP 200 và JSON đủ metadata;
+  giữ PostgreSQL chính, dừng audit backend/Vite sau kiểm thử, không commit/chuyển nhánh.
+
+Chi tiết file, backup, SQL, số liệu và giới hạn: [báo cáo metadata](docs/courts-metadata-2026-10-24.md).
+
 ## Khôi phục runtime, 7 khu vực demo và realtime slot — 2026-10-23
 
 - [x] Xác minh main backend đang restart vì thiếu customer_note; backup PostgreSQL dạng custom,
@@ -315,3 +337,12 @@ late-payment reconciliation/refund and global transaction_id uniqueness remain u
 - [ ] Tích hợp ReactJS Web App sau khi Phase 1–6 đạt acceptance criteria.
   Tác động: frontend hiện chưa có; xác định cấu trúc khi bắt đầu phase này.
   AC: dùng backend contract đã ổn định cho booking/payment/history; không mở scope mobile.
+
+## Loại bỏ ghi chú checkout — 2026-10-23 (supersedes note UX ở checkpoint cũ)
+
+- [x] Bỏ Booking mapping/DTO/projection/service/endpoint notes và mọi UI/draft checkout note.
+- [x] Script thủ công chỉ thêm district; backup DB, xác nhận không có cột note; không DROP dữ liệu.
+- [x] Java 17/PostgreSQL full verify 393 tests PASS; clock 11 PASS; hai frontend build PASS.
+- [x] Booking/payment, checkout UX và expiry E2E PASS trên DB riêng; backend Docker running >21 phút, restart 0, catalog/time-slots 200.
+
+Chi tiết file, lệnh, backup, dữ liệu thực tế và giới hạn VNPay: [báo cáo](docs/remove-checkout-note-2026-10-23.md).

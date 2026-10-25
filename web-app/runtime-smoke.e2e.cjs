@@ -11,7 +11,10 @@ const assert = require('node:assert/strict');
   const catalog = (await catalogResponse.json()).data;
   const districts = [...new Set(catalog.map(c => c.district).filter(Boolean))];
   assert.equal(districts.length, 7);
-  const demo = catalog.filter(c => c.name.startsWith('[DEMO] ')); assert.equal(demo.length, 7);
+  const promotedIds = Array.from({length: 7}, (_, i) => `bcdd0000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`);
+  const demo = catalog.filter(c => promotedIds.includes(c.id)); assert.equal(demo.length, 7);
+  assert.equal(catalog.length, 35);
+  assert.ok(catalog.every(c => c.district && !c.name.includes('[DEMO]')));
   for (const origin of ['http://localhost:5173', 'http://localhost:5174']) {
     assert.equal((await api.get(`${origin}/`)).status(), 200);
     const proxied = await api.get(`${origin}/api/public/courts`); assert.equal(proxied.status(), 200);
@@ -55,6 +58,7 @@ const assert = require('node:assert/strict');
     const future = target.slots.some(slot => isFutureSlot(clock.today, slot.startTime, now));
     if (future) {
       await expect(cards).toHaveCount(catalog.filter(c => labels.includes(c.district)).length);
+      await expect(page.locator('.customer-branch-card')).toHaveCount(0);
       const options = await page.getByRole('combobox', {name: 'Khung giờ', exact: true}).locator('option:not([value=""])').evaluateAll(nodes => nodes.map(node => node.textContent));
       for (const option of options) assert.equal(isFutureSlot(clock.today, option.split('–')[0].trim(), now), true);
     } else await expect(page.getByRole('button', {name: 'Chọn ngày mai', exact: true})).toBeVisible();

@@ -31,17 +31,19 @@ public class PaymentAttemptService {
     private final Clock clock;
     private final CurrentCustomerService currentCustomer;
     private final Validator validator;
+    private final BookingPromotionService promotions;
 
     public PaymentAttemptService(BookingRepository bookings, PaymentTransactionRepository payments,
                                  PaymentGatewayPreparation gateway,
                                  @Qualifier("bookingExpirationClock") Clock clock,
-                                 CurrentCustomerService currentCustomer, Validator validator) {
+                                 CurrentCustomerService currentCustomer, Validator validator, BookingPromotionService promotions) {
         this.bookings = bookings;
         this.payments = payments;
         this.gateway = gateway;
         this.clock = clock;
         this.currentCustomer = currentCustomer;
         this.validator = validator;
+        this.promotions = promotions;
     }
 
     @Transactional
@@ -107,7 +109,8 @@ public class PaymentAttemptService {
         payment.setBooking(booking);
         payment.setPaymentMethod(request.getPaymentMethod());
         payment.setStatus(PaymentStatus.PENDING);
-        payment.setAmount(booking.getCourtFee());
+        promotions.validatePayment(booking);
+        payment.setAmount(booking.getFinalAmount());
         // invoice, transaction ID and transaction date remain NULL; no gateway result exists yet.
         confirmDeclaredTransfer(payment, booking);
         payments.saveAndFlush(payment);
@@ -146,6 +149,11 @@ public class PaymentAttemptService {
     }
 
     private void requireEligible(Booking booking) {
+        if (booking.getCheckoutReleaseAt() != null
+                && !booking.getCheckoutReleaseAt().isAfter(LocalDateTime.now(clock))
+                && !payments.existsByBookingIdAndStatus(booking.getId(), PaymentStatus.PENDING)) {
+            throw new DuplicateResourceException("BOOKING_EXPIRED: Checkout release deadline has passed");
+        }
         if (booking.getCourtFee() == null || booking.getCourtFee().signum() <= 0) {
             throw new BadRequestException("Booking amount must be positive");
         }
@@ -156,6 +164,9 @@ public class PaymentAttemptService {
         if (payments.existsByBookingIdAndStatus(booking.getId(), PaymentStatus.SUCCESS)) {
             throw new DuplicateResourceException("Booking already has a successful payment; reconciliation required");
         }
+        // Starting/continuing payment cancels an early release under the same Booking lock.
+        // The original ten-minute deadline remains unchanged.
+        booking.setCheckoutReleaseAt(null);
     }
 
     private PaymentAttemptResponse response(PaymentTransaction payment, Booking booking) {

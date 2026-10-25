@@ -4,12 +4,13 @@ const {chromium, request, expect} = require('playwright/test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const baseURL = process.env.BCM_E2E_WEB_URL || 'http://127.0.0.1:5174';
+const apiURL = process.env.BCM_E2E_API_URL || baseURL;
 const date = '2031-02-20';
 const dayAfter = '2031-02-21';
 const demoIds = ['bcdd0000-0000-4000-8000-000000000001', 'bcdd0000-0000-4000-8000-000000000002'];
 
 (async () => {
-  const api = await request.newContext({baseURL});
+  const api = await request.newContext({baseURL: apiURL});
   const registration = await api.post('/api/auth/register', {data: {email: `realtime-${crypto.randomUUID()}@example.test`,
     password: crypto.randomBytes(18).toString('hex'), fullName: 'Realtime E2E', phone: '0900000000'}});
   assert.equal(registration.status(), 201);
@@ -17,6 +18,7 @@ const demoIds = ['bcdd0000-0000-4000-8000-000000000001', 'bcdd0000-0000-4000-800
   const headers = {Authorization: `Bearer ${session.accessToken}`};
   const profile = (await (await api.get('/api/bookings/customer-profile', {headers})).json()).data;
   const templates = (await (await api.get('/api/public/time-slots')).json()).data;
+  const catalog = (await (await api.get('/api/public/courts')).json()).data;
   const slotAt = hour => templates.find(slot => slot.startTime.slice(0, 5) === `${hour}:00`);
   const browser = await chromium.launch({channel: 'msedge', headless: true});
   try {
@@ -25,6 +27,10 @@ const demoIds = ['bcdd0000-0000-4000-8000-000000000001', 'bcdd0000-0000-4000-800
       sessionStorage.setItem('bcm.accessToken', s.accessToken); sessionStorage.setItem('bcm.user', JSON.stringify(s.user));
     }, session);
     const page = await context.newPage(); const errors = []; let writes = 0;
+    if (apiURL !== baseURL) await page.route('**/api/**', async route => {
+      const url = new URL(route.request().url());
+      await route.fulfill({response: await route.fetch({url: new URL(url.pathname + url.search, apiURL).href})});
+    });
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', req => { if (['POST', 'PATCH'].includes(req.method()) && /\/bookings/.test(req.url())) writes++; });
     let epoch = Date.parse(`${date}T00:00:00+07:00`);
@@ -32,9 +38,9 @@ const demoIds = ['bcdd0000-0000-4000-8000-000000000001', 'bcdd0000-0000-4000-800
     await page.clock.pauseAt(new Date(epoch));
     await page.route('**/api/public/booking-clock', route => route.fulfill({json: {success: true,
       data: {serverTime: new Date(epoch).toISOString(), timeZone: 'Asia/Ho_Chi_Minh', today: date}}}));
-    for (const time of ['00:00', '06:59', '07:00', '11:59', '12:00', '12:30', '23:59']) {
+    for (const time of ['00:00', '06:59', '07:00', '11:59', '12:00', '12:30', '17:59', '18:00', '23:59']) {
       epoch = Date.parse(`${date}T${time}:00+07:00`); await page.clock.setSystemTime(new Date(epoch));
-      await page.goto(`${baseURL}/courts?date=${date}`);
+      await page.goto(`${baseURL}/courts?date=${date}`, {waitUntil: 'domcontentloaded'});
       await expect(page.locator('.customer-district-filter').getByLabel('Quận 1', {exact: true})).toBeVisible();
       const expected = templates.filter(slot => slot.startTime.slice(0, 8) > `${time}:00`).map(slot => slot.id);
       const options = page.getByRole('combobox', {name: 'Khung giờ', exact: true}).locator('option:not([value=""])');
@@ -51,16 +57,18 @@ const demoIds = ['bcdd0000-0000-4000-8000-000000000001', 'bcdd0000-0000-4000-800
         await expect(options).toHaveCount(templates.length);
       }
     }
-    console.log('PASS UI fixed Vietnam clock: 00:00/06:59/07:00/11:59/12:00/12:30/23:59; past slots absent, tomorrow works, client timezone independent');
+    console.log('PASS UI fixed Vietnam clock: 00:00/06:59/07:00/11:59/12:00/12:30/17:59/18:00/23:59; past slots absent, tomorrow works, client timezone independent');
 
     epoch = Date.parse(`${date}T11:59:59+07:00`); await page.clock.setSystemTime(new Date(epoch));
-    await page.goto(`${baseURL}/courts?date=${date}`);
+    await page.goto(`${baseURL}/courts?date=${date}`, {waitUntil: 'domcontentloaded'});
     const district = page.locator('.customer-district-filter');
     await district.getByLabel('Quận 1', {exact: true}).check(); await district.getByLabel('Quận 3', {exact: true}).check();
-    await page.getByLabel('Tên sân', {exact: true}).fill('[DEMO]');
+    await page.getByLabel('Tên sân', {exact: true}).fill('Sân cầu lông');
     await page.getByRole('spinbutton', {name: 'Giá tối đa mỗi khung giờ'}).fill('200000');
     await page.getByRole('combobox', {name: 'Khung giờ', exact: true}).selectOption(slotAt('12').id);
     const first = page.locator(`[data-court-id="${demoIds[0]}"]`), second = page.locator(`[data-court-id="${demoIds[1]}"]`);
+    await first.locator(`.customer-extra-slots input[value="${slotAt('12').id}"]`).check();
+    await second.locator(`.customer-extra-slots input[value="${slotAt('12').id}"]`).check();
     await first.locator(`.customer-extra-slots input[value="${slotAt('13').id}"]`).check();
     await second.locator(`.customer-extra-slots input[value="${slotAt('14').id}"]`).check();
     epoch += 1000; await page.clock.runFor(1250);
@@ -69,13 +77,13 @@ const demoIds = ['bcdd0000-0000-4000-8000-000000000001', 'bcdd0000-0000-4000-800
     await expect(second.locator(`.customer-extra-slots input[value="${slotAt('14').id}"]`)).toBeChecked();
     await expect(district.getByLabel('Quận 1', {exact: true})).toBeChecked();
     await expect(district.getByLabel('Quận 3', {exact: true})).toBeChecked();
-    await expect(page.getByLabel('Tên sân', {exact: true})).toHaveValue('[DEMO]');
+    await expect(page.getByLabel('Tên sân', {exact: true})).toHaveValue('Sân cầu lông');
     await expect(page.getByRole('spinbutton', {name: 'Giá tối đa mỗi khung giờ'})).toHaveValue('200000');
     assert.notEqual(await page.getByRole('combobox', {name: 'Khung giờ', exact: true}).inputValue(), slotAt('12').id);
     console.log('PASS open UI crosses a start boundary without refresh; expired IDs removed and other-court checkbox/district/name/price preserved');
 
     epoch = Date.parse(`${date}T23:59:59+07:00`); await page.clock.setSystemTime(new Date(epoch));
-    await page.goto(`${baseURL}/courts?date=${date}`);
+    await page.goto(`${baseURL}/courts?date=${date}`, {waitUntil: 'domcontentloaded'});
     await expect(page.getByRole('button', {name: 'Chọn ngày mai', exact: true})).toBeVisible();
     epoch += 1000; await page.clock.runFor(1250);
     await expect(page.getByLabel('Ngày chơi', {exact: true})).toHaveValue(dayAfter);
@@ -86,7 +94,7 @@ const demoIds = ['bcdd0000-0000-4000-8000-000000000001', 'bcdd0000-0000-4000-800
       details: [{bookingDate: date, courtId: demoIds[0], timeSlotId: slotAt('13').id}]}});
     assert.equal(created.status(), 201); const booking = (await created.json()).data;
     epoch = Date.parse(`${date}T12:59:59+07:00`); await page.clock.setSystemTime(new Date(epoch));
-    await page.goto(`${baseURL}/checkout?bookingId=${booking.bookingId}`);
+    await page.goto(`${baseURL}/checkout?bookingId=${booking.bookingId}`, {waitUntil: 'domcontentloaded'});
     await page.getByRole('button', {name: 'Chỉnh sửa thông tin', exact: true}).click();
     const editor = page.locator('.checkout-booking-editor');
     await expect(editor.locator('input[type=checkbox]')).toHaveCount(templates.filter(slot => slot.startTime.slice(0, 5) > '12:59').length);

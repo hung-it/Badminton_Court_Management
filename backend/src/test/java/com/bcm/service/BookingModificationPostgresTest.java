@@ -61,7 +61,7 @@ class BookingModificationPostgresTest {
         user = UUID.randomUUID(); customer = UUID.randomUUID(); court = UUID.randomUUID();
         booking = UUID.randomUUID(); foreignUser = UUID.randomUUID(); foreignCustomer = UUID.randomUUID();
         token = identity(user, customer); foreignToken = identity(foreignUser, foreignCustomer);
-        jdbc.update("INSERT INTO courts(id,court_number,name,type,status,base_price) VALUES (?,999821,'Edit fixture','WOODEN_FLOOR','AVAILABLE',100000)", court);
+        jdbc.update("INSERT INTO courts(id,court_code,name,type,status,base_price) VALUES (?,999821,'Edit fixture','WOODEN_FLOOR','AVAILABLE',100000)", court);
         slots = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
         for (int i = 0; i < 3; i++) jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier) VALUES (?,?,?,?)",
                 slots.get(i), java.sql.Time.valueOf(LocalTime.of(8 + i, 0)), java.sql.Time.valueOf(LocalTime.of(9 + i, 0)), i == 1 ? 1.25 : 1);
@@ -100,42 +100,87 @@ class BookingModificationPostgresTest {
         return mvc.perform(patch("/api/bookings/" + id + "/details").contextPath("/api").header("Authorization", "Bearer " + auth)
                 .contentType(MediaType.APPLICATION_JSON).content(body));
     }
-    ResultActions note(String auth, String text) throws Exception {
-        return mvc.perform(patch("/api/bookings/" + booking + "/notes").contextPath("/api").header("Authorization", "Bearer " + auth)
-                .contentType(MediaType.APPLICATION_JSON).content(mapper.createObjectNode().put("note", text).toString()));
-    }
     JsonNode detail(UUID id, String auth) throws Exception {
         var result = mvc.perform(get("/api/bookings/" + id).contextPath("/api").header("Authorization", "Bearer " + auth)).andExpect(status().isOk()).andReturn();
         return mapper.readTree(result.getResponse().getContentAsString()).path("data");
     }
-    @Test void notesPersistAndDoNotOverwritePaymentEvidence() throws Exception {
-        jdbc.update("INSERT INTO payment_transactions(booking_id,payment_method,status,amount,note) VALUES (?,'VNPAY','PENDING',100000,'reconciliation-evidence')", booking);
-        note(token, "  Please reserve a quiet court.\nThank you.  ").andExpect(status().isOk());
-        assertThat(detail(booking, token).path("customerNote").asText()).isEqualTo("Please reserve a quiet court.\nThank you.");
-        mvc.perform(get("/api/bookings").contextPath("/api").header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.content[0].customerNote").value("Please reserve a quiet court.\nThank you."));
-        assertThat(jdbc.queryForObject("SELECT note FROM payment_transactions WHERE booking_id=?", String.class, booking)).isEqualTo("reconciliation-evidence");
-        note(token, "").andExpect(status().isOk());
-        assertThat(jdbc.queryForObject("SELECT customer_note FROM bookings WHERE id=?", String.class, booking)).isNull();
-    }
-    @Test void validatesNotesAndOwnership() throws Exception {
-        note(foreignToken, "foreign").andExpect(status().isForbidden());
-        note(token, "x".repeat(1001)).andExpect(status().isBadRequest());
-        note(token, "control\u0000character").andExpect(status().isBadRequest());
+    @Test void detailsRemainOwnedAndResponseHasNoCheckoutNote() throws Exception {
         edit(booking, foreignToken, body(DATE, slots.get(1))).andExpect(status().isForbidden());
-        mvc.perform(patch("/api/bookings/" + booking + "/notes").contextPath("/api").contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"test\"}")).andExpect(status().isUnauthorized());
-        assertThat(jdbc.queryForObject("SELECT customer_note FROM bookings WHERE id=?", String.class, booking)).isNull();
+        assertThat(detail(booking, token).has("customerNote")).isFalse();
+    }
+
+    ResultActions contact(UUID id, String auth, String json) throws Exception {
+        return mvc.perform(patch("/api/bookings/" + id + "/contact").contextPath("/api")
+                .header("Authorization", "Bearer " + auth).contentType(MediaType.APPLICATION_JSON).content(json));
+    }
+    @Test void bookingContactPersistsOnlyNameAndPhoneWithoutChangingAccountOrHold() throws Exception {
+        var header = jdbc.queryForMap("SELECT * FROM bookings WHERE id=?", booking);
+        var originalDetails = jdbc.queryForList("SELECT * FROM booking_details WHERE booking_id=?", booking);
+        var profile = jdbc.queryForMap("SELECT * FROM customers WHERE id=?", customer);
+        var account = jdbc.queryForMap("SELECT * FROM users WHERE id=?", user);
+        mvc.perform(get("/api/bookings/" + booking + "/contact").contextPath("/api").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.fullName").value("Edit owner"));
+        contact(booking, token, "{\"fullName\":\"  Nguyễn An  \",\"phone\":\" 0912345678 \"}")
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.fullName").value("Nguyễn An"))
+                .andExpect(jsonPath("$.data.phone").value("0912345678"))
+                .andExpect(jsonPath("$.data.email").value(user + "@edit.test"));
+        var changed = jdbc.queryForMap("SELECT * FROM bookings WHERE id=?", booking);
+        for (String key : List.of("id", "customer_id", "status", "court_fee", "expires_at", "created_at"))
+            assertThat(changed.get(key)).isEqualTo(header.get(key));
+        assertThat(changed.get("contact_full_name")).isEqualTo("Nguyễn An");
+        assertThat(changed.get("contact_phone")).isEqualTo("0912345678");
+        assertThat(jdbc.queryForMap("SELECT * FROM customers WHERE id=?", customer)).isEqualTo(profile);
+        assertThat(jdbc.queryForMap("SELECT * FROM users WHERE id=?", user)).isEqualTo(account);
+        assertThat(jdbc.queryForList("SELECT * FROM booking_details WHERE booking_id=?", booking)).isEqualTo(originalDetails);
+        mvc.perform(get("/api/bookings/" + booking + "/contact").contextPath("/api").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.phone").value("0912345678"));
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"email", "customerId", "address", "courtFee"})
+    void contactRejectsEmailIdentityAndOtherExtraFields(String key) throws Exception {
+        var before = jdbc.queryForMap("SELECT * FROM bookings WHERE id=?", booking);
+        var payload = mapper.createObjectNode().put("fullName", "New Name").put("phone", "0912345678").put(key, "forged");
+        contact(booking, token, payload.toString()).andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForMap("SELECT * FROM bookings WHERE id=?", booking)).isEqualTo(before);
+        assertThat(jdbc.queryForObject("SELECT email FROM users WHERE id=?", String.class, user)).isEqualTo(user + "@edit.test");
+    }
+
+    @Test void contactIsOwnedAndNeverExposedOrEditedAnonymously() throws Exception {
+        String body = "{\"fullName\":\"New Name\",\"phone\":\"0912345678\"}";
+        contact(booking, foreignToken, body).andExpect(status().isForbidden());
+        contact(UUID.randomUUID(), token, body).andExpect(status().isNotFound());
+        mvc.perform(get("/api/bookings/" + booking + "/contact").contextPath("/api").header("Authorization", "Bearer " + foreignToken))
+                .andExpect(status().isForbidden());
+        mvc.perform(patch("/api/bookings/" + booking + "/contact").contextPath("/api").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"", "123", "012345678a", "123456789012345678901"})
+    void contactValidatesPhoneAndRollsBack(String phone) throws Exception {
+        var before = jdbc.queryForMap("SELECT * FROM bookings WHERE id=?", booking);
+        contact(booking, token, mapper.createObjectNode().put("fullName", "Valid Name").put("phone", phone).toString())
+                .andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForMap("SELECT * FROM bookings WHERE id=?", booking)).isEqualTo(before);
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"", " ", "A"})
+    void contactRejectsInvalidName(String name) throws Exception {
+        contact(booking, token, mapper.createObjectNode().put("fullName", name).put("phone", "0912345678").toString())
+                .andExpect(status().isBadRequest());
     }
     @Test void replacementRepricesOnServerPreservesDeadlineAndRetainedSnapshots() throws Exception {
         jdbc.update("UPDATE courts SET base_price=200000 WHERE id=?", court);
         var before = detail(booking, token);
         edit(booking, token, body(DATE, slots.get(0), slots.get(1))).andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.courtFee").value(350000)); // retained 100000 + new 200000*1.25
+                .andExpect(jsonPath("$.data.courtFee").value(350000)) // retained 100000 + new 200000*1.25
+                .andExpect(jsonPath("$.data.discountAmount").value(30000))
+                .andExpect(jsonPath("$.data.finalAmount").value(320000));
         var after = detail(booking, token);
         assertThat(after.path("expiresAt")).isEqualTo(before.path("expiresAt"));
         assertThat(after.path("customerId")).isEqualTo(before.path("customerId"));
         assertThat(after.path("details").size()).isEqualTo(2);
-        edit(booking, token, body(DATE.plusDays(1), slots.get(1))).andExpect(status().isOk()).andExpect(jsonPath("$.data.courtFee").value(250000));
+        edit(booking, token, body(DATE.plusDays(1), slots.get(1))).andExpect(status().isOk()).andExpect(jsonPath("$.data.courtFee").value(250000))
+                .andExpect(jsonPath("$.data.discountAmount").value(0)).andExpect(jsonPath("$.data.finalAmount").value(250000));
         assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_details WHERE booking_id=? AND booking_date=?", Integer.class, booking, DATE)).isZero();
     }
     @Test void conflictRetainsEveryOriginalDetailAndTotal() throws Exception {
@@ -148,18 +193,19 @@ class BookingModificationPostgresTest {
     void anyPaymentAttemptLocksSlotEditing(String status) throws Exception {
         jdbc.update("INSERT INTO payment_transactions(booking_id,payment_method,status,amount) VALUES (?,'VNPAY',?,100000)", booking, status);
         edit(booking, token, body(DATE, slots.get(1))).andExpect(status().isConflict());
+        contact(booking, token, "{\"fullName\":\"New Name\",\"phone\":\"0912345678\"}").andExpect(status().isConflict());
         assertThat(jdbc.queryForObject("SELECT court_fee FROM bookings WHERE id=?", java.math.BigDecimal.class, booking)).isEqualByComparingTo("100000");
     }
     @ParameterizedTest @ValueSource(strings = {"PAID", "EXPIRED", "CHECKED_IN", "COMPLETED", "NO_SHOW"})
     void nonPendingBookingsCannotBeEdited(String state) throws Exception {
         jdbc.update("UPDATE bookings SET status=? WHERE id=?", state, booking);
         edit(booking, token, body(DATE, slots.get(1))).andExpect(status().isConflict());
-        note(token, "late").andExpect(status().isConflict());
+        contact(booking, token, "{\"fullName\":\"New Name\",\"phone\":\"0912345678\"}").andExpect(status().isConflict());
     }
-    @Test void deadlineExactlyTenMinutesRejectsNotesAndSlotsWithoutRenewal() throws Exception {
+    @Test void deadlineExactlyTenMinutesRejectsSlotsWithoutRenewal() throws Exception {
         when(clock.instant()).thenReturn(NOW.plusSeconds(600));
+        contact(booking, token, "{\"fullName\":\"New Name\",\"phone\":\"0912345678\"}").andExpect(status().isConflict());
         edit(booking, token, body(DATE, slots.get(1))).andExpect(status().isConflict());
-        note(token, "late").andExpect(status().isConflict());
         assertThat(expiration.expireBooking(booking)).isTrue();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_details WHERE booking_id=?", Integer.class, booking)).isZero();
     }
@@ -208,13 +254,11 @@ class BookingModificationPostgresTest {
             assertThat(jdbc.queryForObject("SELECT time_slot_id FROM booking_details WHERE booking_id=?", UUID.class, booking)).isEqualTo(slots.get(0));
         } finally { worker.shutdownNow(); }
     }
-    @Test void bankPaymentAfterEditUsesNewAmountAndKeepsCustomerNoteSeparate() throws Exception {
-        note(token, "Booking note").andExpect(status().isOk());
+    @Test void bankPaymentAfterEditUsesNewAmountAndPreservesPaymentEvidence() throws Exception {
         edit(booking, token, body(DATE, slots.get(1))).andExpect(status().isOk());
         mvc.perform(post("/api/bookings/" + booking + "/payments").contextPath("/api").header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"paymentMethod\":\"BANK_TRANSFER\",\"bankTransfer\":{\"bankName\":\"Test\",\"accountHolder\":\"Test\",\"accountNumber\":\"123\",\"transferContent\":\"Test\"}}"))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.data.amount").value(125000)).andExpect(jsonPath("$.data.bookingStatus").value("PAID"));
-        assertThat(jdbc.queryForObject("SELECT customer_note FROM bookings WHERE id=?", String.class, booking)).isEqualTo("Booking note");
         assertThat(jdbc.queryForObject("SELECT note FROM payment_transactions WHERE booking_id=?", String.class, booking)).startsWith("CUSTOMER_DECLARED;");
     }
     @Test void courtStateIsReadFreshAfterWaitingForItsLock() throws Exception {
@@ -263,7 +307,7 @@ class BookingModificationPostgresTest {
 
     @ParameterizedTest
     @CsvSource({"00:00,00:00", "00:00,07:00", "06:59,07:00", "07:00,07:00", "11:59,12:00",
-            "12:00,12:00", "12:00,13:00", "12:30,12:00", "23:59,12:00"})
+            "12:00,12:00", "12:00,13:00", "12:30,12:00", "17:59,18:00", "18:00,18:00", "23:59,12:00"})
     void vietnamClockControlsAvailabilityCreationAndEditing(String localTime, String slotStart) throws Exception {
         var vietnamNow = DATE.atTime(LocalTime.parse(localTime));
         var instant = vietnamNow.atZone(ZoneId.of("Asia/Ho_Chi_Minh")).toInstant();

@@ -27,7 +27,7 @@ public class PaymentAttemptController {
     @ResponseStatus(HttpStatus.CREATED)
     @SecurityRequirement(name = "Bearer Authentication")
     @Operation(summary = "Create/reuse a PENDING attempt and initiate sandbox checkout",
-            description = "Supports VNPAY and BANK_TRANSFER; CASH returns 400 before persistence. Amount comes from booking courtFee. "
+            description = "Supports VNPAY and BANK_TRANSFER; CASH returns 400 before persistence. Amount is the persisted booking final payable (courtFee minus one promotion discount). Voucher snapshots are locked after the first attempt; retries revalidate first-use reservations. "
                     + "Booking must be PENDING with expiresAt strictly after now. "
                     + "Reuses the same-method PENDING attempt; different method returns 409. BANK_TRANSFER requires bankTransfer "
                     + "with bankName/accountHolder/accountNumber/transferContent; validates but does not retain account information. "

@@ -34,3 +34,5 @@
 .approve-button:hover{background:#d9e9bb}
 .tab-section-label{font-size:9px;letter-spacing:1.5px;color:#91b2a0;padding-left:16px;margin:20px 0 8px;display:block}
 @media(max-width:900px){.pos-layout,.checkout-layout{grid-template-columns:1fr}}
+
+.court-location,.court-address{font-size:13px;line-height:1.5;color:var(--muted,#66766d);margin:5px 0;overflow-wrap:anywhere}.court-card{min-width:0}
