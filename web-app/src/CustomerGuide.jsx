@@ -143,7 +143,7 @@ export default function CustomerGuide() {
             <GuideIcon src={assets.calendar}/>
             <h2>Đã có lịch hẹn ra sân?</h2>
             <p>Lịch chơi và mã đặt sân luôn có sẵn trong tài khoản của bạn.</p>
-            <a href="/courts#upcoming-booking">Lịch đặt của tôi <span aria-hidden="true">→</span></a>
+            <a href="/my-bookings">Lịch đặt của tôi <span aria-hidden="true">→</span></a>
           </aside>
         </aside>
 

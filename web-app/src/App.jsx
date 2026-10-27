@@ -11,6 +11,7 @@ import CustomerCourts from './CustomerCourts';
 import CustomerCheckout from './CustomerCheckout';
 import CustomerGuide from './CustomerGuide';
 import CustomerContact from './CustomerContact';
+import CustomerBookingHistory from './CustomerBookingHistory';
 import PaymentResult from './PaymentResult';
 
 function BookingRedirect() {
@@ -58,7 +59,7 @@ export default function App() {
             <Route path="/payment/result" element={<PaymentResult />} />
             <Route path="/guide" element={<CustomerGuide />} />
             <Route path="/contact" element={<CustomerContact />} />
-            <Route path="/my-bookings" element={<Navigate to="/courts#upcoming-booking" replace />} />
+            <Route path="/my-bookings" element={<CustomerBookingHistory />} />
             <Route path="/profile" element={<Layout><PlaceholderPage title="Hồ sơ cá nhân" /></Layout>} />
             <Route path="*" element={<Layout><PlaceholderPage title="Không tìm thấy trang" /></Layout>} />
           </Routes>

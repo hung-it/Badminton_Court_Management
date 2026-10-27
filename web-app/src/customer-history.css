@@ -1,0 +1,60 @@
+/* Booking history — dùng chung design token của các trang khách hàng. */
+.history-toolbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px;padding:14px 16px;background:var(--color-surface);border:1px solid var(--cc-border);border-radius:var(--radius-card)}
+.history-toolbar__field{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--cc-muted)}
+.history-toolbar__field select{height:38px;border:1px solid var(--cc-border);border-radius:9px;padding:0 10px;background:var(--color-surface);color:var(--cc-green-900);font-size:12px}
+.history-toolbar__count{margin-left:auto;font-size:12px;color:var(--cc-muted)}
+
+.history-state-card{min-height:200px;background:var(--color-surface);border:1px solid var(--cc-border);border-radius:var(--radius-card);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;color:var(--cc-muted);padding:24px}
+.history-state-card strong{font-size:15px;color:var(--cc-green-900)}
+
+.history-list{display:grid;gap:12px}
+.history-card{background:var(--color-surface);border:1px solid var(--cc-border);border-radius:var(--radius-card);overflow:hidden}
+.history-card.is-expanded{border-color:var(--cc-green-600)}
+.history-card__summary{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;padding:16px 18px;border:0;background:transparent;text-align:left;cursor:pointer}
+.history-card__summary:hover{background:var(--color-surface-muted,#f7faf8)}
+.history-card__identity{display:flex;align-items:center;gap:12px;min-width:0}
+.history-card__identity>span:last-child{display:grid;gap:4px;min-width:0}
+.history-card__identity strong,.history-card__identity small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.history-card__identity strong{font-size:14px;color:var(--cc-green-900)}
+.history-card__identity small{font-size:11px;color:var(--cc-muted)}
+.history-card__icon{display:grid;place-items:center;width:38px;height:38px;flex:0 0 auto;border-radius:10px;background:var(--cc-green-50,#e1f5e9)}
+.history-card__meta{display:flex;align-items:center;gap:14px;flex:0 0 auto}
+.history-card__meta>strong{font-size:15px;color:var(--cc-green-900);min-width:96px;text-align:right}
+
+.history-status{display:inline-flex;align-items:center;padding:5px 9px;border-radius:99px;font-size:10px;font-weight:700;white-space:nowrap}
+.history-status--pending{background:#fff7e6;color:#9a6b00}
+.history-status--paid,.history-status--checked_in{background:#e1f5e9;color:var(--cc-green-900)}
+.history-status--completed{background:#e6f2ff;color:#1e5a92}
+.history-status--no_show,.history-status--expired{background:#f2f3f2;color:#6b746e}
+
+.history-detail{padding:0 18px 18px;border-top:1px solid var(--cc-border)}
+.history-detail__columns{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(240px,1fr);gap:24px;padding-top:18px}
+.history-detail h3{margin:0 0 12px;font-size:13px;color:var(--cc-green-900)}
+.history-slots,.history-payments{display:grid;gap:8px}
+.history-slot,.history-payment{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:10px;background:var(--cc-green-50,#f2f9f4)}
+.history-slot>div:first-child,.history-payment>div{display:grid;gap:3px;min-width:0}
+.history-slot span,.history-payment span,.history-muted{font-size:10px;color:var(--cc-muted)}
+.history-slot strong,.history-payment strong{font-size:13px;color:var(--cc-green-900);white-space:nowrap}
+.history-slot__time{white-space:nowrap}
+.history-muted{margin:0;line-height:1.6}
+.history-payment__status--success{color:var(--cc-green-900);font-weight:700}
+.history-payment__status--pending{color:#9a6b00;font-weight:700}
+.history-payment__status--failed{color:#a34127;font-weight:700}
+
+.history-detail-state{display:flex;align-items:center;gap:12px;padding-top:16px;font-size:12px;color:var(--cc-muted)}
+.history-detail-state--error{color:#a34127}
+.history-inline-button{border:0;background:transparent;padding:0;color:inherit;font-weight:700;text-decoration:underline;cursor:pointer}
+
+.history-pagination{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:20px;font-size:12px;color:var(--cc-green-900)}
+
+@media(max-width:720px){
+  .history-toolbar{align-items:stretch;flex-direction:column;gap:10px}
+  .history-toolbar__count{margin-left:0}
+  .history-toolbar__field select{width:100%}
+  .history-card__summary{align-items:flex-start;flex-direction:column;gap:10px}
+  .history-card__meta{width:100%;justify-content:space-between}
+  .history-card__meta>strong{min-width:auto}
+  .history-detail{padding:0 14px 14px}
+  .history-detail__columns{grid-template-columns:1fr;gap:18px}
+  .history-slot,.history-payment{align-items:flex-start;flex-wrap:wrap}
+}

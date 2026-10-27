@@ -159,7 +159,7 @@ export default function CustomerContact() {
         <aside className="contact-sidebar">
           <section className="contact-side-card contact-hours-card"><h2><ContactIcon name="clock"/> Khi nào bạn có thể liên hệ?</h2><div><span>Tổng đài hỗ trợ</span><strong>24/7</strong></div><div><span>Ngày hỗ trợ</span><strong>Thứ Hai – Chủ Nhật</strong></div><p>Nếu lịch chơi sắp bắt đầu hoặc thanh toán gặp lỗi, hãy gọi 1900 1000 để được hỗ trợ trực tiếp.</p></section>
           <section className="contact-side-card contact-location-card"><h2><ContactIcon name="pin"/> Sân ở gần bạn</h2><p>Kết nối sân cầu lông tại TP. Hồ Chí Minh:</p><a href="/courts"><ContactIcon name="pin" size={16}/><strong>TP. Hồ Chí Minh</strong><ContactIcon name="arrow" size={16}/></a><small>Thông tin địa chỉ cụ thể sẽ hiển thị cùng sân và lịch đặt khi có dữ liệu.</small></section>
-          <section className="contact-links-card"><h2>Có thể bạn đang tìm…</h2><a href="/guide">Hướng dẫn đặt sân &amp; thanh toán <span aria-hidden="true">→</span></a><a href="/guide#faq">Câu hỏi thường gặp <span aria-hidden="true">→</span></a><a href="/courts#upcoming-booking">Xem và quản lý lịch đặt của tôi <span aria-hidden="true">→</span></a></section>
+          <section className="contact-links-card"><h2>Có thể bạn đang tìm…</h2><a href="/guide">Hướng dẫn đặt sân &amp; thanh toán <span aria-hidden="true">→</span></a><a href="/guide#faq">Câu hỏi thường gặp <span aria-hidden="true">→</span></a><a href="/my-bookings">Xem và quản lý lịch đặt của tôi <span aria-hidden="true">→</span></a></section>
         </aside>
       </div>
     </main>
