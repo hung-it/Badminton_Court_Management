@@ -48,7 +48,7 @@ export function GuideHeader({session, bookingCount, bookingError, bookingLoading
     <div className="guide-utility-row">
       <a className="guide-support-link" href="tel:19001000"><GuideIcon src={assets.headset}/> Hỗ trợ: 1900 1000 <span>• 24/7</span></a>
       <div className="guide-account-area">
-        <a className="guide-bookings-link" href="/courts#upcoming-booking" aria-label={hasBookingError ? 'Không tải được lịch đặt của tôi' : isBookingLoading ? 'Đang tải lịch đặt của tôi' : `Lịch đặt của tôi, ${session ? Number(bookingCount) || 0 : 0} lịch`}><GuideIcon src={assets.calendarCheck}/> Lịch đặt của tôi <b title={hasBookingError ? bookingError.message : undefined} aria-live="polite">{!session ? 0 : hasBookingError ? '!' : isBookingLoading ? '…' : Number(bookingCount) || 0}</b></a>
+        <a className="guide-bookings-link" href="/my-bookings" aria-label={hasBookingError ? 'Không tải được lịch đặt của tôi' : isBookingLoading ? 'Đang tải lịch đặt của tôi' : `Lịch đặt của tôi, ${session ? Number(bookingCount) || 0 : 0} lịch`}><GuideIcon src={assets.calendarCheck}/> Lịch đặt của tôi <b title={hasBookingError ? bookingError.message : undefined} aria-live="polite">{!session ? 0 : hasBookingError ? '!' : isBookingLoading ? '…' : Number(bookingCount) || 0}</b></a>
         {!session && <><a href={`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`}>Đăng nhập</a><a href="/register">Đăng ký</a></>}
         <span className="guide-divider" aria-hidden="true" />
         <div className="guide-profile-wrap">
@@ -80,7 +80,7 @@ export function GuideFooter({activePage = 'guide'}) {
         <a className="guide-brand" href="/"><GuideIcon src={assets.brand} className="guide-brand-mark"/><span><strong>Sân cầu lông</strong><small>Đặt sân nhanh • Giá tốt • Gần bạn</small></span></a>
         <p>Tìm sân phù hợp, hẹn hội bạn và quản lý lịch chơi dễ dàng. Mỗi trận cầu, một niềm vui.</p>
       </div>
-      <div><strong>Khám phá</strong><a href="/courts">Tìm sân cầu lông</a><a href="/courts#upcoming-booking">Lịch đặt của tôi</a><a href="/guide">Hướng dẫn</a><a href={contactTarget}>Liên hệ</a></div>
+      <div><strong>Khám phá</strong><a href="/courts">Tìm sân cầu lông</a><a href="/my-bookings">Lịch đặt của tôi</a><a href="/guide">Hướng dẫn</a><a href={contactTarget}>Liên hệ</a></div>
       <div><strong>Hỗ trợ</strong><a href={faqTarget}>Câu hỏi thường gặp</a><a href={faqTarget}>Chính sách hủy</a><a href={paymentTarget}>Phương thức thanh toán</a><a href={privacyTarget}>Bảo mật tài khoản</a></div>
       <div><strong>Liên hệ</strong><a href="tel:19001000">Hỗ trợ: 1900 1000</a><a href="mailto:support@sancaulong.vn">support@sancaulong.vn</a><span>TP. Hồ Chí Minh</span><span>Đồng hành cùng bạn 24/7</span></div>
     </div>

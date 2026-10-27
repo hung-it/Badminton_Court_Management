@@ -262,7 +262,7 @@ export default function PaymentResult() {
             <span>Email tài khoản: <strong>{session.user?.email || 'Chưa có email trong hồ sơ tài khoản'}</strong></span>
           </div>
           <div className="payment-result-buttons">
-            <a className="payment-result-primary" href="/courts#upcoming-booking"><img src={asset('calendar-days.svg')} alt=""/> Xem lịch đặt sân</a>
+            <a className="payment-result-primary" href="/my-bookings"><img src={asset('calendar-days.svg')} alt=""/> Xem lịch đặt sân</a>
             <a className="payment-result-secondary" href="/courts">Về trang chủ</a>
           </div>
           <p>Vui lòng đến trước 10 phút và mang giày thể thao đế mềm.</p>
@@ -274,7 +274,7 @@ export default function PaymentResult() {
         <div className="payment-result-state-actions">
           {state === 'failed' && booking?.status === 'PENDING' && payment?.paymentMethod === 'VNPAY' && <button type="button" disabled={paying} onClick={retryPayment}>{paying ? 'Đang khởi tạo…' : 'Thử lại thanh toán'}</button>}
           <button type="button" onClick={() => setRetry(value => value + 1)}>Kiểm tra lại</button>
-          <a href="/courts#upcoming-booking">Xem lịch đặt sân</a>
+          <a href="/my-bookings">Xem lịch đặt sân</a>
         </div>
       </section>}
 
