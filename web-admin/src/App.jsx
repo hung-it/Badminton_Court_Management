@@ -1,8 +1,8 @@
 import React,{useState,useEffect} from 'react';
 const money=n=>new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND'}).format(n||0);
 const labels={STANDARD_MAT:'Thảm tiêu chuẩn',WOODEN_FLOOR:'Sàn gỗ',AVAILABLE:'Hoạt động',MAINTENANCE:'Bảo trì',CLOSED:'Đóng cửa',GOODS:'Hàng hóa',SERVICE:'Dịch vụ'};
-const masterTabs=[['courts','▦','Sân cầu'],['time-slots','◷','Khung giờ & giá'],['categories','◈','Danh mục'],['products','▤','Hàng hóa & dịch vụ']];
-const opTabs=[['pos','🛒','Bán tại quầy'],['checkout','💳','Trả sân'],['inventory','📦','Nhập kho'],['analytics','📊','Doanh thu & Báo cáo']];
+const masterTabs=[['courts','Sân cầu'],['time-slots','Khung giờ & giá'],['categories','Danh mục'],['products','Hàng hóa & dịch vụ']];
+const opTabs=[['pos','Bán tại quầy'],['checkout','Trả sân'],['inventory','Nhập kho'],['analytics','Doanh thu & Báo cáo']];
 const allTabs=[...masterTabs,...opTabs];
 const initial={courts:{courtNumber:1,name:'',type:'STANDARD_MAT',status:'AVAILABLE',basePrice:100000,district:'',address:''},'time-slots':{startTime:'06:00',endTime:'07:00',priceMultiplier:1},categories:{categoryName:''},products:{categoryId:'',name:'',type:'GOODS',unit:'cái',price:0,stockQuantity:0}};
 function defaultMultiplier(start,end){return start>='17:00'&&end<='21:00'?1.5:1;}
