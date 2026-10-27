@@ -58,7 +58,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @EnabledIfEnvironmentVariable(named = "BCM_TEST_DB_URL", matches = "jdbc:postgresql:.*")
 class BookingExpirationPostgresTest {
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 10, 5, 12, 0);
-    private static final LocalDate DATE = LocalDate.of(2020, 2, 29);
+    private static final LocalDate DATE = LocalDate.of(2030, 2, 28);
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -98,7 +98,7 @@ class BookingExpirationPostgresTest {
         jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,?,'Booking fixture','0900000000')", userId, userId + "@expiration.test", "test-only");
         jdbc.update("INSERT INTO customers(id,user_id,full_name,phone) VALUES (?,?,?,?)",
                 customerId, userId, "Expiration test", "0900000000");
-        jdbc.update("INSERT INTO courts(id,court_number,name,base_price) VALUES (?, -501, 'Expiration test', 10.00)", courtId);
+        jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?, -501, 'Expiration test', 10.00)", courtId);
         jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier) VALUES (?, '00:00', '01:00', 1.00)", slotId);
     }
 

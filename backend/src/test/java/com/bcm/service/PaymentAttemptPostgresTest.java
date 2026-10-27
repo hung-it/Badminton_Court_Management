@@ -203,11 +203,11 @@ class PaymentAttemptPostgresTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentStatus.class, names = "PENDING", mode = EnumSource.Mode.EXCLUDE)
-    void existingNonPendingHistoryIsNotMutatedOrTreatedAsBookingPaymentResult(PaymentStatus state) throws Exception {
+    void terminalHistoryIsPreservedAndSuccessfulHistoryBlocksAnotherCharge(PaymentStatus state) throws Exception {
         UUID history = seedPayment(state);
         var before = jdbc.queryForMap("SELECT * FROM payment_transactions WHERE id = ?", history);
-        assertThat(perform(PaymentMethod.VNPAY)).isEqualTo(201);
-        assertCount(2);
+        assertThat(perform(PaymentMethod.VNPAY)).isEqualTo(state == PaymentStatus.SUCCESS ? 409 : 201);
+        assertCount(state == PaymentStatus.SUCCESS ? 1 : 2);
         assertThat(jdbc.queryForMap("SELECT * FROM payment_transactions WHERE id = ?", history)).isEqualTo(before);
     }
 

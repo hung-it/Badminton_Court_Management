@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   BadgeCheck,
@@ -16,6 +16,7 @@ import {
 import AuthField from '../components/AuthField';
 import { useAuth } from '../lib/authContext';
 import authSideImage from '../assets/auth-side.png';
+import { safeRedirect } from '../lib/format';
 
 const BENEFITS = [
   { icon: CalendarDays, title: 'Quản lý lịch chơi dễ dàng', body: 'Lưu lịch đặt sân, không bỏ lỡ trận cầu nào.' },
@@ -40,6 +41,8 @@ function validate(values) {
     errors.fullName = 'Vui lòng nhập họ và tên.';
   } else if (values.fullName.trim().length < 2) {
     errors.fullName = 'Họ và tên phải có ít nhất 2 ký tự.';
+  } else if (values.fullName.trim().length > 255) {
+    errors.fullName = 'Họ và tên không được vượt quá 255 ký tự.';
   }
 
   if (!values.email.trim()) {
@@ -50,7 +53,7 @@ function validate(values) {
 
   if (!values.phone.trim()) {
     errors.phone = 'Vui lòng nhập số điện thoại.';
-  } else if (!PHONE_RE.test(values.phone.replace(/\s+/g, ''))) {
+  } else if (!PHONE_RE.test(values.phone.trim())) {
     errors.phone = 'Số điện thoại phải là 10–20 chữ số, không khoảng trắng hoặc dấu +.';
   }
 
@@ -92,10 +95,11 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const redirectTo = new URLSearchParams(location.search).get('redirect') || '/';
+  const redirectTo = safeRedirect(new URLSearchParams(location.search).get('redirect'));
+  const loginPath = `/login?redirect=${encodeURIComponent(redirectTo)}`;
 
   if (isAuthenticated) {
-    navigate(redirectTo, { replace: true });
+    return <Navigate to={redirectTo} replace />;
   }
 
   function setField(field, value) {
@@ -182,7 +186,7 @@ export default function RegisterPage() {
 
           <div className="auth__panel">
             <div className="auth__tabs">
-              <Link to="/login" className="auth__tab">
+              <Link to={loginPath} className="auth__tab">
                 Đăng nhập
               </Link>
               <span className="auth__tab is-active">Đăng ký</span>
@@ -304,7 +308,7 @@ export default function RegisterPage() {
             </form>
 
             <p className="auth__switch">
-              Đã có tài khoản? <Link to="/login">Đăng nhập</Link>
+              Đã có tài khoản? <Link to={loginPath}>Đăng nhập</Link>
             </p>
           </div>
         </div>

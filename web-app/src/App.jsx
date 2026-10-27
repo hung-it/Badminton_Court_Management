@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import HomePage from './pages/HomePage';
@@ -7,6 +7,16 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import PlaceholderPage from './pages/PlaceholderPage';
 import { AuthProvider } from './lib/authContext';
+import CustomerCourts from './CustomerCourts';
+import CustomerCheckout from './CustomerCheckout';
+import CustomerGuide from './CustomerGuide';
+import CustomerContact from './CustomerContact';
+import PaymentResult from './PaymentResult';
+
+function BookingRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/courts${location.search}${location.hash}`} replace />;
+}
 
 function Layout({ children }) {
   return (
@@ -22,7 +32,10 @@ function Layout({ children }) {
 function AuthExpiryGuard() {
   const navigate = useNavigate();
   useEffect(() => {
-    const onExpired = () => navigate('/login', { replace: true });
+    const onExpired = () => {
+      if (['/login', '/register'].includes(window.location.pathname)) return;
+      navigate(`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`, { replace: true });
+    };
     window.addEventListener('bcm:auth-expired', onExpired);
     return () => window.removeEventListener('bcm:auth-expired', onExpired);
   }, [navigate]);
@@ -34,22 +47,21 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <AuthExpiryGuard />
-        <Layout>
           <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-
-            {/* Các màn hình còn lại sẽ triển khai ở phase sau — giữ route để link không gãy. */}
-            <Route path="/booking" element={<PlaceholderPage title="Đặt sân" />} />
-            <Route path="/courts" element={<PlaceholderPage title="Sân cầu lông" />} />
-            <Route path="/guide" element={<PlaceholderPage title="Hướng dẫn" />} />
-            <Route path="/contact" element={<PlaceholderPage title="Liên hệ" />} />
-            <Route path="/my-bookings" element={<PlaceholderPage title="Lịch đặt của tôi" />} />
-            <Route path="/profile" element={<PlaceholderPage title="Hồ sơ cá nhân" />} />
-            <Route path="*" element={<PlaceholderPage title="Không tìm thấy trang" />} />
+            <Route path="/" element={<Layout><HomePage /></Layout>} />
+            <Route path="/login" element={<Layout><LoginPage /></Layout>} />
+            <Route path="/register" element={<Layout><RegisterPage /></Layout>} />
+            <Route path="/booking" element={<BookingRedirect />} />
+            <Route path="/courts" element={<CustomerCourts />} />
+            <Route path="/checkout" element={<CustomerCheckout />} />
+            <Route path="/payment-result" element={<PaymentResult />} />
+            <Route path="/payment/result" element={<PaymentResult />} />
+            <Route path="/guide" element={<CustomerGuide />} />
+            <Route path="/contact" element={<CustomerContact />} />
+            <Route path="/my-bookings" element={<Navigate to="/courts#upcoming-booking" replace />} />
+            <Route path="/profile" element={<Layout><PlaceholderPage title="Hồ sơ cá nhân" /></Layout>} />
+            <Route path="*" element={<Layout><PlaceholderPage title="Không tìm thấy trang" /></Layout>} />
           </Routes>
-        </Layout>
       </AuthProvider>
     </BrowserRouter>
   );

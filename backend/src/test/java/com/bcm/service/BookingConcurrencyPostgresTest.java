@@ -48,7 +48,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @org.springframework.context.annotation.Import(com.bcm.service.BookingWebTestConfiguration.class)
 @EnabledIfEnvironmentVariable(named = "BCM_TEST_DB_URL", matches = "jdbc:postgresql:.*")
 class BookingConcurrencyPostgresTest {
-    private static final LocalDate DATE = LocalDate.of(2020, 2, 29);
+    private static final LocalDate DATE = LocalDate.now().plusDays(2);
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -86,8 +86,8 @@ class BookingConcurrencyPostgresTest {
         jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,?,'Booking fixture','0900000000')", userId, userId + "@concurrency.test", "test-only");
         jdbc.update("INSERT INTO customers(id,user_id,full_name,phone) VALUES (?,?,?,?)",
                 customerId, userId, "Concurrency test", "0900000000");
-        jdbc.update("INSERT INTO courts(id,court_number,name,base_price) VALUES (?, -401, 'Concurrency A', 10.05)", courtA);
-        jdbc.update("INSERT INTO courts(id,court_number,name,base_price) VALUES (?, -402, 'Concurrency B', 10.05)", courtB);
+        jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?, -401, 'Concurrency A', 10.05)", courtA);
+        jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?, -402, 'Concurrency B', 10.05)", courtB);
         jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier) VALUES (?, '00:00', '01:00', 1.10)", slotId);
     }
 

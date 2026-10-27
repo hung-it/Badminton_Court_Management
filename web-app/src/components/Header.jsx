@@ -16,7 +16,7 @@ export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [bookingCount, setBookingCount] = useState(0);
   const location = useLocation();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
 
   useEffect(() => {
     setMenuOpen(false);
@@ -47,7 +47,7 @@ export default function Header() {
         <div className="container header__top-inner">
           <span>Hỗ trợ: 1900 1000</span>
           <div className="header__top-actions">
-            {user ? (
+            {isAuthenticated && user ? (
               <>
                 <Link to="/my-bookings" className="header__link-with-badge">
                   Lịch đặt của tôi
@@ -56,6 +56,7 @@ export default function Header() {
                   )}
                 </Link>
                 <Link to="/profile">{user.fullName || user.email}</Link>
+                <button type="button" onClick={logout}>Đăng xuất</button>
               </>
             ) : (
               <>
@@ -115,13 +116,13 @@ export default function Header() {
             {link.label}
           </NavLink>
         ))}
-        {user && (
+        {isAuthenticated && user && (
           <NavLink to="/my-bookings">
             Lịch đặt của tôi{bookingCount > 0 ? ` (${bookingCount})` : ''}
           </NavLink>
         )}
-        {user ? (
-          <NavLink to="/profile">Hồ sơ ({user.email})</NavLink>
+        {isAuthenticated && user ? (
+          <><NavLink to="/profile">Hồ sơ ({user.email})</NavLink><button type="button" onClick={logout}>Đăng xuất</button></>
         ) : (
           <>
             <NavLink to="/login">Đăng nhập</NavLink>

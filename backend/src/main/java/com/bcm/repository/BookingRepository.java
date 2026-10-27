@@ -33,7 +33,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     @Query("""
             select b.id from Booking b
-            where b.status = :status and b.expiresAt is not null and b.expiresAt <= :now
+            where b.status = :status and ((b.expiresAt is not null and b.expiresAt <= :now)
+              or (b.checkoutReleaseAt is not null and b.checkoutReleaseAt <= :now))
             order by b.expiresAt, b.id
             """)
     List<UUID> findExpirationCandidates(@Param("status") BookingStatus status, @Param("now") LocalDateTime now);

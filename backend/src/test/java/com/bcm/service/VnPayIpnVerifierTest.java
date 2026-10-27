@@ -37,6 +37,19 @@ class VnPayIpnVerifierTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"01", "02", "04", "05", "06", "07", "09"})
+    void onlyDocumentedPaymentErrorIsTerminalFailure(String status) {
+        var fields = vnpay(ATTEMPT, config);
+        fields.put("vnp_ResponseCode", "24");
+        fields.put("vnp_TransactionStatus", status);
+        sign(fields, config);
+        var notification = verifier.verify(fields);
+        assertThat(notification.providerSuccess()).isFalse();
+        // 09 is a rejected refund, not a failed payment. Refund/intermediate states never open payment retry.
+        assertThat(notification.terminalFailure()).isEqualTo("02".equals(status));
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"vnp_Amount", "vnp_TxnRef", "vnp_ResponseCode", "vnp_TransactionStatus", "vnp_TransactionNo", "vnp_PayDate"})
     void anySignedFieldTamperingRejected(String key) {
         var fields = vnpay(ATTEMPT, config);

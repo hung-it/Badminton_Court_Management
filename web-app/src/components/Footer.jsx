@@ -13,8 +13,8 @@ const COLUMNS = [
     title: 'Hỗ trợ',
     links: [
       { to: '/guide', label: 'Hướng dẫn đặt sân' },
-      { to: '/guide#cancel', label: 'Chính sách hủy' },
-      { to: '/guide#payment', label: 'Phương thức thanh toán' },
+      { to: '/guide#faq', label: 'Chính sách hủy' },
+      { to: '/guide#step-4', label: 'Phương thức thanh toán' },
       { to: '/#faq', label: 'Câu hỏi thường gặp' },
     ],
   },
@@ -24,7 +24,6 @@ const COLUMNS = [
       { href: 'https://facebook.com', label: 'Facebook' },
       { href: 'https://instagram.com', label: 'Instagram' },
       { href: 'https://youtube.com', label: 'YouTube' },
-      { href: '/news', label: 'Tin tức' },
     ],
   },
 ];
@@ -93,8 +92,8 @@ export default function Footer() {
         <div className="footer__bottom">
           <span>© 2026 Sân cầu lông. Tất cả quyền được bảo lưu.</span>
           <div className="footer__legal">
-            <Link to="/privacy">Chính sách bảo mật</Link>
-            <Link to="/terms">Điều khoản sử dụng</Link>
+            <Link to="/contact#privacy-note">Chính sách bảo mật</Link>
+            <Link to="/contact#privacy-note">Điều khoản sử dụng</Link>
           </div>
         </div>
       </div>

@@ -4,6 +4,15 @@ const VND = new Intl.NumberFormat('vi-VN', {
   maximumFractionDigits: 0,
 });
 
+export function safeRedirect(value) {
+  if (!value?.startsWith('/') || value.startsWith('//') || value.includes('\\')) return '/';
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.origin !== window.location.origin || ['/login', '/register'].includes(url.pathname)) return '/';
+    return url.pathname + url.search + url.hash;
+  } catch { return '/'; }
+}
+
 /** 180000 → "180.000₫" (khớp thiết kế Figma). */
 export function formatVND(value) {
   const n = Number(value);

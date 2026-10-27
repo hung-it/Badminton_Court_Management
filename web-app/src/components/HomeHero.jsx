@@ -36,11 +36,11 @@ export default function HomeHero({ courtCount, loading }) {
             </div>
             <div className="stat-card">
               <strong>24/7</strong>
-              <span>Hỗ trợ đặt sân và hủy lịch</span>
+              <span>Hỗ trợ đặt sân và thanh toán</span>
             </div>
             <div className="stat-card">
               <strong>0đ</strong>
-              <span>Phí đặt sân khi hủy trước giờ</span>
+              <span>Phí đặt sân trực tuyến</span>
             </div>
           </div>
         </div>

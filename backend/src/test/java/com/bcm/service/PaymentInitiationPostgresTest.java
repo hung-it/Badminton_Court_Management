@@ -180,7 +180,8 @@ class PaymentInitiationPostgresTest {
     void recheckRejectsNonPendingPaymentWithoutMutatingHistory(PaymentStatus state) {
         var payment = attempts.createAttempt(bookingId, new CreatePaymentAttemptRequest(PaymentMethod.VNPAY));
         jdbc.update("UPDATE payment_transactions SET status = ? WHERE id = ?", state.name(), payment.paymentAttemptId());
-        assertThatThrownBy(() -> attempts.recheckForInitiation(payment.paymentAttemptId())).isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> attempts.recheckForInitiation(payment.paymentAttemptId()))
+                .isInstanceOf(state == PaymentStatus.SUCCESS ? com.bcm.exception.DuplicateResourceException.class : BadRequestException.class);
         assertThat(jdbc.queryForObject("SELECT status FROM payment_transactions WHERE id = ?", String.class,
                 payment.paymentAttemptId())).isEqualTo(state.name());
     }

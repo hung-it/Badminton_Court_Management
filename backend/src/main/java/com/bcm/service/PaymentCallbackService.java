@@ -50,7 +50,7 @@ public class PaymentCallbackService {
         var resolution = transactions.resolve(notification);
         Result result = resolution.rejection();
         if (result == null) {
-            if (!notification.providerSuccess()) { result = Result.IGNORED; }
+            if (!notification.providerSuccess() && !notification.terminalFailure()) { result = Result.IGNORED; }
             else {
                 try {
                     result = transactions.settle(notification, resolution.bookingId()); // commit before transport mapping

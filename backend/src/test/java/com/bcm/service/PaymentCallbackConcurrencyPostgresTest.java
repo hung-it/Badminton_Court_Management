@@ -124,10 +124,10 @@ class PaymentCallbackConcurrencyPostgresTest {
         for (int i = 0; i < 2; i++) {
             jdbc.update("INSERT INTO bookings(id,customer_id,status,court_fee,expires_at) VALUES (?,?,'PENDING',10000.00,?)",
                     bookings[i], customer, NOW.plusMinutes(5));
-            jdbc.update("INSERT INTO courts(id,court_number,name,base_price) VALUES (?,?,?,10000.00)",
+            jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?,?,?,10000.00)",
                     courts[i], 999501 + i, "Callback race court " + i);
             jdbc.update("INSERT INTO booking_details(id,booking_id,court_id,time_slot_id,booking_date,price) "
-                    + "VALUES (?,?,?,?,'2026-10-05',10000.00)", UUID.randomUUID(), bookings[i], courts[i], slot);
+                    + "VALUES (?,?,?,?,'2030-10-05',10000.00)", UUID.randomUUID(), bookings[i], courts[i], slot);
             jdbc.update("INSERT INTO payment_transactions(id,booking_id,payment_method,status,amount) VALUES (?,?,'VNPAY','PENDING',10000.00)",
                     payments[i], bookings[i]);
         }
@@ -196,7 +196,7 @@ class PaymentCallbackConcurrencyPostgresTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?", Integer.class, bookings[index])).isEqualTo(1);
     }
     private void assertSlotAvailability(int index, boolean available) throws Exception {
-        var response = mvc.perform(get("/api/availability").contextPath("/api").param("date", "2026-10-05")
+        var response = mvc.perform(get("/api/availability").contextPath("/api").param("date", "2030-10-05")
                 .param("courtId", courts[index].toString())).andReturn().getResponse();
         assertThat(response.getStatus()).isEqualTo(200);
         var slots = mapper.readTree(response.getContentAsString()).path("data").path("courts").get(0).path("slots");
@@ -334,6 +334,8 @@ class PaymentCallbackConcurrencyPostgresTest {
             var ack = paid.get(20, TimeUnit.SECONDS); assertHandled(ack, method, "99");
             assertThat(ack.message).isEqualTo("Booking expired or payment deadline passed");
             var after = snapshot(0); assertThat(after.booking).containsEntry("status", "EXPIRED");
+            assertThat(after.payment.get("note").toString()).contains("RECONCILIATION_REQUIRED");
+            before.payment.put("note", after.payment.get("note"));
             assertThat(after.payment).isEqualTo(before.payment); assertThat(after.details).isEmpty();
             assertThat(callbackOutcomes).containsExactly(LATE_EXPIRED); assertSlotAvailability(0, true);
         } finally { expirationGate.release.countDown(); shutdown(workers); }
@@ -350,7 +352,11 @@ class PaymentCallbackConcurrencyPostgresTest {
                 var paid = workers.submit(() -> callback(payload)); awaitWaiters("from bookings", 1, 0);
                 assertThat(paid.isDone()).isFalse(); instant.set(NOW.plusMinutes(5).atZone(clock.getZone()).toInstant());
                 holder.commit(); assertHandled(paid.get(20, TimeUnit.SECONDS), method, "99");
-                assertThat(callbackOutcomes).containsExactly(LATE_EXPIRED); assertThat(snapshot(0)).isEqualTo(before);
+                assertThat(callbackOutcomes).containsExactly(LATE_EXPIRED);
+                var after = snapshot(0);
+                assertThat(after.payment.get("note").toString()).contains("RECONCILIATION_REQUIRED");
+                before.payment.put("note", after.payment.get("note"));
+                assertThat(after).isEqualTo(before);
                 assertSlotAvailability(0, false); // expiration still owns removal; callback does not mutate details
             } finally { holder.rollback(); shutdown(workers); }
         }

@@ -1,0 +1,283 @@
+{
+  "description": "Illustrative images only, not verified photographs of listed venues. One distinct scene per card. Metadata type comes from the API, never from an image.",
+  "mapping": "Persisted court_number; unchanged by sorting, refresh or regenerated UUIDs in a clean database.",
+  "images": [
+    {
+      "courtNumber": 1,
+      "type": "WOODEN_FLOOR",
+      "asset": "/assets/courts/court-00001.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create one photorealistic architectural illustration for a Vietnamese badminton booking website. A distinct small indoor badminton hall with warm varnished maple WOODEN flooring and correctly proportioned crisp white badminton lines, one taut badminton net with posts, high clear ceiling, exposed pale timber roof beams, tall arched windows down the LEFT wall, soft morning daylight, sage green end wall and a modest bench. Camera is at the rear RIGHT corner at human eye height, wide 24mm architectural view showing the full near court and net, horizontal landscape 3:2 composition. Empty court, no people. This is a fictional illustrative venue, not a documented real business. Only badminton: no tennis, pickleball or basketball markings. No lettering, signage, advertising, brands, logos, watermarks, border or collage. Natural realistic materials, good exposure, clean but not luxury. Produce a single image, no variants."
+    },
+    {
+      "courtNumber": 2,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/checkout-court-star-city.png",
+      "source": "Existing project asset used by CustomerCheckout and PaymentResult",
+      "licenseNote": "No separate image license was recorded in the repository; reused in place under the project owner's instruction."
+    },
+    {
+      "courtNumber": 3,
+      "type": "WOODEN_FLOOR",
+      "asset": "/assets/courts/court-00003.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of an industrial hall with a tall sawtooth roof, dark teal brick end walls, high north-facing clerestory glazing, three parallel courts; camera centered just behind a baseline. The playing surface is clearly warm WOODEN sports flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 4,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-00004.webp",
+      "source": "Optimized WebP export of existing web-app/src/assets/court-3.png used by HomeFeaturedCourts",
+      "licenseNote": "No separate image license was recorded in the repository; reused under the project owner's instruction."
+    },
+    {
+      "courtNumber": 5,
+      "type": "WOODEN_FLOOR",
+      "asset": "/assets/guide-court.jpg",
+      "source": "Existing project asset used on the guide page",
+      "licenseNote": "No separate image license was recorded in the repository; reused in place under the project owner's instruction."
+    },
+    {
+      "courtNumber": 6,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-00006.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a compact neighborhood hall with emerald green synthetic badminton mats, a white pitched metal roof, yellow end wall padding, barred high windows, one court; camera at rear left. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 7,
+      "type": "WOODEN_FLOOR",
+      "asset": "/assets/courts/court-00007.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a white barrel-vault sports hall with warm honey beech floor, a mezzanine along the right wall, round porthole windows on the far wall, two courts; camera wide from the rear left corner. The playing surface is clearly warm WOODEN sports flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 8,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-00008.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a large airy hall with jade green badminton mats, a low charcoal steel truss roof, skylights in a checker pattern, pale gray concrete walls, four courts; camera elevated slightly at a far sideline. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 10001,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-10001.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a bright single-court badminton studio with forest-green mat, a simple flat white roof, large square windows behind the court, light birch wall panels and a small doorway; camera low near the net sideline. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 10002,
+      "type": "WOODEN_FLOOR",
+      "asset": "/assets/courts/court-10002.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a modern glulam-framed gym with golden oak floor, a long narrow central skylight, vertical timber wall fins and white columns, two courts; camera from the back center. The playing surface is clearly warm WOODEN sports flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 10003,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-10003.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a deep warehouse badminton hall with green mat flooring, orange roof beams, silver corrugated pitched ceiling and mint end walls, rows of roof lights, three courts; camera diagonally across from rear right. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 10004,
+      "type": "WOODEN_FLOOR",
+      "asset": "/assets/courts/court-10004.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a modest low community hall with amber maple floor, a white triangular gable ceiling, blue padded end wall and high frosted windows, one court; camera looking along the right sideline. The playing surface is clearly warm WOODEN sports flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 10005,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-10005.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a concrete-and-glass sports hall with muted green badminton mats, a tall butterfly roof, sunlight entering through vertical slit windows, dark green end curtains, two courts; camera from rear left, slightly elevated. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 10006,
+      "type": "WOODEN_FLOOR",
+      "asset": "/assets/courts/court-10006.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a spacious wooden-floored gym with pale ash flooring, black arched roof trusses, full-height translucent side panels and gray acoustic baffles, three courts; camera at the rear right. The playing surface is clearly warm WOODEN sports flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 10007,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-10007.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a cozy badminton hall with deep green synthetic mat, low exposed cedar rafters, cream brick walls, large ceiling fans and high long horizontal windows, one court; camera straight down the centerline. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20102,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-20102.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a small modern sports club with green synthetic badminton flooring, a zigzag white skylight roof, charcoal end wall, light oak benches, two courts; camera from a left sideline looking diagonally over the near net. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20103,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-20103.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a long badminton warehouse with sea-green mats, blue steel portal frames, a bright silver metal gable roof, evenly spaced pendant lamps, pale gray end curtains, four courts; camera from the near right baseline. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20202,
+      "type": "WOODEN_FLOOR",
+      "asset": "/assets/courts/court-20202.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a bright two-court gym with light maple parquet floor, white curved ceiling ribs, long clerestory windows on both sides, a sage green rear acoustic wall; camera rear left with prominent net. The playing surface is clearly warm WOODEN sports flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20203,
+      "type": "WOODEN_FLOOR",
+      "asset": "/assets/courts/court-20203.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a warm local sports hall with golden timber floor, a high red-brown exposed wooden king-post roof, cream walls and small square side windows, one court; camera from the rear center at standing eye level. The playing surface is clearly warm WOODEN sports flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20204,
+      "type": "WOODEN_FLOOR",
+      "asset": "/assets/courts/court-20204.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a clean Scandinavian-style gym with pale birch wooden floor, a smooth asymmetric white ceiling, huge triangular upper windows and dark green wall padding, two courts; camera rear right. The playing surface is clearly warm WOODEN sports flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20302,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-20302.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of an urban indoor badminton center with green mats, a very tall dark open steel roof, bright suspended rectangular LED panels and white ribbed side walls, three courts; camera center baseline looking toward net. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20303,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-20303.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a compact light-filled hall with bottle-green badminton mat, a shallow cream barrel roof, brick red lower wall panels and large diffuse windows, one court; camera diagonally from the far left baseline. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20304,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-20304.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a broad badminton hall with pale green court mats, a white metal northlight roof, exposed concrete columns and dark charcoal end wall curtains, four courts; camera slightly elevated behind the near right corner. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20402,
+      "type": "WOODEN_FLOOR",
+      "asset": "/assets/courts/court-20402.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a tall single-court hall with warm oak sports flooring, white steel bowstring trusses, pale terracotta side walls and high side clerestories, one court; camera from the rear left at human height. The playing surface is clearly warm WOODEN sports flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20403,
+      "type": "WOODEN_FLOOR",
+      "asset": "/assets/courts/court-20403.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of an airy gym with golden ash plank floor, stepped flat skylight ceiling, gray lower wall padding and a long row of square high windows, two courts; camera from a right sideline beyond the net post. The playing surface is clearly warm WOODEN sports flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20404,
+      "type": "WOODEN_FLOOR",
+      "asset": "/assets/courts/court-20404.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a rustic contemporary badminton hall with amber wood floor, massive pale timber A-frame roof, green translucent end wall glazing and stone lower walls, two courts; camera back center. The playing surface is clearly warm WOODEN sports flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20502,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-20502.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a fresh green mat badminton hall with white tubular space-frame ceiling, a wide rectangular skylight, pale blue perimeter walls and a neat bench row, three courts; camera rear left with net in foreground. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20503,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-20503.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a single-court training hall with a dark jade synthetic court mat, simple high corrugated steel roof, mustard acoustic end wall and thin white columns, side windows; camera rear right. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20504,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-20504.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a long two-court sports hall with emerald mats, gently curved silver roof and arched steel ribs, mint green wall panels and clerestory roof strips; camera from left back corner. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20602,
+      "type": "WOODEN_FLOOR",
+      "asset": "/assets/courts/court-20602.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a polished maple-floor badminton gym with a tall white pyramidal skylight ceiling, pale gray brick walls, blue lower padding and two courts; camera center behind baseline with clean clear court markings. The playing surface is clearly warm WOODEN sports flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20603,
+      "type": "WOODEN_FLOOR",
+      "asset": "/assets/courts/court-20603.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of an intimate hall with honey oak timber floor, low pale wooden slat ceiling, wide frosted windows on the left and dark sage end wall, one court; camera diagonal from rear right. The playing surface is clearly warm WOODEN sports flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20604,
+      "type": "WOODEN_FLOOR",
+      "asset": "/assets/courts/court-20604.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a large pale ash wood sports floor gym with dark steel lattice roof beams, clerestory ribbon windows, terracotta brick end wall and three badminton courts; camera at rear left. The playing surface is clearly warm WOODEN sports flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20702,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-20702.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a two-court badminton hall with rich forest-green mat, high flat roof punctuated by round skylights, cream walls with green acoustic panels and a simple wooden bench; camera from the rear center. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20703,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-20703.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a bright green synthetic badminton-court hall with sharply pitched exposed galvanized steel roof, white brick walls, tall narrow side windows and two courts; camera from the back right with clear net and full near court. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    },
+    {
+      "courtNumber": 20704,
+      "type": "STANDARD_MAT",
+      "asset": "/assets/courts/court-20704.webp",
+      "source": "Created for this project using the built-in image_gen tool",
+      "licenseNote": "AI-generated fictional illustration; no third-party photo license. Do not present as verified venue photography.",
+      "prompt": "Create ONE distinct photorealistic architectural illustration of a quiet urban badminton gym with teal-green synthetic mats, long low clerestory sawtooth roof, warm beige acoustic walls, black net posts and a clean timber bench, three courts; camera from the rear left at eye level. The playing surface is clearly green synthetic BADMINTON MAT flooring. Correct proportioned badminton doubles and service lines ONLY, taut badminton net, 1.55m posts, indoor roof clearly visible, realistic natural lighting plus ceiling lights, clean empty court with no people, wide 24mm landscape 3:2 composition filling frame. This is a fictional illustrative venue for a booking website. Make architecture, viewpoint and lighting specific to this scene, not a generic repeated hall. No tennis, pickleball, basketball lines, text, logos, advertising, signage, watermarks, collage or borders."
+    }
+  ]
+}

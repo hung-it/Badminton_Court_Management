@@ -30,7 +30,7 @@ export default function HomeSearch({ courts, timeSlots, loading }) {
     const params = new URLSearchParams({ date, courts: courtCount });
     if (slotId) params.set('timeSlotId', slotId);
     if (sortByPrice) params.set('sort', 'price-asc');
-    navigate(`/booking?${params.toString()}`);
+    navigate(`/courts?${params.toString()}`);
   }
 
   return (
@@ -102,8 +102,9 @@ export default function HomeSearch({ courts, timeSlots, loading }) {
                   id="search-count"
                   value={courtCount}
                   onChange={(e) => setCourtCount(e.target.value)}
+                  disabled
                 >
-                  {[1, 2, 3, 4].map((n) => (
+                  {[1].map((n) => (
                     <option key={n} value={n}>
                       {n} sân
                     </option>
@@ -111,7 +112,7 @@ export default function HomeSearch({ courts, timeSlots, loading }) {
                 </select>
               </div>
               <p className="field__hint">
-                {courts.length > 0 ? `${courts.length} sân đang hoạt động` : 'Đang tải danh sách sân'}
+                Mỗi lượt đặt chọn một sân
               </p>
             </div>
           </div>

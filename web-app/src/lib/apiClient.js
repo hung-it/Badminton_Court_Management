@@ -14,7 +14,7 @@ export const tokenStore = {
     return localStorage.getItem(REFRESH_KEY) ?? sessionStorage.getItem(REFRESH_KEY);
   },
   get user() {
-    const raw = localStorage.getItem(USER_KEY);
+    const raw = sessionStorage.getItem(USER_KEY) ?? localStorage.getItem(USER_KEY);
     if (!raw) return null;
     try {
       return JSON.parse(raw);
@@ -23,6 +23,9 @@ export const tokenStore = {
     }
   },
   save({ accessToken, refreshToken, user }, { persist = true } = {}) {
+    if (this.user?.id && this.user.id !== user?.id) sessionStorage.removeItem('bcm-booking-draft');
+    if (this.user?.id && this.user.id !== user?.id) sessionStorage.removeItem('bcm-checkout-replacement');
+    this.clear();
     if (accessToken) sessionStorage.setItem(ACCESS_KEY, accessToken);
     if (refreshToken) {
       if (persist) {
@@ -32,7 +35,8 @@ export const tokenStore = {
         localStorage.removeItem(REFRESH_KEY);
       }
     }
-    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+    if (user) (persist ? localStorage : sessionStorage).setItem(USER_KEY, JSON.stringify(user));
+    window.dispatchEvent(new CustomEvent('bcm:session-changed'));
   },
   setAccess(accessToken) {
     if (accessToken) sessionStorage.setItem(ACCESS_KEY, accessToken);
@@ -42,6 +46,9 @@ export const tokenStore = {
     sessionStorage.removeItem(REFRESH_KEY);
     localStorage.removeItem(REFRESH_KEY);
     localStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem('bcm-customer-session');
+    sessionStorage.removeItem('bcm-checkout-replacement');
   },
 };
 
@@ -69,7 +76,7 @@ async function refreshAccessToken() {
   const { data } = await axios.post(
     `${API_BASE}/auth/refresh`,
     { refreshToken },
-    { headers: { 'Content-Type': 'application/json' } },
+    { headers: { 'Content-Type': 'application/json' }, timeout: 15000 },
   );
 
   const payload = data?.data;
@@ -85,7 +92,7 @@ async function refreshAccessToken() {
     }
   }
   if (payload.user) {
-    localStorage.setItem(USER_KEY, JSON.stringify(payload.user));
+    (localStorage.getItem(REFRESH_KEY) ? localStorage : sessionStorage).setItem(USER_KEY, JSON.stringify(payload.user));
   }
   return payload.accessToken;
 }
@@ -104,8 +111,9 @@ client.interceptors.response.use(
         original.headers.Authorization = `Bearer ${token}`;
         return client(original);
       } catch {
+        const hadSession = Boolean(tokenStore.access || tokenStore.refresh);
         tokenStore.clear();
-        window.dispatchEvent(new CustomEvent('bcm:auth-expired'));
+        if (hadSession) window.dispatchEvent(new CustomEvent('bcm:auth-expired'));
         return Promise.reject(error);
       } finally {
         refreshPromise = null;
@@ -141,6 +149,7 @@ export function toErrorMessage(error) {
     }
     return 'Dữ liệu đã tồn tại. Vui lòng thử lại.';
   }
+  if (status === 401 && error.config?.url === '/auth/login') return 'Email hoặc mật khẩu không đúng.';
   if (status === 401) return 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
   if (status === 403) return 'Bạn không có quyền thực hiện thao tác này.';
   if (status === 404) return 'Không tìm thấy dữ liệu yêu cầu.';

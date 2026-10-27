@@ -84,7 +84,7 @@ class BookingHistoryPostgresTest {
         jdbc.update("INSERT INTO user_roles(user_id,role_id) SELECT ?,id FROM roles WHERE role_name='CUSTOMER'", userA);
         jdbc.update("INSERT INTO user_roles(user_id,role_id) SELECT ?,id FROM roles WHERE role_name='CUSTOMER'", userB);
         authenticate(userA);
-        jdbc.update("INSERT INTO courts(id,court_number,name,base_price) VALUES (?,999601,'History court',10.05)", court);
+        jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?,999601,'History court',10.05)", court);
         jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier) VALUES (?,'00:00','01:00',1.10)", slot);
     }
 
@@ -148,7 +148,8 @@ class BookingHistoryPostgresTest {
 
     @Test
     void normalDetailUsesPersistedSnapshotAndCurrentDisplayDataWithNoPayment() throws Exception {
-        var detail = new CreateBookingRequest.Detail(LocalDate.of(2026, 10, 5), court, slot);
+        var futureDate = LocalDate.now().plusDays(2);
+        var detail = new CreateBookingRequest.Detail(futureDate, court, slot);
         var created = creation.createBooking(new CreateBookingRequest(customerA, List.of(detail)));
         jdbc.update("UPDATE courts SET base_price=99,name='Updated name' WHERE id=?", court);
         jdbc.update("UPDATE time_slots SET price_multiplier=2 WHERE id=?", slot);
@@ -158,7 +159,7 @@ class BookingHistoryPostgresTest {
                 .andExpect(jsonPath("$.data.createdAt").exists()).andExpect(jsonPath("$.data.updatedAt").exists())
                 .andExpect(jsonPath("$.data.details.length()").value(1))
                 .andExpect(jsonPath("$.data.details[0].detailId").isNotEmpty())
-                .andExpect(jsonPath("$.data.details[0].bookingDate").value("2026-10-05"))
+                .andExpect(jsonPath("$.data.details[0].bookingDate").value(futureDate.toString()))
                 .andExpect(jsonPath("$.data.details[0].courtId").value(court.toString()))
                 .andExpect(jsonPath("$.data.details[0].timeSlotId").value(slot.toString()))
                 .andExpect(jsonPath("$.data.details[0].price").value(11.06))
@@ -181,6 +182,39 @@ class BookingHistoryPostgresTest {
                 .andExpect(jsonPath("$.data.payments[0].paymentStatus").value("PENDING"));
         authenticate(userA);
         assertThat(history.history(customerA, null, 0, 20).content()).extracting("bookingId").contains(id);
+    }
+
+    @Test
+    void checkoutMetadataAndTimeOrderingSurviveIndependentReads() throws Exception {
+        UUID branch=UUID.randomUUID(), early=UUID.randomUUID();
+        UUID id=booking(customerA,BookingStatus.PENDING,NOW);
+        jdbc.update("INSERT INTO branches(id,code,name,district,address) VALUES (?,?,'Branch history','Bình Thạnh','Branch address')",branch,branch.toString());
+        try {
+            jdbc.update("UPDATE courts SET branch_id=?,court_number=4,type='WOODEN_FLOOR',district='Bình Thạnh',address='Court address' WHERE id=?",branch,court);
+            jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier) VALUES (?,'08:00','09:00',1)",early);
+            jdbc.update("UPDATE time_slots SET start_time='10:00',end_time='11:00' WHERE id=?",slot);
+            var date=LocalDate.of(2035,1,2);
+            jdbc.update("INSERT INTO booking_details(booking_id,court_id,time_slot_id,booking_date,price) VALUES (?,?,?,?,11.06)",id,court,slot,date);
+            jdbc.update("INSERT INTO booking_details(booking_id,court_id,time_slot_id,booking_date,price) VALUES (?,?,?,?,11.06)",id,court,early,date);
+            for (int read=0;read<2;read++) {
+                mvc.perform(get("/api/bookings/"+id).contextPath("/api")).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.details[0].startTime").value("08:00:00"))
+                    .andExpect(jsonPath("$.data.details[1].startTime").value("10:00:00"))
+                    .andExpect(jsonPath("$.data.details[0].courtNumber").value(4))
+                    .andExpect(jsonPath("$.data.details[0].courtCode").value(999601))
+                    .andExpect(jsonPath("$.data.details[0].branchCourtNumber").value(4))
+                    .andExpect(jsonPath("$.data.details[0].branchId").value(branch.toString()))
+                    .andExpect(jsonPath("$.data.details[0].branchName").value("Branch history"))
+                    .andExpect(jsonPath("$.data.details[0].district").value("Bình Thạnh"))
+                    .andExpect(jsonPath("$.data.details[0].address").value("Court address"))
+                    .andExpect(jsonPath("$.data.details[0].type").value("WOODEN_FLOOR"));
+            }
+        } finally {
+            jdbc.update("DELETE FROM booking_details WHERE booking_id=?",id);
+            jdbc.update("DELETE FROM time_slots WHERE id=?",early);
+            jdbc.update("UPDATE courts SET branch_id=NULL,court_number=NULL WHERE id=?",court);
+            jdbc.update("DELETE FROM branches WHERE id=?",branch);
+        }
     }
 
     @Test
@@ -307,6 +341,7 @@ class BookingHistoryPostgresTest {
         assertThat(paths.has("/bookings")).isTrue();
         assertThat(paths.has("/bookings/{bookingId}")).isTrue();
         assertThat(paths.has("/bookings/{bookingId}/payments")).isTrue();
+        assertThat(paths.has("/bookings/customer-profile")).isTrue();
         assertThat(paths.has("/payments/vnpay/return")).isTrue();
         assertThat(paths.has("/payments/vnpay/ipn")).isTrue();
         assertThat(paths.fieldNames()).toIterable().filteredOn(path -> path.startsWith("/payments/"))
@@ -314,7 +349,8 @@ class BookingHistoryPostgresTest {
         paths.fieldNames().forEachRemaining(path -> assertThat(path).doesNotStartWith("/api/"));
         var operations = List.of(paths.path("/availability").path("get"), paths.path("/bookings").path("post"),
                 paths.path("/bookings").path("get"), paths.path("/bookings/{bookingId}").path("get"),
-                paths.path("/bookings/{bookingId}/payments").path("post"));
+                paths.path("/bookings/{bookingId}/payments").path("post"),
+                paths.path("/bookings/customer-profile").path("get"));
         for (var operation : List.of(paths.path("/payments/vnpay/return").path("get"),
                 paths.path("/payments/vnpay/ipn").path("get"))) {
             assertThat(operation.path("security").isEmpty()).isTrue();
@@ -322,8 +358,10 @@ class BookingHistoryPostgresTest {
         assertThat(operations).allSatisfy(op -> assertThat(op.path("security").get(0).has("Bearer Authentication")).isTrue());
         assertThat(operations).allSatisfy(op -> {
             assertThat(op.path("summary").asText()).isNotBlank();
-            assertThat(op.path("responses").has("403")).isTrue();
+            assertThat(op.path("responses").has("401")).isTrue();
         });
+        assertThat(operations.subList(1, operations.size()))
+                .allSatisfy(op -> assertThat(op.path("responses").has("403")).isTrue());
         assertThat(paths.path("/availability").path("get").path("responses").fieldNames())
                 .toIterable().contains("200", "400", "404");
         assertThat(paths.path("/bookings").path("post").path("responses").fieldNames())
@@ -337,7 +375,7 @@ class BookingHistoryPostgresTest {
         assertThat(ackRef).isEqualTo("#/components/schemas/VnPayIpnAcknowledgment");
         JsonNode schemas = document.path("components").path("schemas");
         assertThat(schemas.path("CreatePaymentAttemptRequest").path("properties").path("paymentMethod").path("enum"))
-                .containsExactly(mapper.getNodeFactory().textNode("VNPAY"));
+                .containsExactly(mapper.getNodeFactory().textNode("VNPAY"), mapper.getNodeFactory().textNode("BANK_TRANSFER"));
         assertThat(schemas.path("VnPayIpnAcknowledgment").path("properties").fieldNames()).toIterable()
                 .containsExactlyInAnyOrder("RspCode", "Message");
         assertThat(schemas.has("BookingHistoryResponse")).isTrue();
@@ -362,7 +400,7 @@ class BookingHistoryPostgresTest {
         assertThat(paths.path("/payments/vnpay/return").path("get").path("description").asText())
                 .contains("never reads or writes the database");
         assertThat(paths.path("/bookings/{bookingId}/payments").path("post").path("description").asText())
-                .contains("VNPAY only", "checkoutReady=true", "Unsupported methods return 400 before persistence")
+                .contains("VNPAY and BANK_TRANSFER", "checkoutReady=true", "CASH returns 400 before persistence")
                 .doesNotContain("checkout blocker");
     }
 
@@ -375,10 +413,10 @@ class BookingHistoryPostgresTest {
         UUID id = booking(customerA, BookingStatus.PAID, NOW);
         mvc.perform(get("/api/bookings").contextPath("/api").param("customerId", customerA.toString())
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous()))
-                .andExpect(status().isForbidden()).andExpect(jsonPath("$.data").doesNotExist());
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.data").doesNotExist());
         mvc.perform(get("/api/bookings/" + id).contextPath("/api")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous()))
-                .andExpect(status().isForbidden()).andExpect(jsonPath("$.data").doesNotExist());
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test
@@ -392,7 +430,7 @@ class BookingHistoryPostgresTest {
                 post("/api/bookings/" + UUID.randomUUID() + "/payments")
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))) {
             mvc.perform(request.contextPath("/api").with(anonymous))
-                    .andExpect(status().isForbidden()).andExpect(jsonPath("$.data").doesNotExist());
+                    .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.data").doesNotExist());
         }
     }
 

@@ -70,7 +70,7 @@ class PaymentCallbackPostgresTest {
         jdbc.update("INSERT INTO customers(id,user_id,full_name,phone) VALUES (?,?,?,?)", customer, user, "Callback", "0900000000");
         jdbc.update("INSERT INTO bookings(id,customer_id,status,court_fee,expires_at) VALUES (?,?,'PENDING',10000.01,?)",
                 booking, customer, NOW.plusMinutes(5));
-        jdbc.update("INSERT INTO courts(id,court_number,name,base_price) VALUES (?,?,?,10000.01)",
+        jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?,?,?,10000.01)",
                 court, 999001, "Callback test court");
         jdbc.update("INSERT INTO time_slots(id,start_time,end_time) VALUES (?,'01:01','01:02')", slot);
         jdbc.update("INSERT INTO booking_details(id,booking_id,court_id,time_slot_id,booking_date,price) "
@@ -144,6 +144,8 @@ class PaymentCallbackPostgresTest {
         jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?", NOW.plusSeconds(seconds), booking);
         var before = payment(id); var beforeHeader = header();
         send(method, id, "99");
+        assertThat(payment(id).get("note").toString()).contains("RECONCILIATION_REQUIRED", "14226112");
+        before.put("note", payment(id).get("note"));
         assertThat(payment(id)).isEqualTo(before); assertThat(header()).isEqualTo(beforeHeader);
     }
 
@@ -176,6 +178,10 @@ class PaymentCallbackPostgresTest {
         jdbc.update("UPDATE payment_transactions SET status=?,transaction_id='existing' WHERE id=?", state.name(), id);
         var before = payment(id); var beforeHeader = header();
         send(PaymentMethod.VNPAY, id, "99");
+        if (state != PaymentStatus.SUCCESS) {
+            assertThat(payment(id).get("note").toString()).contains("RECONCILIATION_REQUIRED");
+            before.put("note", payment(id).get("note"));
+        }
         assertThat(payment(id)).isEqualTo(before); assertThat(header()).isEqualTo(beforeHeader);
     }
 

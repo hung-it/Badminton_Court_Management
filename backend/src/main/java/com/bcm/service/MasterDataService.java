@@ -26,7 +26,7 @@ public class MasterDataService {
     private final JdbcTemplate jdbc;
 
     public List<Court> courts() {
-        return courts.findByDeletedAtIsNullOrderByCourtNumberAsc();
+        return courts.findByDeletedAtIsNullOrderByCourtCodeAsc();
     }
 
     public List<TimeSlot> slots() {
@@ -64,14 +64,36 @@ public class MasterDataService {
 
     public Court saveCourt(UUID id, CourtRequest r) {
         Court c = id == null ? new Court() : court(id);
-        if (courts.existsByCourtNumberAndIdNot(r.courtNumber(), id == null ? new UUID(0, 0) : id))
+        if (courts.existsByCourtCodeAndIdNot(r.courtNumber(), id == null ? new UUID(0, 0) : id))
             throw new DuplicateResourceException("Số sân đã được sử dụng");
-        c.setCourtNumber(r.courtNumber());
+        c.setCourtCode(r.courtNumber());
         c.setName(r.name().strip());
         c.setType(r.type());
         c.setStatus(r.status());
         c.setBasePrice(r.basePrice());
+        // Omitted optional field preserves legacy updates; an explicit blank clears the label.
+        if (r.district() != null) c.setDistrict(r.district().isBlank() ? null : r.district().strip());
+        // Omitted, null or blank addresses preserve existing metadata on legacy updates.
+        if (r.address() != null && !r.address().isBlank()) c.setAddress(r.address().strip());
+        validateCourtAddress(c.getDistrict(), c.getAddress());
         return courts.saveAndFlush(c);
+    }
+
+    private void validateCourtAddress(String district, String address) {
+        if (address == null || address.isBlank()) return;
+        if (district == null || district.isBlank())
+            throw new BadRequestException("Vui lòng nhập quận / huyện cho địa chỉ sân");
+        // Check explicit comma-separated district components, never infer from a street/name.
+        var known = Set.of("1", "3", "5", "7", "bình thạnh", "tân bình", "gò vấp");
+        String expected = district.toLowerCase(Locale.ROOT).replaceFirst("^quận\\s+", "").strip();
+        for (String part : address.split("[,;]")) {
+            String value = part.strip().toLowerCase(Locale.ROOT);
+            boolean numericDistrict = value.matches("quận\\s+\\d+");
+            value = value.replaceFirst("^quận\\s+", "");
+            if ((numericDistrict || known.contains(value) && !value.matches("\\d+"))
+                    && !value.equals(expected))
+                throw new BadRequestException("Địa chỉ sân không khớp quận / huyện");
+        }
     }
 
     private boolean activeCourtBooking(UUID id) {

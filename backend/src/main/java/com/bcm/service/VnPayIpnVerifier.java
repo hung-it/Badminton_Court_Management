@@ -62,7 +62,7 @@ public class VnPayIpnVerifier {
             } catch (java.time.DateTimeException ex) { throw error(INVALID_DATA); }
         }
         return new PaymentNotification(attempt, PaymentMethod.VNPAY, new BigDecimal(amount).movePointLeft(2),
-                success, transaction, date);
+                success, transaction, date, !success && "02".equals(status));
     }
 
     private String required(Map<String, String> fields, String key, String pattern,

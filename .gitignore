@@ -1,7 +1,14 @@
 .tools/
+node_modules/
+**/node_modules/
+**/dist/
+hs_err_pid*.log
 web-admin/node_modules/
 web-admin/dist/
 web-admin/.vite/
+web-app/node_modules/
+web-app/dist/
+web-app/.vite/
 frontend/node_modules/
 frontend/dist/
 backend/target/

@@ -7,6 +7,7 @@ npm ci
 npm run dev
 ```
 Mở http://127.0.0.1:5173. Backend chạy ở localhost:8080; Vite chuyển tiếp `/api` đến backend.
+Web-admin dùng `strictPort: true`; cần giải phóng cổng 5173 nếu tiến trình khác đang sử dụng.
 Đăng nhập bằng tài khoản ADMIN. Database phát triển được seed tài khoản `admin@bcm.com` / `admin123` theo nền tảng có sẵn.
 
 ## Build

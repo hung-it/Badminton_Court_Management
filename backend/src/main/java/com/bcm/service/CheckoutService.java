@@ -29,18 +29,32 @@ public class CheckoutService {
     private final BookingRepository bookingRepository;
     private final InvoiceRepository invoiceRepository;
     private final InvoiceDetailRepository invoiceDetailRepository;
+    private final com.bcm.repository.PaymentTransactionRepository bookingPayments;
 
     @Transactional
     public ApiResponse<CheckoutResponse> checkout(UUID bookingId, String paymentMethod) {
-        Booking booking = bookingRepository.findById(bookingId)
+        Booking booking = bookingRepository.findByIdForExpiration(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", "id", bookingId));
 
         String normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
+        if ("CASH".equals(normalizedPaymentMethod)) {
+            throw new BadRequestException("CASH is not supported for booking checkout; use product-only POS for cash sales");
+        }
+        if (booking.getStatus() != BookingStatus.PAID && booking.getStatus() != BookingStatus.CHECKED_IN) {
+            throw new BadRequestException("Booking must already be paid before staff checkout");
+        }
+        if (bookingPayments.findBookingHistory(bookingId).stream().anyMatch(p ->
+                p.getPaymentMethod() == com.bcm.entity.PaymentMethod.BANK_TRANSFER
+                        && p.getStatus() == com.bcm.entity.PaymentStatus.PENDING
+                        && p.getNote() != null && p.getNote().startsWith("CUSTOMER_DECLARED;"))) {
+            throw new BadRequestException("Customer declaration confirms the reservation, not receipt of funds; reconcile before issuing a paid invoice");
+        }
         BigDecimal courtFee = valueOrZero(booking.getCourtFee());
         BigDecimal productFee = valueOrZero(
                 invoiceRepository.sumProductFeeByBookingIdAndStatus(bookingId, PENDING_POS_STATUS));
         BigDecimal discountAmount = valueOrZero(
-                invoiceRepository.sumDiscountAmountByBookingIdAndStatus(bookingId, PENDING_POS_STATUS));
+                invoiceRepository.sumDiscountAmountByBookingIdAndStatus(bookingId, PENDING_POS_STATUS))
+                .add(booking.getDiscountAmount());
         BigDecimal totalAmount = courtFee.add(productFee).subtract(discountAmount);
         UUID customerId = booking.getCustomer() != null ? booking.getCustomer().getId() : null;
 

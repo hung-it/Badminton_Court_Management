@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   ArrowRight,
@@ -15,6 +15,7 @@ import {
 import AuthField from '../components/AuthField';
 import { useAuth } from '../lib/authContext';
 import authSideImage from '../assets/auth-side.png';
+import { safeRedirect } from '../lib/format';
 
 const BENEFITS = [
   {
@@ -45,10 +46,11 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const redirectTo = new URLSearchParams(location.search).get('redirect') || '/';
+  const redirectTo = safeRedirect(new URLSearchParams(location.search).get('redirect'));
+  const registerPath = `/register?redirect=${encodeURIComponent(redirectTo)}`;
 
   if (isAuthenticated) {
-    navigate(redirectTo, { replace: true });
+    return <Navigate to={redirectTo} replace />;
   }
 
   async function handleSubmit(event) {
@@ -121,7 +123,7 @@ export default function LoginPage() {
           <div className="auth__panel">
             <div className="auth__tabs">
               <span className="auth__tab is-active">Đăng nhập</span>
-              <Link to="/register" className="auth__tab">
+              <Link to={registerPath} className="auth__tab">
                 Đăng ký
               </Link>
             </div>
@@ -182,7 +184,7 @@ export default function LoginPage() {
             </form>
 
             <p className="auth__switch">
-              Chưa có tài khoản? <Link to="/register">Đăng ký ngay</Link>
+              Chưa có tài khoản? <Link to={registerPath}>Đăng ký ngay</Link>
             </p>
 
             <p className="auth__security">

@@ -42,14 +42,14 @@ body {
   min-width: 320px;
 }
 
-h1,
-h2,
-h3,
-p {
+.app-shell h1,
+.app-shell h2,
+.app-shell h3,
+.app-shell p {
   margin-top: 0;
 }
 
-h1 {
+.app-shell h1 {
   font-size: 56px;
   font-weight: 700;
   line-height: 62px;
@@ -57,7 +57,7 @@ h1 {
   margin-bottom: 0;
 }
 
-h2 {
+.app-shell h2 {
   font-size: 40px;
   font-weight: 600;
   line-height: 48px;
@@ -65,7 +65,7 @@ h2 {
   margin-bottom: 0;
 }
 
-h3 {
+.app-shell h3 {
   font-size: 20px;
   font-weight: 600;
   line-height: 24px;
@@ -344,12 +344,13 @@ button:disabled {
 
 .hero__inner {
   display: grid;
-  grid-template-columns: 560px 672px;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
   gap: 48px;
   align-items: center;
 }
 
 .hero__copy {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -403,6 +404,7 @@ button:disabled {
 }
 
 .hero__visual {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -882,6 +884,7 @@ button:disabled {
 
 .footer__col a,
 .footer__col p {
+  overflow-wrap: anywhere;
   display: block;
   font-size: 14px;
   font-weight: 500;
@@ -1002,6 +1005,10 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .footer__top {
+    grid-template-columns: 1fr;
+  }
+
   .hero__image {
     max-width: 672px;
   }
@@ -1016,12 +1023,12 @@ button:disabled {
     --section-y: 56px;
   }
 
-  h1 {
+  .app-shell h1 {
     font-size: 40px;
     line-height: 46px;
   }
 
-  h2 {
+  .app-shell h2 {
     font-size: 30px;
     line-height: 38px;
   }
@@ -1070,12 +1077,12 @@ button:disabled {
     --gutter: 20px;
   }
 
-  h1 {
+  .app-shell h1 {
     font-size: 32px;
     line-height: 38px;
   }
 
-  h2 {
+  .app-shell h2 {
     font-size: 26px;
     line-height: 32px;
   }
