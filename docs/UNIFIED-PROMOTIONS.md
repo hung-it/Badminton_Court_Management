@@ -4,7 +4,7 @@
 - Admin: mục Khuyến mãi gồm ba tab. Sản phẩm giữ nguyên ngưỡng số lượng và ưu đãi tốt nhất mỗi sản phẩm.
 - Tiền sân: nhiều ngưỡng tự động, giảm tiền hoặc %, có trần giảm. Mặc định 300.000 giảm 30.000, 500.000 giảm 50.000. Backend chọn mức giảm lớn nhất.
 - Voucher: tạo mã mới, điều kiện tiền sân tối thiểu, phần trăm/số tiền, trần giảm, ngày hiệu lực, bật/tắt, tổng lượt và lượt mỗi khách. Ngày theo clock Booking hiện có; ngày kết thúc được tính bao gồm.
-- NEWMEMBER giữ điều kiện khách mới và tối đa một lượt; KMKH10 giữ điều kiện 15 booking COMPLETED có thanh toán xác thực. Hai mã không được xóa/đổi loại, có thể tắt. Không đổi mã và ruleType sau khi tạo; mã lịch sử không được tái sử dụng.
+- NEWMEMBER giữ điều kiện khách mới và tối đa một lượt; KMKH10 giữ điều kiện 15 booking COMPLETED có thanh toán xác thực. Hai mã được tắt hoặc xóa mềm như voucher khác; không đổi mã/loại. Không đổi mã và ruleType sau khi tạo; mã lịch sử không được tái sử dụng.
 - Voucher hợp lệ nhưng giảm ít hơn ưu đãi tự động không chiếm lượt. Tự động thắng khi bằng nhau. Giảm tiền sân không áp dụng cho sản phẩm.
 - Web User nhận đúng số tiền giảm từ backend; không còn gán cứng tỷ lệ 5%/10% trong nhãn.
 

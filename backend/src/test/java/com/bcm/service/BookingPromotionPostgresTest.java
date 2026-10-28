@@ -55,6 +55,7 @@ class BookingPromotionPostgresTest {
         jdbc.update("DELETE FROM users WHERE id=?",user);
     }
     @Autowired CourtPromotionService courtRules;
+    @Autowired jakarta.persistence.EntityManager entityManager;
     String customCode() { return ("TEST-"+owner).toUpperCase(java.util.Locale.ROOT); }
     void custom(String kind,String type,String value,int limit) {
         courtRules.save(null,new com.bcm.dto.request.CourtPromotionRequest("Test court",customCode(),kind,type,new BigDecimal(value),BigDecimal.ZERO,new BigDecimal("200000"),limit,null,java.time.LocalDate.now().minusDays(1),null,true));
@@ -135,6 +136,26 @@ class BookingPromotionPostgresTest {
     @Test void reservedVoucherSpecialRulesCannotBeChangedIntoOrdinaryCodes() {
         var row=courtRules.list().stream().filter(x->"NEWMEMBER".equals(x.get("code"))).findFirst().orElseThrow();
         assertThatThrownBy(()->courtRules.save((UUID)row.get("id"),new com.bcm.dto.request.CourtPromotionRequest("Wrong","OTHER","VOUCHER","AMOUNT",BigDecimal.TEN,BigDecimal.ZERO,null,null,null,java.time.LocalDate.now(),null,true))).isInstanceOf(com.bcm.exception.BadRequestException.class);
+    }
+
+    @ParameterizedTest @ValueSource(strings={"NEWMEMBER","KMKH10"})
+    @org.springframework.transaction.annotation.Transactional
+    void specialVouchersCanBeSoftDeletedWithoutChangingPaidHistory(String code) {
+        if(code.equals("KMKH10")) history(15,"COMPLETED","SUCCESS",true);
+        UUID b=booking("1200000");
+        var quote=promotions.quote(b,code,true);
+        assertThat(quote.promotionCode()).isEqualTo(code);
+        entityManager.flush();
+        jdbc.update("UPDATE bookings SET status='PAID' WHERE id=?",b);
+        entityManager.clear();
+        var row=courtRules.list().stream().filter(x->code.equals(x.get("code"))).findFirst().orElseThrow();
+        courtRules.remove((UUID)row.get("id"));
+        assertThat(courtRules.list()).noneMatch(x->code.equals(x.get("code")));
+        assertThat(jdbc.queryForObject("SELECT deleted_at IS NOT NULL AND NOT is_active FROM promotions WHERE code=?",Boolean.class,code)).isTrue();
+        assertThat(promotions.quote(booking("1200000"),code,true).voucherValid()).isFalse();
+        assertThat(jdbc.queryForObject("SELECT discount_amount FROM bookings WHERE id=?",BigDecimal.class,b)).isEqualByComparingTo(quote.discountAmount());
+        assertThat(jdbc.queryForObject("SELECT promotion_code FROM bookings WHERE id=?",String.class,b)).isEqualTo(code);
+        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,b)).isEqualTo("PAID");
     }
 
     UUID booking(String amount) {

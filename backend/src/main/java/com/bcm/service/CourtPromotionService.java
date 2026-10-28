@@ -37,7 +37,7 @@ public class CourtPromotionService {
   var rows=jdbc.queryForList("SELECT d.*,p.code FROM discount_rules d JOIN promotions p ON p.id=d.promotion_id WHERE d.id=? AND d.rule_type IN ('INVOICE_TOTAL','VOUCHER') AND p.deleted_at IS NULL FOR UPDATE OF p",id);
   if(rows.isEmpty()) throw new ResourceNotFoundException("Không tìm thấy chương trình"); return rows.get(0);
  }
- @Transactional public void remove(UUID id) {var p=managed(id); if(Set.of("NEWMEMBER","KMKH10").contains(p.get("code"))) throw new BadRequestException("Chỉ tắt voucher đặc biệt, không xóa"); jdbc.update("UPDATE promotions SET is_active=false,deleted_at=CURRENT_TIMESTAMP WHERE id=?",p.get("promotion_id"));}
+ @Transactional public void remove(UUID id) {var p=managed(id); jdbc.update("UPDATE promotions SET is_active=false,deleted_at=CURRENT_TIMESTAMP WHERE id=?",p.get("promotion_id"));}
  public BigDecimal automatic(BigDecimal subtotal,LocalDate date) {
   BigDecimal best=BigDecimal.ZERO.setScale(2);
   for(var rule:jdbc.queryForList("SELECT d.* FROM discount_rules d JOIN promotions p ON p.id=d.promotion_id WHERE d.rule_type='INVOICE_TOTAL' AND p.is_active AND p.deleted_at IS NULL AND p.valid_from<=? AND (p.valid_to IS NULL OR p.valid_to>=?) ORDER BY p.code",date,date)) best=best.max(amount(rule,subtotal));
