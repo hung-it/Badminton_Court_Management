@@ -290,7 +290,9 @@ class AvailabilityPostgresTest {
         insertDetail(courtId, slotId, DATE, BookingStatus.EXPIRED);
         for (int i = 0; i < 20; i++) {
             insertCourt(1000 + i, "AVAILABLE", null);
-            insertSlot("02:00:00", "03:00:00");
+            // Grow valid, non-overlapping master templates (the integrated schema rejects duplicates).
+            var start=java.time.LocalTime.of(3,0).plusMinutes(i*5L);
+            insertSlot(start.toString()+":00",start.plusMinutes(5).toString()+":00");
         }
         Map<String, String> before = databaseSnapshot();
         var statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();

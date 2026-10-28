@@ -29,5 +29,15 @@ public class ProductPromotionRule {
     private BigDecimal discountPercent;
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
+    @Column(name="max_discount_amount", precision=10, scale=2)
+    private BigDecimal maxDiscountAmount;
+    @Column(name="max_total_usage")
+    private Integer maxTotalUsage;
+    @Column(name="min_invoice_amount", precision=10, scale=2)
+    private BigDecimal minInvoiceAmount;
+    @Column(name="max_usage_per_customer")
+    private Integer maxUsagePerCustomer;
+    @Column(name="voucher_code", length=50)
+    private String voucherCode;
     @PrePersist void created() { if (createdAt == null) createdAt = LocalDateTime.now(); }
 }

@@ -29,6 +29,10 @@ public class CheckoutResponse {
 
     @JsonProperty("total_amount")
     private BigDecimal totalAmount;
+    private BigDecimal courtDiscount;
+    private BigDecimal productDiscount;
+    private BigDecimal paidCourtAmount;
+    private BigDecimal amountDue;
 
     public BigDecimal getCourtAmount() {
         return courtFee;

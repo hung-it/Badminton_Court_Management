@@ -31,6 +31,19 @@ public class PosController {
     private final com.bcm.repository.ProductRepository productRepository;
     private final com.bcm.service.ProductPromotionService productPromotions;
 
+    private final com.bcm.service.BookingPromotionService bookingPromotions;
+    @PostMapping("/bookings/{id}/promotion")
+    public ApiResponse<?> courtPromotion(@org.springframework.web.bind.annotation.PathVariable java.util.UUID id,
+            @Valid @RequestBody com.bcm.dto.request.BookingPromotionRequest request) {
+        return ApiResponse.success(bookingPromotions.staffApply(id,request.code()));
+    }
+
+    public record CounterReceiptRequest(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Pattern(regexp="CASH|BANK_TRANSFER") String paymentMethod) {}
+    @PostMapping("/bookings/{id}/receive")
+    public ApiResponse<?> receive(@org.springframework.web.bind.annotation.PathVariable java.util.UUID id,@Valid @RequestBody CounterReceiptRequest request) {
+        return ApiResponse.success(bookingPromotions.staffReceive(id,request.paymentMethod()));
+    }
+
     @GetMapping("/products")
     public ApiResponse<List<com.bcm.entity.Product>> products() {
         return ApiResponse.success(productRepository.findByDeletedAtIsNullOrderByNameAsc());

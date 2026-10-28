@@ -41,13 +41,15 @@ public class BookingService {
     private final CurrentCustomerService currentCustomer;
     private final Clock clock;
     private final CheckoutHoldService checkoutHolds;
+    private final BookingPromotionService promotions;
 
     public BookingService(BookingRepository bookings, BookingDetailRepository details,
                           CustomerRepository customers, CourtRepository courts,
                           TimeSlotRepository timeSlots, Validator validator,
                           @Value("${booking.hold-duration}") String holdDuration,
                           CurrentCustomerService currentCustomer,
-                          @Qualifier("bookingExpirationClock") Clock clock, CheckoutHoldService checkoutHolds) {
+                          @Qualifier("bookingExpirationClock") Clock clock, CheckoutHoldService checkoutHolds, BookingPromotionService promotions) {
+        this.promotions=promotions;
         this.bookings = bookings;
         this.details = details;
         this.customers = customers;
@@ -157,7 +159,7 @@ public class BookingService {
             }
         }
         booking.setCourtFee(total);
-        BookingPromotionService.automatic(booking);
+        promotions.automatic(booking);
         // TIMESTAMP without timezone: use the application local clock, as existing audit fields do.
         booking.setExpiresAt(LocalDateTime.now(clock).plus(holdDuration));
         bookings.save(booking);

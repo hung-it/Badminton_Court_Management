@@ -25,6 +25,9 @@ public class CheckoutController {
 
     private final CheckoutService checkoutService;
 
+    @org.springframework.web.bind.annotation.GetMapping("/{bookingId}")
+    public ApiResponse<CheckoutResponse> preview(@PathVariable UUID bookingId) {return ApiResponse.success(checkoutService.preview(bookingId));}
+
     @PostMapping("/{bookingId}")
     public ResponseEntity<ApiResponse<CheckoutResponse>> checkout(
             @PathVariable UUID bookingId,

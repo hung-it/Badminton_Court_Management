@@ -37,9 +37,6 @@ public class CheckoutService {
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", "id", bookingId));
 
         String normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
-        if ("CASH".equals(normalizedPaymentMethod)) {
-            throw new BadRequestException("CASH is not supported for booking checkout; use product-only POS for cash sales");
-        }
         if (booking.getStatus() != BookingStatus.PAID && booking.getStatus() != BookingStatus.CHECKED_IN) {
             throw new BadRequestException("Booking must already be paid before staff checkout");
         }
@@ -94,8 +91,25 @@ public class CheckoutService {
                 .productFee(productFee)
                 .discountAmount(discountAmount)
                 .totalAmount(totalAmount)
+                .courtDiscount(booking.getDiscountAmount())
+                .productDiscount(discountAmount.subtract(booking.getDiscountAmount()))
+                .paidCourtAmount(booking.getFinalAmount())
+                .amountDue(totalAmount.subtract(booking.getFinalAmount()).max(BigDecimal.ZERO))
                 .build();
         return ApiResponse.success("Checkout thành công", response);
+    }
+
+    @Transactional(readOnly=true)
+    public CheckoutResponse preview(UUID id) {
+        Booking b=bookingRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("Booking not found"));
+        if(b.getStatus()!=BookingStatus.PAID && b.getStatus()!=BookingStatus.CHECKED_IN) throw new BadRequestException("Booking phải đã thanh toán và chưa kết toán");
+        BigDecimal products=valueOrZero(invoiceRepository.sumProductFeeByBookingIdAndStatus(id,PENDING_POS_STATUS));
+        BigDecimal productDiscount=valueOrZero(invoiceRepository.sumDiscountAmountByBookingIdAndStatus(id,PENDING_POS_STATUS));
+        BigDecimal total=b.getFinalAmount().add(products).subtract(productDiscount);
+        return CheckoutResponse.builder().bookingId(id).courtFee(b.getCourtFee()).productFee(products)
+            .discountAmount(b.getDiscountAmount().add(productDiscount)).courtDiscount(b.getDiscountAmount())
+            .productDiscount(productDiscount).totalAmount(total).paidCourtAmount(b.getFinalAmount())
+            .amountDue(products.subtract(productDiscount)).build();
     }
 
     private BigDecimal valueOrZero(BigDecimal amount) {

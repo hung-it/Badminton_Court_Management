@@ -634,7 +634,7 @@ export default function CustomerCheckout() {
               </fieldset>
               {Number(promotion?.discountAmount) > 0 && <div className="checkout-totals checkout-discount">
                 <div><span>Giảm giá</span><strong>-{formatMoney(promotion.discountAmount)}</strong></div>
-                <div><span>Ưu đãi áp dụng</span><strong>{promotion.promotionCode === 'INVOICE_TOTAL' ? 'Ưu đãi hóa đơn' : `${promotion.promotionCode} · ${promotion.promotionCode === 'NEWMEMBER' ? '5%' : '10%'}`}</strong></div>
+                <div><span>Ưu đãi áp dụng</span><strong>{promotion.promotionCode === 'INVOICE_TOTAL' ? 'Ưu đãi hóa đơn' : promotion.promotionCode}</strong></div>
               </div>}
               <div className="checkout-grand-total"><strong>Tổng thanh toán</strong><b>{quotePrice == null ? '—' : formatMoney(quotePrice)}</b></div>
 

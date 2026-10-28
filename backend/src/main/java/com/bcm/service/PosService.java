@@ -39,9 +39,11 @@ public class PosService {
     private final InvoiceDetailRepository invoiceDetailRepository;
     private final CustomerRepository customerRepository;
     private final ProductPromotionService productPromotions;
+    private final com.bcm.repository.BookingRepository bookings;
 
     @Transactional
     public Invoice sell(PosSaleRequest request) {
+        validateBooking(request);
         Map<UUID, Integer> quantitiesByProduct = aggregateQuantities(request.getItems());
         List<InvoiceDetail> invoiceDetails = new ArrayList<>();
         BigDecimal productFee = BigDecimal.ZERO;
@@ -133,8 +135,9 @@ public class PosService {
         return quantitiesByProduct;
     }
 
-    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    @org.springframework.transaction.annotation.Transactional
     public PosQuoteResponse quote(PosSaleRequest request) {
+        validateBooking(request);
         List<ProductPromotionRule> candidates = productPromotions.applicable();
         List<PosQuoteResponse.Line> lines = new ArrayList<>();
         BigDecimal gross = BigDecimal.ZERO;
@@ -160,6 +163,14 @@ public class PosService {
         discounts = discounts.add(manual);
         if (discounts.compareTo(court.add(gross)) > 0) throw new BadRequestException("Giảm giá vượt giá trị hóa đơn");
         return new PosQuoteResponse(gross, court, discounts, court.add(gross).subtract(discounts), lines);
+    }
+
+    private void validateBooking(PosSaleRequest request) {
+        if(request.getBookingId()==null) return;
+        var b=bookings.findByIdForExpiration(request.getBookingId()).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy booking"));
+        if(b.getStatus()!=com.bcm.entity.BookingStatus.PAID && b.getStatus()!=com.bcm.entity.BookingStatus.CHECKED_IN) throw new BadRequestException("Chỉ thêm hàng cho booking đã thanh toán, chưa kết toán");
+        if((request.getCourtFee()!=null && request.getCourtFee().signum()!=0) || (request.getDiscountAmount()!=null && request.getDiscountAmount().signum()!=0)) throw new BadRequestException("Tiền sân và ưu đãi sân đã chốt trên booking; không nhập lại tại POS");
+        request.setCustomerId(b.getCustomer().getId());
     }
 
     private UUID resolveCustomerId(UUID requestedCustomerId) {

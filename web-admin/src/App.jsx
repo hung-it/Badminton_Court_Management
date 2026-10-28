@@ -1,8 +1,8 @@
 import React,{useState,useEffect} from 'react';
-import ProductPromotions from './ProductPromotions.jsx';
+import ProductPromotions from './Promotions.jsx';
 const money=n=>new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND'}).format(n||0);
 const labels={STANDARD_MAT:'Thảm tiêu chuẩn',WOODEN_FLOOR:'Sàn gỗ',AVAILABLE:'Hoạt động',MAINTENANCE:'Bảo trì',CLOSED:'Đóng cửa',GOODS:'Hàng hóa',SERVICE:'Dịch vụ'};
-const masterTabs=[['courts','Sân cầu'],['time-slots','Khung giờ & giá'],['categories','Danh mục'],['products','Hàng hóa & dịch vụ'],['product-promotions','Khuyến mãi sản phẩm']];
+const masterTabs=[['courts','Sân cầu'],['time-slots','Khung giờ & giá'],['categories','Danh mục'],['products','Hàng hóa & dịch vụ'],['product-promotions','Khuyến mãi']];
 const opTabs=[['pos','Bán tại quầy'],['checkout','Trả sân'],['inventory','Nhập kho'],['analytics','Doanh thu & Báo cáo']];
 const allTabs=[...masterTabs,...opTabs];
 const initial={courts:{courtNumber:1,name:'',type:'STANDARD_MAT',status:'AVAILABLE',basePrice:100000,district:'',address:''},'time-slots':{startTime:'06:00',endTime:'07:00',priceMultiplier:1},categories:{categoryName:''},products:{categoryId:'',name:'',type:'GOODS',unit:'cái',price:0,stockQuantity:0}};
@@ -32,9 +32,7 @@ export default function App(){
 
  // Checkout state
  const [checkoutBookingId,setCheckoutBookingId]=useState('');
- const [checkoutCourtFee,setCheckoutCourtFee]=useState(300000);
- const [checkoutServiceName,setCheckoutServiceName]=useState('Nước suối, thuê vợt');
- const [checkoutProductFee,setCheckoutProductFee]=useState(100000);
+ const [posBookingId,setPosBookingId]=useState(''),[courtVoucher,setCourtVoucher]=useState(''),[counterReceipt,setCounterReceipt]=useState(false);
  const [checkoutPaymentMethod,setCheckoutPaymentMethod]=useState('CASH');
  const [checkoutSlip,setCheckoutSlip]=useState(null);
  const [checkoutHistory,setCheckoutHistory]=useState([]);
@@ -127,7 +125,7 @@ useEffect(()=>{
    const custId=posCustomerId||null;
    const payload={
     customerId:custId,
-    bookingId:null,
+    bookingId:posBookingId||null,
     paymentMethod:'CASH',
     courtFee:0,
     items:posCart.map(i=>({productId:i.id,quantity:i.quantity}))
@@ -135,35 +133,25 @@ useEffect(()=>{
    const inv=await api('/pos/sales','POST',payload);
    const totalAmt=inv.total_amount??inv.totalAmount;
    const discountAmt=inv.discountAmount??inv.discount_amount??0;
-   setPosHistory(h=>[{id:inv.id||`#HD-${Date.now().toString().slice(-4)}`,time:new Date().toLocaleTimeString('vi-VN'),total:totalAmt,discount:discountAmt,items:[...posCart]},...h]);
+   setPosHistory(h=>[{id:inv.id||`#HD-${Date.now().toString().slice(-4)}`,time:new Date().toLocaleTimeString('vi-VN'),total:totalAmt,discount:discountAmt,status:inv.status,items:[...posCart]},...h]);
    setPosCart([]);
-   setNotice('Bán hàng thành công! Hóa đơn đã được lập.');
+   setNotice(posBookingId?'Đã thêm hàng vào booking. Thu phần hàng còn lại khi kết toán trả sân.':'Bán hàng thành công! Hóa đơn đã được lập.');
    await load();
   }catch(e){setError(e.message);}finally{setSaving(false);}
  }
 
  // Checkout handlers
- function createCheckoutSlip(){
-  const cFee=Number(checkoutCourtFee)||0;
-  const pFee=Number(checkoutProductFee)||0;
-  if(!checkoutBookingId){setError('Vui lòng nhập Mã Booking.');return;}
-  setCheckoutSlip({
-   id:`PT-${Date.now().toString().slice(-6)}`,
-   bookingId:checkoutBookingId,
-   courtFee:cFee,
-   productFee:pFee,
-   totalAmount:cFee+pFee,
-   serviceName:checkoutServiceName,
-   status:'DRAFT'
-  });
-  setNotice('Đã tạo phiếu tạm tính! Vui lòng chọn phương thức thanh toán và xác nhận.');
+ async function createCheckoutSlip(){
+  setError('');setSaving(true);
+  try{const v=await api('/checkout/'+checkoutBookingId);setCheckoutSlip({...v,id:'Xem trước',bookingId:checkoutBookingId,courtFee:v.court_fee,productFee:v.product_fee,totalAmount:v.total_amount,status:'DRAFT'});}
+  catch(e){setError(e.message)}finally{setSaving(false)}
  }
  async function confirmCheckout(){
   if(!checkoutSlip||checkoutSlip.status==='PAID')return;
   setSaving(true);setError('');
   try{
    const res=await api('/checkout/'+checkoutSlip.bookingId,'POST',{paymentMethod:checkoutPaymentMethod});
-   const paidSlip={...checkoutSlip,status:'PAID',paymentMethod:checkoutPaymentMethod,invoiceId:res.invoiceId,totalAmount:res.total_amount??res.totalAmount??checkoutSlip.totalAmount};
+   const paidSlip={...checkoutSlip,...res,status:'PAID',paymentMethod:checkoutPaymentMethod,invoiceId:res.invoiceId,totalAmount:res.total_amount??res.totalAmount??checkoutSlip.totalAmount};
    setCheckoutSlip(paidSlip);
    setCheckoutHistory(h=>[paidSlip,...h]);
    setNotice('Kết toán trả sân thành công! Hóa đơn '+res.invoiceId+' đã lưu.');
@@ -219,7 +207,7 @@ useEffect(()=>{
  </>}
 
  {/* POS PANEL */}
- {tab==='pos'&&<div>
+ {tab==='pos'&&<div><section className="content-panel" style={{padding:20,marginBottom:20}}><label className="field">Booking mua thêm hàng (để trống nếu khách lẻ)<input aria-label="Booking mua thêm hàng" value={posBookingId} onChange={e=>setPosBookingId(e.target.value.trim())}/></label><p>Booking đã thanh toán: hàng sẽ được gộp bill khi trả sân, không thu lại tiền sân.</p><label className="field">Mã ưu đãi tiền sân (booking chưa thanh toán)<input value={courtVoucher} onChange={e=>setCourtVoucher(e.target.value)}/></label><button className="secondary" disabled={!posBookingId||saving} onClick={async()=>{setSaving(true);setError('');try{const q=await api('/pos/bookings/'+posBookingId+'/promotion','POST',{code:courtVoucher});setNotice(q.message||'Đã cập nhật ưu đãi tiền sân: '+money(q.discountAmount))}catch(e){setError(e.message)}finally{setSaving(false)}}}>Áp dụng ưu đãi sân</button><button className="secondary" disabled={!posBookingId||saving} onClick={()=>setCounterReceipt(true)}>Xác nhận nhận tiền sân tại quầy</button>{counterReceipt&&<div className="overlay"><section className="dialog small" role="dialog" aria-modal="true"><h2>Xác nhận đã nhận tiền sân</h2>{error&&<p role="alert" className="alert error">{error}</p>}<p>Chỉ xác nhận khi đã nhận đủ tiền sau ưu đãi. Hệ thống ghi nhận người xác nhận; không dùng cho giao dịch online đang xử lý.</p><button disabled={saving} onClick={()=>setCounterReceipt(false)}>Hủy</button>{['CASH','BANK_TRANSFER'].map(method=><button key={method} className="primary" disabled={saving} onClick={async()=>{setSaving(true);try{const amount=await api('/pos/bookings/'+posBookingId+'/receive','POST',{paymentMethod:method});setNotice('Đã ghi nhận tiền sân: '+money(amount));setCounterReceipt(false)}catch(e){setError(e.message)}finally{setSaving(false)}}}>{method==='CASH'?'Đã nhận tiền mặt':'Đã xác nhận chuyển khoản'}</button>)}</section></div>}</section>
   <div className="page-heading"><div><span className="eyebrow">OPERATIONS</span><h1>Bán hàng tại quầy (POS)</h1><p className="muted">Lập đơn bán nhanh cho khách hàng và thu tiền tại quầy.</p></div></div>
   <div className="pos-layout">
    <div className="pos-catalog">
@@ -253,11 +241,11 @@ useEffect(()=>{
      <div className="pos-summary-line"><span>Số lượng:</span><strong>{posCart.reduce((s,i)=>s+i.quantity,0)}</strong></div>
      <div className="pos-summary-line"><span>Tiền sản phẩm:</span><strong>{posQuote?money(posQuote.productFee):'—'}</strong></div><div className="pos-summary-line"><span>Khuyến mãi:</span><strong>{posQuote?'−'+money(posQuote.discountAmount):'—'}</strong></div><div className="pos-summary-total"><span>Tổng thanh toán:</span><span>{posQuoteBusy?'Đang tính…':posQuote?money(posQuote.totalAmount):'—'}</span></div>{posQuoteError&&<div className="alert error" role="alert">{posQuoteError}</div>}
      <label className="field" style={{marginTop:'14px'}}>Khách hàng<select value={posCustomerId} onChange={e=>setPosCustomerId(e.target.value)}><option value="">Khách vãng lai (Mặc định)</option>{customers.map(c=><option key={c.id} value={c.id}>{c.fullName} ({c.phone})</option>)}</select></label>
-     <button className="primary wide" style={{marginTop:'14px'}} disabled={!posCart.length||saving||posQuoteBusy||!posQuote||!!posQuoteError} onClick={handlePosSale}>{saving?'Đang thanh toán…':'✓ Thu tiền ngay (CASH)'}</button>
+     <button className="primary wide" style={{marginTop:'14px'}} disabled={!posCart.length||saving||posQuoteBusy||!posQuote||!!posQuoteError} onClick={handlePosSale}>{saving?'Đang xử lý…':posBookingId?'Thêm hàng vào booking':'✓ Thu tiền ngay (CASH)'}</button>
     </div>
    </div>
   </div>
-  {posHistory.length>0&&<div className="content-panel" style={{marginTop:'24px'}}><div style={{padding:'16px 20px',borderBottom:'1px solid #edf0e8'}}><h3>Giao dịch POS gần đây</h3></div><div className="table-scroll"><table><thead><tr><th>Mã giao dịch</th><th>Thời gian</th><th>Số món</th><th>Khuyến mãi</th><th>Tổng tiền</th><th>Trạng thái</th></tr></thead><tbody>{posHistory.map(h=><tr key={h.id}><td><strong>{h.id}</strong></td><td>{h.time}</td><td>{h.items.length} món</td><td>{money(h.discount||0)}</td><td><strong>{money(h.total)}</strong></td><td><span className="badge AVAILABLE">Đã thanh toán</span></td></tr>)}</tbody></table></div></div>}
+  {posHistory.length>0&&<div className="content-panel" style={{marginTop:'24px'}}><div style={{padding:'16px 20px',borderBottom:'1px solid #edf0e8'}}><h3>Giao dịch POS gần đây</h3></div><div className="table-scroll"><table><thead><tr><th>Mã giao dịch</th><th>Thời gian</th><th>Số món</th><th>Khuyến mãi</th><th>Tổng tiền</th><th>Trạng thái</th></tr></thead><tbody>{posHistory.map(h=><tr key={h.id}><td><strong>{h.id}</strong></td><td>{h.time}</td><td>{h.items.length} món</td><td>{money(h.discount||0)}</td><td><strong>{money(h.total)}</strong></td><td><span className={"badge "+(h.status==='DRAFT'?'MAINTENANCE':'AVAILABLE')}>{h.status==='DRAFT'?'Chờ kết toán':'Đã thanh toán'}</span></td></tr>)}</tbody></table></div></div>}
  </div>}
 
  {/* CHECKOUT PANEL */}
@@ -268,11 +256,8 @@ useEffect(()=>{
     <h3>Lập phiếu kết toán</h3>
     <div className="form-grid" style={{marginBottom:'20px'}}>
      <label className="field">Mã Booking (UUID)<input placeholder="Nhập UUID booking cần kết toán" value={checkoutBookingId} onChange={e=>setCheckoutBookingId(e.target.value)} required/></label>
-     <label className="field">Tiền thuê sân (court_fee)<input type="number" min="0" value={checkoutCourtFee} onChange={e=>setCheckoutCourtFee(e.target.value)} required/></label>
-     <label className="field">Dịch vụ phát sinh<input value={checkoutServiceName} onChange={e=>setCheckoutServiceName(e.target.value)}/></label>
-     <label className="field">Tiền dịch vụ / sản phẩm (product_fee)<input type="number" min="0" value={checkoutProductFee} onChange={e=>setCheckoutProductFee(e.target.value)} required/></label>
     </div>
-    <button className="primary" onClick={createCheckoutSlip}>Tạo phiếu tạm tính</button>
+    <button className="primary" onClick={createCheckoutSlip}>Lấy bill từ hệ thống</button>
 
     {checkoutSlip&&<div style={{marginTop:'28px',paddingTop:'24px',borderTop:'1px solid #edf0e8'}}>
      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -280,9 +265,13 @@ useEffect(()=>{
       <span className={'badge '+(checkoutSlip.status==='PAID'?'AVAILABLE':'MAINTENANCE')}>{checkoutSlip.status==='PAID'?'Đã thanh toán':'Chờ thanh toán'}</span>
      </div>
      <div className="invoice-row"><span>Tiền thuê sân (court_fee):</span><strong>{money(checkoutSlip.courtFee)}</strong></div>
-     <div className="invoice-row"><span>Dịch vụ sử dụng: {checkoutSlip.serviceName} (product_fee):</span><strong>{money(checkoutSlip.productFee)}</strong></div>
+     <div className="invoice-row"><span>Tiền hàng gốc (product_fee):</span><strong>{money(checkoutSlip.productFee)}</strong></div>
+     <div className="invoice-row"><span>Giảm tiền sân:</span><strong>{money(checkoutSlip.courtDiscount||0)}</strong></div>
+     <div className="invoice-row"><span>Giảm sản phẩm:</span><strong>{money(checkoutSlip.productDiscount||0)}</strong></div>
+     <div className="invoice-row"><span>Tiền sân đã thanh toán:</span><strong>{money(checkoutSlip.paidCourtAmount||0)}</strong></div>
+     <div className="invoice-row"><span>Còn phải thu:</span><strong>{money(checkoutSlip.amountDue||0)}</strong></div>
      <div className="invoice-total-block">
-      <div className="total-line"><span>TỔNG THU:</span><span>{money(checkoutSlip.totalAmount)}</span></div>
+      <div className="total-line"><span>TỔNG BILL SAU GIẢM:</span><span>{money(checkoutSlip.totalAmount)}</span></div>
      </div>
     </div>}
    </div>

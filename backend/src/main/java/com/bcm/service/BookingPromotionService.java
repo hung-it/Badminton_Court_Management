@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.Set;
 
 @Service
 public class BookingPromotionService {
@@ -32,20 +33,17 @@ public class BookingPromotionService {
     private final CurrentCustomerService customer;
     private final JdbcTemplate jdbc;
     private final Clock clock;
+    private final CourtPromotionService courtPromotions;
 
     public BookingPromotionService(BookingRepository bookings, PaymentTransactionRepository payments,
-            CurrentCustomerService customer, JdbcTemplate jdbc, @Qualifier("bookingExpirationClock") Clock clock) {
+            CurrentCustomerService customer, JdbcTemplate jdbc, @Qualifier("bookingExpirationClock") Clock clock, CourtPromotionService courtPromotions) {
+        this.courtPromotions=courtPromotions;
         this.bookings=bookings; this.payments=payments; this.customer=customer; this.jdbc=jdbc; this.clock=clock;
     }
 
-    public static BigDecimal automaticDiscount(BigDecimal subtotal) {
-        return new BigDecimal(subtotal.compareTo(new BigDecimal("500000")) >= 0 ? "50000.00"
-                : subtotal.compareTo(new BigDecimal("300000")) >= 0 ? "30000.00" : "0.00").min(subtotal);
-    }
-
-    public static void automatic(Booking booking) {
-        booking.setDiscountAmount(automaticDiscount(booking.getCourtFee()));
-        booking.setPromotionCode(booking.getDiscountAmount().signum() > 0 ? "INVOICE_TOTAL" : null);
+    public void automatic(Booking booking) {
+        booking.setDiscountAmount(courtPromotions.automatic(booking.getCourtFee(),LocalDate.now(clock)));
+        booking.setPromotionCode(booking.getDiscountAmount().signum()>0?"INVOICE_TOTAL":null);
         booking.setRequestedVoucher(null);
     }
 
@@ -65,10 +63,38 @@ public class BookingPromotionService {
         return result;
     }
 
+    @Transactional
+    public BookingPromotionResponse staffApply(UUID id,String code) {
+        var booking=bookings.findByIdForExpiration(id).orElseThrow(()->new ResourceNotFoundException("Booking not found"));
+        requireEditable(booking);
+        if(payments.existsByBookingId(id)) throw new DuplicateResourceException("Ưu đãi đã khóa sau khi khởi tạo thanh toán");
+        var result=calculate(booking,code); requireEditable(booking);
+        booking.setDiscountAmount(result.discountAmount()); booking.setPromotionCode(result.promotionCode()); booking.setRequestedVoucher(result.requestedVoucher());
+        return result;
+    }
+
+    @Transactional
+    public BigDecimal staffReceive(UUID id,String method) {
+        if(!Set.of("CASH","BANK_TRANSFER").contains(method)) throw new com.bcm.exception.BadRequestException("Thu tại quầy chỉ hỗ trợ tiền mặt hoặc chuyển khoản đã xác nhận");
+        var booking=bookings.findByIdForExpiration(id).orElseThrow(()->new ResourceNotFoundException("Booking not found"));
+        if(booking.getStatus()==BookingStatus.PAID) {
+            long received=jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=? AND status='SUCCESS' AND note LIKE 'STAFF_RECEIVED;%'",Long.class,id);
+            if(received>0) return booking.getFinalAmount();
+            throw new DuplicateResourceException("Booking đã thanh toán; không thu lại tiền sân");
+        }
+        requireEditable(booking);
+        if(payments.existsByBookingId(id)) throw new DuplicateResourceException("Booking đã có giao dịch; cần xử lý theo luồng thanh toán hiện có");
+        validatePayment(booking);
+        String actor=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+        jdbc.update("INSERT INTO payment_transactions(id,booking_id,payment_method,status,amount,transaction_id,transaction_date,note) VALUES (?,?,?,'SUCCESS',?,?,?,?)",UUID.randomUUID(),id,method,booking.getFinalAmount(),"COUNTER-"+UUID.randomUUID(),LocalDateTime.now(clock),"STAFF_RECEIVED;"+actor);
+        booking.setStatus(BookingStatus.PAID);
+        return booking.getFinalAmount();
+    }
+
     // Called under the existing Booking lock inside the payment transaction. Customer lock serializes
     // NEWMEMBER apply/retry on different bookings. No other Booking row is locked from here.
     public void validatePayment(Booking booking) {
-        if (!"NEWMEMBER".equals(booking.getPromotionCode()) && !"KMKH10".equals(booking.getPromotionCode())) return;
+        if (booking.getPromotionCode()==null || "INVOICE_TOTAL".equals(booking.getPromotionCode())) return;
         var quote=calculate(booking,booking.getPromotionCode());
         requireEditable(booking);
         if (!quote.voucherValid() || !java.util.Objects.equals(quote.promotionCode(),booking.getPromotionCode())
@@ -78,22 +104,20 @@ public class BookingPromotionService {
 
     public BookingPromotionResponse calculate(Booking booking, String raw) {
         String code=raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT);
-        BigDecimal subtotal=booking.getCourtFee(), discount=automaticDiscount(subtotal);
+        BigDecimal subtotal=booking.getCourtFee(), discount=courtPromotions.automatic(subtotal,LocalDate.now(clock));
         String selected=discount.signum()>0 ? "INVOICE_TOTAL" : null;
         boolean valid=false; String message="";
         if (!code.isEmpty()) {
-            var rules=jdbc.queryForList("SELECT d.discount_value FROM promotions p JOIN discount_rules d ON d.promotion_id=p.id "
-                    + "WHERE p.code=? AND d.voucher_code=? AND d.rule_type='VOUCHER' AND d.discount_type='PERCENT' "
-                    + "AND p.is_active AND p.deleted_at IS NULL AND p.valid_from<=? AND (p.valid_to IS NULL OR p.valid_to>=?)",
-                    code,code,LocalDate.now(clock),LocalDate.now(clock));
-            if (!code.equals("NEWMEMBER") && !code.equals("KMKH10") || rules.size()!=1) {
+            var rule=courtPromotions.voucher(code,LocalDate.now(clock));
+            if (rule==null) {
                 message="Mã khuyến mãi không tồn tại hoặc không còn hiệu lực.";
             } else {
-                message=eligibility(booking,code);
+                message=Set.of("NEWMEMBER","KMKH10").contains(code)?eligibility(booking,code):null;
+                if(message==null) message=courtPromotions.limits(rule,booking.getCustomer().getId(),booking.getId(),code,LocalDateTime.now(clock));
+                if(message==null && subtotal.compareTo((BigDecimal)(rule.get("min_invoice_amount")==null?BigDecimal.ZERO:rule.get("min_invoice_amount")))<0) message="Tiền sân chưa đạt mức tối thiểu của voucher";
                 valid=message==null;
                 if (valid) {
-                    BigDecimal amount=subtotal.multiply((BigDecimal)rules.get(0).get("discount_value"))
-                            .divide(new BigDecimal("100"),2,RoundingMode.HALF_UP).max(BigDecimal.ZERO).min(subtotal);
+                    BigDecimal amount=courtPromotions.amount(rule,subtotal);
                     if (amount.compareTo(discount)>0) { discount=amount; selected=code; message="Đã áp dụng " + code + "."; }
                     else message="Mã hợp lệ, nhưng ưu đãi theo hóa đơn đang giúp bạn tiết kiệm hơn.";
                 }
