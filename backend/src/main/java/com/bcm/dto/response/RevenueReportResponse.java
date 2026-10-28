@@ -28,6 +28,9 @@ public class RevenueReportResponse {
     @JsonProperty("total_amount")
     private BigDecimal totalAmount;
 
+    @JsonProperty("discount_amount")
+    private BigDecimal discountAmount;
+
     public BigDecimal getCourtAmount() {
         return courtFee;
     }

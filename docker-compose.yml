@@ -16,6 +16,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/migration.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./db/member2-upgrade.sql:/docker-entrypoint-initdb.d/02-member2-upgrade.sql:ro
+      - ./db/member2-payment-method-upgrade.sql:/docker-entrypoint-initdb.d/03-payment-method-upgrade.sql:ro
+      - ./db/product-promotions-upgrade.sql:/docker-entrypoint-initdb.d/04-product-promotions-upgrade.sql:ro
 
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bcm_admin -d badminton_court_db"]

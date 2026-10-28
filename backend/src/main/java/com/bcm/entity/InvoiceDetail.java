@@ -44,4 +44,15 @@ public class InvoiceDetail {
 
     @Column(columnDefinition = "TEXT")
     private String note;
+
+    @Column(name = "discount_amount", nullable = false, precision = 10, scale = 2)
+    @Builder.Default
+    private BigDecimal discountAmount = BigDecimal.ZERO;
+    @Column(name = "promotion_id")
+    private UUID promotionId;
+    @Column(name = "promotion_name", length = 255)
+    private String promotionName;
+    @Column(name = "discount_percent", nullable = false, precision = 5, scale = 2)
+    @Builder.Default
+    private BigDecimal discountPercent = BigDecimal.ZERO;
 }

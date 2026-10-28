@@ -1,0 +1,36 @@
+import React, {useState} from 'react';
+
+const localDate=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const defaults=()=>({name:'',productId:'',minQuantity:10,discountPercent:10,validFrom:localDate(),validTo:localDate(),active:true});
+
+export default function ProductPromotions({promotions,products,api,onChanged,canManage=true}) {
+ const [query,setQuery]=useState(''),[modal,setModal]=useState(null),[form,setForm]=useState(defaults),[error,setError]=useState(''),[notice,setNotice]=useState(''),[saving,setSaving]=useState(false),[target,setTarget]=useState(null);
+ const rows=promotions.filter(p=>`${p.name} ${p.productName}`.toLocaleLowerCase('vi').includes(query.toLocaleLowerCase('vi')));
+ const change=(key,value)=>setForm(old=>({...old,[key]:value}));
+ function open(item=null){setForm(item?{...item}:{...defaults(),productId:products[0]?.id||''});setModal({id:item?.id||null});setError('');}
+ async function save(e){e.preventDefault();setSaving(true);setError('');try{
+  if(form.validTo<form.validFrom)throw new Error('Ngày kết thúc phải từ ngày bắt đầu trở đi');
+  await api('/admin/product-promotions'+(modal.id?'/'+modal.id:''),modal.id?'PUT':'POST',{...form,name:form.name.trim(),minQuantity:Number(form.minQuantity),discountPercent:Number(form.discountPercent)});
+  setModal(null);setNotice('Đã lưu khuyến mãi sản phẩm.');await onChanged();
+ }catch(e){setError(e.message)}finally{setSaving(false)}}
+ async function toggle(item){setSaving(true);setError('');try{await api('/admin/product-promotions/'+item.id,'PUT',{...item,active:!item.active});await onChanged();setNotice(item.active?'Đã tắt chương trình.':'Đã bật chương trình.')}catch(e){setError(e.message)}finally{setSaving(false)}}
+ async function remove(){setSaving(true);setError('');try{await api('/admin/product-promotions/'+target.id,'DELETE');setTarget(null);await onChanged();setNotice('Đã ngừng và xóa chương trình. Hóa đơn cũ vẫn giữ nguyên.')}catch(e){setError(e.message)}finally{setSaving(false)}}
+ const status=p=>!p.active?'Đã tắt':p.validFrom>localDate()?'Chưa bắt đầu':p.validTo<localDate()?'Hết hạn':'Đang áp dụng';
+ return <>
+  <div className="page-heading"><div><span className="eyebrow">MASTER DATA</span><h1>Khuyến mãi sản phẩm</h1><p className="muted">Tự giảm theo số lượng mua, áp dụng một ưu đãi tốt nhất cho mỗi sản phẩm.</p></div>{canManage&&<button className="primary" onClick={()=>open()} disabled={!products.length||saving}>＋ Thêm khuyến mãi</button>}</div>
+  {notice&&<div className="alert success" role="status">{notice}</div>}{error&&!modal&&!target&&<div className="alert error" role="alert">{error}</div>}
+  <section className="content-panel"><div className="toolbar"><label className="search"><span>⌕</span><input aria-label="Tìm khuyến mãi" placeholder="Tên chương trình hoặc sản phẩm…" value={query} onChange={e=>setQuery(e.target.value)}/></label><span className="count">{rows.length} chương trình</span><button className="secondary" onClick={onChanged}>↻ Làm mới</button></div>
+  {!rows.length?<div className="empty"><h3>Chưa có khuyến mãi phù hợp</h3><p>{!canManage?'Chưa có chương trình nào để xem. Liên hệ quản trị viên khi cần cấu hình.':products.length?'Tạo chương trình, ví dụ mua từ 10 quả cầu giảm 10%.':'Hãy tạo sản phẩm trước khi thêm khuyến mãi.'}</p></div>:<div className="table-scroll"><table className="promotion-table"><thead><tr>{['Chương trình','Sản phẩm','Điều kiện','Mức giảm','Thời gian','Trạng thái','Thao tác'].map(t=><th key={t}>{t}</th>)}</tr></thead><tbody>{rows.map(p=><tr key={p.id}><td><strong>{p.name}</strong></td><td>{p.productName}</td><td>Từ {p.minQuantity} sản phẩm</td><td>{p.discountPercent}%</td><td>{p.validFrom} → {p.validTo}</td><td><span className={'badge '+(status(p)==='Đang áp dụng'?'AVAILABLE':'neutral')}>{status(p)}</span></td><td>{canManage?<div className="actions"><button disabled={saving} onClick={()=>open(p)}>Sửa</button><button disabled={saving} onClick={()=>toggle(p)}>{p.active?'Tắt':'Bật'}</button><button disabled={saving} className="danger" onClick={()=>{setTarget(p);setError('')}}>Xóa</button></div>:<span className="muted">Chỉ xem</span>}</td></tr>)}</tbody></table></div>}</section>
+  {modal&&<div className="overlay"><section className="dialog" role="dialog" aria-modal="true" aria-labelledby="promotion-title"><div className="dialog-head"><h2 id="promotion-title">{modal.id?'Sửa':'Thêm'} khuyến mãi sản phẩm</h2><button aria-label="Đóng khuyến mãi" disabled={saving} onClick={()=>setModal(null)}>✕</button></div><form onSubmit={save}><div className="form-grid">
+  <label className="field">Tên chương trình<input aria-label="Tên chương trình" required maxLength={255} value={form.name} onChange={e=>change('name',e.target.value)}/></label>
+  <label className="field">Sản phẩm áp dụng<select aria-label="Sản phẩm áp dụng" required value={form.productId} onChange={e=>change('productId',e.target.value)}><option value="">Chọn sản phẩm</option>{!products.some(p=>p.id===form.productId)&&form.productId&&<option value={form.productId}>{form.productName} (đã xóa)</option>}{products.map(p=><option key={p.id} value={p.id}>{p.name} ({p.unit})</option>)}</select></label>
+  <label className="field">Số lượng tối thiểu<input aria-label="Số lượng tối thiểu" required type="number" min="1" max="2147483647" step="1" value={form.minQuantity} onChange={e=>change('minQuantity',e.target.value)}/></label>
+  <label className="field">Giảm giá (%)<input aria-label="Giảm giá (%)" required type="number" min="0.01" max="100" step="0.01" value={form.discountPercent} onChange={e=>change('discountPercent',e.target.value)}/></label>
+  <label className="field">Ngày bắt đầu<input aria-label="Ngày bắt đầu" required type="date" value={form.validFrom} onChange={e=>change('validFrom',e.target.value)}/></label>
+  <label className="field">Ngày kết thúc<input aria-label="Ngày kết thúc" required type="date" min={form.validFrom} value={form.validTo} onChange={e=>change('validTo',e.target.value)}/></label>
+  <label className="field">Trạng thái<select aria-label="Trạng thái khuyến mãi" value={String(form.active)} onChange={e=>change('active',e.target.value==='true')}><option value="true">Bật</option><option value="false">Tắt</option></select></label>
+  <p className="form-help">Đủ số lượng sẽ giảm cho toàn bộ sản phẩm đó trong một hóa đơn. Không cộng dồn; chọn ưu đãi có lợi nhất. Hiệu lực tính theo ngày Việt Nam, bao gồm ngày kết thúc.</p></div>
+  {error&&<div role="alert" className="alert error">{error}</div>}<div className="dialog-foot"><button type="button" className="secondary" disabled={saving} onClick={()=>setModal(null)}>Hủy</button><button className="primary" disabled={saving}>{saving?'Đang lưu…':'Lưu khuyến mãi'}</button></div></form></section></div>}
+  {target&&<div className="overlay"><section className="dialog small" role="dialog" aria-modal="true"><h2>Xóa khuyến mãi?</h2><p>Ngừng áp dụng {target.name}. Thông tin giảm giá trên hóa đơn cũ được giữ nguyên.</p>{error&&<div className="alert error" role="alert">{error}</div>}<div className="dialog-foot"><button className="secondary" disabled={saving} onClick={()=>setTarget(null)}>Hủy</button><button className="primary delete" disabled={saving} onClick={remove}>Xác nhận xóa khuyến mãi</button></div></section></div>}
+ </>;
+}

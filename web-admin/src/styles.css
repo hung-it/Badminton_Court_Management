@@ -34,3 +34,5 @@
 .approve-button:hover{background:#d9e9bb}
 .tab-section-label{font-size:9px;letter-spacing:1.5px;color:#91b2a0;padding-left:16px;margin:20px 0 8px;display:block}
 @media(max-width:900px){.pos-layout,.checkout-layout{grid-template-columns:1fr}}
+.promotion-applied{display:block;color:#50793f;font-size:11px;margin-top:6px;line-height:1.5}
+.promotion-table td:first-child,.promotion-table td:nth-child(2){white-space:normal;min-width:140px;max-width:220px;overflow-wrap:anywhere}

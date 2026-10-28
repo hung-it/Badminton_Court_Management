@@ -29,4 +29,6 @@ Check-Exit
 & "$bin/psql.exe" @dbArgs -d bcm_member2_test -v ON_ERROR_STOP=1 -f "$root/db/member2-payment-method-upgrade.sql"
 Check-Exit
 if ($Demo) { & "$bin/psql.exe" @dbArgs -d bcm_member2_test -v ON_ERROR_STOP=1 -f "$root/db/member2-demo.sql"; Check-Exit }
+& "$bin/psql.exe" @dbArgs -d bcm_member2_test -v ON_ERROR_STOP=1 -f "$root/db/product-promotions-upgrade.sql"
+Check-Exit
 Write-Host 'Database ready: localhost:55432/bcm_member2_test'
