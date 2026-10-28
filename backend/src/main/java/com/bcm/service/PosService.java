@@ -2,6 +2,8 @@ package com.bcm.service;
 
 import com.bcm.dto.request.PosSaleItemRequest;
 import com.bcm.dto.request.PosSaleRequest;
+import com.bcm.dto.response.PosQuoteResponse;
+import com.bcm.entity.ProductPromotionRule;
 import com.bcm.entity.Customer;
 import com.bcm.entity.Invoice;
 import com.bcm.entity.InvoiceDetail;
@@ -36,16 +38,20 @@ public class PosService {
     private final InvoiceRepository invoiceRepository;
     private final InvoiceDetailRepository invoiceDetailRepository;
     private final CustomerRepository customerRepository;
+    private final ProductPromotionService productPromotions;
 
     @Transactional
     public Invoice sell(PosSaleRequest request) {
         Map<UUID, Integer> quantitiesByProduct = aggregateQuantities(request.getItems());
         List<InvoiceDetail> invoiceDetails = new ArrayList<>();
         BigDecimal productFee = BigDecimal.ZERO;
+        BigDecimal automaticDiscount = BigDecimal.ZERO;
+        List<ProductPromotionRule> candidates = productPromotions.applicable();
 
         try {
             for (Map.Entry<UUID, Integer> entry : quantitiesByProduct.entrySet()) {
                 Product product = productRepository.findById(entry.getKey())
+                        .filter(p -> p.getDeletedAt() == null)
                         .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy sản phẩm"));
                 int quantity = entry.getValue();
 
@@ -60,10 +66,14 @@ public class PosService {
 
                 BigDecimal lineAmount = product.getPrice().multiply(BigDecimal.valueOf(quantity));
                 productFee = productFee.add(lineAmount);
+                var discount = productPromotions.best(product, quantity, candidates);
+                automaticDiscount = automaticDiscount.add(discount.amount());
                 invoiceDetails.add(InvoiceDetail.builder()
                         .productId(product.getId())
                         .quantity(quantity)
                         .unitPrice(product.getPrice())
+                        .discountAmount(discount.amount()).promotionId(discount.promotionId())
+                        .promotionName(discount.name()).discountPercent(discount.percent())
                         .build());
             }
         } catch (ObjectOptimisticLockingFailureException | OptimisticLockException exception) {
@@ -79,6 +89,12 @@ public class PosService {
         if (discountAmount.signum() < 0) {
             throw new BadRequestException("Discount amount cannot be negative");
         }
+        if (courtFee.signum() < 0) throw new BadRequestException("Tiền sân không được âm");
+        if (discountAmount.signum() > 0 && automaticDiscount.signum() > 0)
+            throw new BadRequestException("Không cộng dồn giảm giá khác với khuyến mãi sản phẩm");
+        discountAmount = discountAmount.add(automaticDiscount);
+        if (discountAmount.compareTo(courtFee.add(productFee)) > 0)
+            throw new BadRequestException("Giảm giá không được vượt giá trị hóa đơn");
         String paymentMethod = request.getPaymentMethod() == null ? "CASH" : request.getPaymentMethod().trim().toUpperCase();
         if ("QR".equals(paymentMethod)) {
             paymentMethod = "BANK_TRANSFER";
@@ -110,9 +126,40 @@ public class PosService {
     private Map<UUID, Integer> aggregateQuantities(List<PosSaleItemRequest> items) {
         Map<UUID, Integer> quantitiesByProduct = new LinkedHashMap<>();
         for (PosSaleItemRequest item : items) {
-            quantitiesByProduct.merge(item.getProductId(), item.getQuantity(), Integer::sum);
+            try {
+                quantitiesByProduct.merge(item.getProductId(), item.getQuantity(), Math::addExact);
+            } catch (ArithmeticException ex) { throw new BadRequestException("Số lượng vượt giới hạn cho phép"); }
         }
         return quantitiesByProduct;
+    }
+
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public PosQuoteResponse quote(PosSaleRequest request) {
+        List<ProductPromotionRule> candidates = productPromotions.applicable();
+        List<PosQuoteResponse.Line> lines = new ArrayList<>();
+        BigDecimal gross = BigDecimal.ZERO;
+        BigDecimal discounts = BigDecimal.ZERO;
+        for (var entry : aggregateQuantities(request.getItems()).entrySet()) {
+            Product product = productRepository.findByIdAndDeletedAtIsNull(entry.getKey())
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy sản phẩm"));
+            int quantity = entry.getValue();
+            if (product.getType() == ProductType.GOODS && product.getStockQuantity() < quantity)
+                throw new BadRequestException(INSUFFICIENT_STOCK_MESSAGE);
+            BigDecimal amount = product.getPrice().multiply(BigDecimal.valueOf(quantity));
+            var discount = productPromotions.best(product, quantity, candidates);
+            gross = gross.add(amount);
+            discounts = discounts.add(discount.amount());
+            lines.add(new PosQuoteResponse.Line(product.getId(), product.getName(), quantity, product.getPrice(),
+                    amount, discount.amount(), amount.subtract(discount.amount()), discount.promotionId(), discount.name(), discount.percent()));
+        }
+        BigDecimal court = request.getCourtFee() == null ? BigDecimal.ZERO : request.getCourtFee();
+        BigDecimal manual = request.getDiscountAmount() == null ? BigDecimal.ZERO : request.getDiscountAmount();
+        if (court.signum() < 0 || manual.signum() < 0) throw new BadRequestException("Số tiền không được âm");
+        if (manual.signum() > 0 && discounts.signum() > 0)
+            throw new BadRequestException("Không cộng dồn giảm giá khác với khuyến mãi sản phẩm");
+        discounts = discounts.add(manual);
+        if (discounts.compareTo(court.add(gross)) > 0) throw new BadRequestException("Giảm giá vượt giá trị hóa đơn");
+        return new PosQuoteResponse(gross, court, discounts, court.add(gross).subtract(discounts), lines);
     }
 
     private UUID resolveCustomerId(UUID requestedCustomerId) {

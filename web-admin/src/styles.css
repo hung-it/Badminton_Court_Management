@@ -36,3 +36,5 @@
 @media(max-width:900px){.pos-layout,.checkout-layout{grid-template-columns:1fr}}
 
 .court-location,.court-address{font-size:13px;line-height:1.5;color:var(--muted,#66766d);margin:5px 0;overflow-wrap:anywhere}.court-card{min-width:0}
+.promotion-applied{display:block;color:#50793f;font-size:11px;margin-top:6px;line-height:1.5}
+.promotion-table td:first-child,.promotion-table td:nth-child(2){white-space:normal;min-width:140px;max-width:220px;overflow-wrap:anywhere}

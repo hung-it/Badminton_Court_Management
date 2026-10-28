@@ -33,9 +33,10 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
             BigDecimal getCourtFee();
             BigDecimal getProductFee();
             BigDecimal getTotalAmount();
+            BigDecimal getDiscountAmount();
         }
 
-	    @Query("select coalesce(sum(i.courtFee), 0) as courtFee, coalesce(sum(i.productFee), 0) as productFee, coalesce(sum(i.totalAmount), 0) as totalAmount "
+	    @Query("select coalesce(sum(i.courtFee), 0) as courtFee, coalesce(sum(i.productFee), 0) as productFee, coalesce(sum(i.totalAmount), 0) as totalAmount, coalesce(sum(i.discountAmount), 0) as discountAmount "
 		    + "from Invoice i where i.status = :status and i.deletedAt is null "
 		    + "and i.createdAt >= :from and i.createdAt < :to")
 	    RevenueTotals sumRevenueByPeriod(

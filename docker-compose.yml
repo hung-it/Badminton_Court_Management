@@ -35,6 +35,24 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ./db/member2-upgrade.sql
+        target: /docker-entrypoint-initdb.d/04-member2-upgrade.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./db/member2-payment-method-upgrade.sql
+        target: /docker-entrypoint-initdb.d/05-member2-payment-method-upgrade.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./db/product-promotions-upgrade.sql
+        target: /docker-entrypoint-initdb.d/06-product-promotions-upgrade.sql
+        read_only: true
+        bind:
+          create_host_path: false
 
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bcm_admin -d badminton_court_db"]

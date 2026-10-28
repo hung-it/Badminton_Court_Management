@@ -28,6 +28,18 @@ public class PosController {
 
     private final PosService posService;
     private final com.bcm.repository.CustomerRepository customerRepository;
+    private final com.bcm.repository.ProductRepository productRepository;
+    private final com.bcm.service.ProductPromotionService productPromotions;
+
+    @GetMapping("/products")
+    public ApiResponse<List<com.bcm.entity.Product>> products() {
+        return ApiResponse.success(productRepository.findByDeletedAtIsNullOrderByNameAsc());
+    }
+
+    @GetMapping("/product-promotions")
+    public ApiResponse<List<com.bcm.dto.response.ProductPromotionResponse>> promotions() {
+        return ApiResponse.success(productPromotions.list());
+    }
 
     @GetMapping("/customers")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getCustomers() {
@@ -44,5 +56,10 @@ public class PosController {
     public ResponseEntity<ApiResponse<Invoice>> sell(@Valid @RequestBody PosSaleRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Bán hàng thành công", posService.sell(request)));
+    }
+
+    @PostMapping("/quote")
+    public ApiResponse<com.bcm.dto.response.PosQuoteResponse> quote(@Valid @RequestBody PosSaleRequest request) {
+        return ApiResponse.success(posService.quote(request));
     }
 }

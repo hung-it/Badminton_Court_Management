@@ -32,6 +32,7 @@ public class AnalyticsService {
                 range.toExclusive().atStartOfDay());
         BigDecimal courtFee = valueOrZero(totals.getCourtFee());
         BigDecimal productFee = valueOrZero(totals.getProductFee());
+        BigDecimal discount = valueOrZero(totals.getDiscountAmount());
 
         return RevenueReportResponse.builder()
                 .period(normalizedPeriod)
@@ -39,6 +40,7 @@ public class AnalyticsService {
                 .to(range.toInclusive())
                 .courtFee(courtFee)
                 .productFee(productFee)
+                .discountAmount(discount)
                 .totalAmount(valueOrZero(totals.getTotalAmount()))
                 .build();
     }
