@@ -2,9 +2,9 @@
 
 ## Chạy và nâng cấp
 
-Database có sẵn: sao lưu rồi chạy `db/product-promotions-upgrade.sql` sau các migration hiện có, trước khi khởi động backend mới. Script chỉ thêm cột; chạy lại an toàn, không đổi hóa đơn cũ.
+Database có sẵn: bảo đảm đã áp dụng các nâng cấp Booking/chi nhánh của develop, sao lưu rồi chạy `db/product-promotions-upgrade.sql` trước khi khởi động backend mới. Script chỉ thêm cột; chạy lại an toàn, không đổi hóa đơn cũ.
 
-Database mới: `migration.sql` → `member2-upgrade.sql` → `member2-payment-method-upgrade.sql` → `product-promotions-upgrade.sql`. `scripts/start-local-db.ps1` đã chạy bản nâng cấp; Docker Compose mount cùng thứ tự khi volume mới. Volume Docker đã có dữ liệu không tự chạy lại init script.
+Database mới: `migration.sql` → `booking-ux-upgrade.sql` → `branches-seed.sql` nếu dùng bộ dữ liệu chi nhánh của nhóm → `member2-upgrade.sql` → `member2-payment-method-upgrade.sql` → `product-promotions-upgrade.sql`. `scripts/start-local-db.ps1` đã chạy bản nâng cấp khuyến mãi (DB local vẫn phải được chuẩn bị theo schema develop trước); Docker Compose mount cùng thứ tự khi volume mới. Volume Docker đã có dữ liệu không tự chạy lại init script.
 
 Schema dùng lại `promotions` và `discount_rules`: thêm `min_quantity` cho điều kiện số lượng. Các cột discount_amount/promotion_id/promotion_name/discount_percent trên invoice_details là snapshot của lần bán. Invoice header lưu tổng giảm trong discount_amount; product_fee vẫn là tổng tiền sản phẩm trước giảm.
 
@@ -17,7 +17,7 @@ Schema dùng lại `promotions` và `discount_rules`: thêm `min_quantity` cho �
 - Không nhận discount_amount khác lớn hơn 0 trong request đã hưởng ưu đãi tự động, vì request giảm tổng không phân bổ rõ khoản tiền để cộng dồn an toàn. Booking/voucher giảm riêng tiền sân không bị cấu hình lại bởi module này.
 - POS dùng báo giá từ backend và tính lại khi thu tiền; không tin tỷ lệ/đơn giá/giảm giá do client tự gửi. Quote không ghi tồn kho hoặc hóa đơn. Snapshot của hóa đơn không đổi khi khuyến mãi sửa, tắt, hết hạn hoặc xóa.
 - Tồn kho vẫn được kiểm tra; giao dịch lỗi rollback cả tồn, header và dòng hóa đơn. SERVICES không trừ tồn.
-- Tổng doanh thu trên báo cáo trừ discount_amount đã lưu, thay vì cộng tổng tiền trước giảm.
+- Giữ cách tính doanh thu hiện có trên develop bằng tổng total_amount đã lưu trên hóa đơn PAID; bổ sung tổng discount_amount để báo cáo được cả khoản giảm, không tính giảm hai lần.
 
 ## API
 
@@ -71,3 +71,10 @@ Các biến BCM_TEST_DB_URL của suite Booking cũ là cấu hình riêng, khô
 - Migration chạy hai lần thành công trên DB kiểm thử mới. Database local chính đã sao lưu trước khi áp dụng bản nâng cấp.
 - Chrome headless qua DB/API riêng: tạo/sửa/bật/tắt chương trình, ngưỡng 9/10, tự bỏ giảm giá khi giảm số lượng, snapshot sau bán, sửa/xóa chương trình không đổi hóa đơn, request bị từ chối rollback tồn và hóa đơn, STAFF chỉ xem, viewport 390px không tràn trang và không lỗi JavaScript.
 - Không tạo giao dịch thử vào DB demo chính; Web Admin chính được xác minh đăng nhập và đọc API khuyến mãi thành công.
+
+### Kiểm tra lại sau khi tích hợp develop 4ae82fd
+
+- Giữ menu không biểu tượng, metadata/mã sân và cách cộng total_amount của develop; thêm mục khuyến mãi và quyền STAFF vào giao diện hiện có.
+- npm ci và npm run build thành công.
+- Maven verify theo schema develop (migration.sql + booking-ux-upgrade.sql + nâng cấp TV2 + nâng cấp khuyến mãi): 374 bài, 123 chạy đạt, 251 bỏ qua; không failures/errors. Riêng khuyến mãi PostgreSQL chạy 11/11 đạt, gồm bán đồng thời.
+- Kiểm tra UI bản tích hợp bằng Chrome headless với API local thử nghiệm và DB riêng: tạo/sửa/bật/tắt, ngưỡng số lượng, snapshot, rollback và STAFF chỉ xem đều đạt.
