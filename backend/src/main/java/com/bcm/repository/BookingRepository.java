@@ -47,4 +47,10 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("update Booking b set b.status = :status where b.id = :id")
     int updateExpirationStatus(@Param("id") UUID id, @Param("status") BookingStatus status);
+
+    @Query(value = "select id from bookings where cast(id as text) like lower(concat(:prefix, '%')) limit 2", nativeQuery = true)
+    List<UUID> findIdsByPrefix(@Param("prefix") String prefix);
+
+    @Query("select b from Booking b where b.status in :statuses order by b.createdAt desc")
+    List<Booking> findByStatusInOrderByCreatedAtDesc(@Param("statuses") List<BookingStatus> statuses);
 }
