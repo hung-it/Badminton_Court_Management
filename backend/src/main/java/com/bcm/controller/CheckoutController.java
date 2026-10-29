@@ -1,20 +1,17 @@
 package com.bcm.controller;
 
 import com.bcm.dto.request.CheckoutRequest;
+import com.bcm.dto.response.ActiveBookingResponse;
 import com.bcm.dto.response.ApiResponse;
 import com.bcm.dto.response.CheckoutResponse;
 import com.bcm.service.CheckoutService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -25,13 +22,27 @@ public class CheckoutController {
 
     private final CheckoutService checkoutService;
 
-    @org.springframework.web.bind.annotation.GetMapping("/{bookingId}")
-    public ApiResponse<CheckoutResponse> preview(@PathVariable UUID bookingId) {return ApiResponse.success(checkoutService.preview(bookingId));}
+    @GetMapping("/active-bookings")
+    public ApiResponse<List<ActiveBookingResponse>> getActiveBookings() {
+        return ApiResponse.success(checkoutService.getActiveBookings());
+    }
 
-    @PostMapping("/{bookingId}")
+    @GetMapping("/resolve/{query}")
+    public ApiResponse<UUID> resolveBookingId(@PathVariable String query) {
+        return ApiResponse.success(checkoutService.resolveBookingId(query));
+    }
+
+    @GetMapping("/{bookingIdentifier}")
+    public ApiResponse<CheckoutResponse> preview(@PathVariable String bookingIdentifier) {
+        UUID bookingId = checkoutService.resolveBookingId(bookingIdentifier);
+        return ApiResponse.success(checkoutService.preview(bookingId));
+    }
+
+    @PostMapping("/{bookingIdentifier}")
     public ResponseEntity<ApiResponse<CheckoutResponse>> checkout(
-            @PathVariable UUID bookingId,
+            @PathVariable String bookingIdentifier,
             @Valid @RequestBody CheckoutRequest request) {
+        UUID bookingId = checkoutService.resolveBookingId(bookingIdentifier);
         return ResponseEntity.ok(checkoutService.checkout(bookingId, request.getPaymentMethod()));
     }
 }
