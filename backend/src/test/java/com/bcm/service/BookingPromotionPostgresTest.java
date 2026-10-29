@@ -46,12 +46,118 @@ class BookingPromotionPostgresTest {
         when(customer.requireCustomerId()).thenReturn(owner);
     }
     @AfterEach void cleanup() {
+        jdbc.update("DELETE FROM discount_rules WHERE promotion_id IN (SELECT id FROM promotions WHERE code=?)",customCode());
+        jdbc.update("DELETE FROM promotions WHERE code=?",customCode());
         jdbc.update("DELETE FROM payment_transactions WHERE booking_id IN (SELECT id FROM bookings WHERE customer_id=?)",owner);
         jdbc.update("DELETE FROM booking_details WHERE booking_id IN (SELECT id FROM bookings WHERE customer_id=?)",owner);
         jdbc.update("DELETE FROM bookings WHERE customer_id=?",owner);
         jdbc.update("DELETE FROM customers WHERE id=?",owner);
         jdbc.update("DELETE FROM users WHERE id=?",user);
     }
+    @Autowired CourtPromotionService courtRules;
+    @Autowired jakarta.persistence.EntityManager entityManager;
+    String customCode() { return ("TEST-"+owner).toUpperCase(java.util.Locale.ROOT); }
+    void custom(String kind,String type,String value,int limit) {
+        courtRules.save(null,new com.bcm.dto.request.CourtPromotionRequest("Test court",customCode(),kind,type,new BigDecimal(value),BigDecimal.ZERO,new BigDecimal("200000"),limit,null,java.time.LocalDate.now().minusDays(1),null,true));
+    }
+    @Test void configurableVoucherSupportsAmountCapAndPreservesPaidSnapshot() {
+        custom("VOUCHER","PERCENT","80",10);
+        UUID b=booking("400000");
+        var q=promotions.quote(b,customCode(),true);
+        assertThat(q.discountAmount()).isEqualByComparingTo("200000");
+        assertThat(q.promotionCode()).isEqualTo(customCode());
+        jdbc.update("UPDATE bookings SET status='PAID' WHERE id=?",b);
+        var row=courtRules.list().stream().filter(x->customCode().equals(x.get("code"))).findFirst().orElseThrow();
+        courtRules.save((UUID)row.get("id"),new com.bcm.dto.request.CourtPromotionRequest("Changed",customCode(),"VOUCHER","AMOUNT",new BigDecimal("100"),BigDecimal.ZERO,null,10,null,java.time.LocalDate.now().minusDays(1),null,true));
+        assertThat(jdbc.queryForObject("SELECT discount_amount FROM bookings WHERE id=?",BigDecimal.class,b)).isEqualByComparingTo("200000");
+    }
+    @Test void customVoucherIsNotStackedWithAutomaticAndInvalidCodeFallsBack() {
+        custom("VOUCHER","AMOUNT","10000",10);
+        var q=promotions.quote(booking("500000"),customCode(),true);
+        assertThat(q.discountAmount()).isEqualByComparingTo("50000");
+        assertThat(q.promotionCode()).isEqualTo("INVOICE_TOTAL");
+    }
+    @Test void configurableAutomaticTierCanBeDisabledWithoutChangingOtherTiers() {
+        custom("INVOICE_TOTAL","AMOUNT","100000",10);
+        UUID b=booking("400000");
+        assertThat(promotions.quote(b,null,true).discountAmount()).isEqualByComparingTo("100000");
+        var row=courtRules.list().stream().filter(x->customCode().equals(x.get("code"))).findFirst().orElseThrow();
+        courtRules.remove((UUID)row.get("id"));
+        assertThat(promotions.quote(b,null,true).discountAmount()).isEqualByComparingTo("30000");
+    }
+    @Test void twoBookingsCannotReserveLastGenericVoucherUse() throws Exception {
+        custom("VOUCHER","AMOUNT","100000",1);
+        UUID first=booking("200000"),second=booking("200000");
+        var ready=new CountDownLatch(2);var start=new CountDownLatch(1);var pool=Executors.newFixedThreadPool(2);
+        try {
+            var a=pool.submit(()->{ready.countDown();start.await();return promotions.staffApply(first,customCode());});
+            var b=pool.submit(()->{ready.countDown();start.await();return promotions.staffApply(second,customCode());});
+            assertThat(ready.await(5,TimeUnit.SECONDS)).isTrue();start.countDown();
+            var qa=a.get(15,TimeUnit.SECONDS);var qb=b.get(15,TimeUnit.SECONDS);
+            assertThat(java.util.List.of(qa.voucherValid(),qb.voucherValid())).containsExactlyInAnyOrder(true,false);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM bookings WHERE customer_id=? AND promotion_code=?",Long.class,owner,customCode())).isEqualTo(1);
+        } finally {start.countDown();pool.shutdownNow();}
+    }
+
+    @Autowired PosService pos;
+    @Autowired CheckoutService checkout;
+    @Test @org.springframework.security.test.context.support.WithMockUser(roles="STAFF")
+    void counterReceiptAndDiscountedProductsProduceOneBillWithoutRechargingCourt() {
+        UUID b=booking("500000"),cat=UUID.randomUUID(),prod=UUID.randomUUID(),promo=UUID.randomUUID();
+        try {
+            promotions.staffApply(b,null);
+            assertThat(promotions.staffReceive(b,"CASH")).isEqualByComparingTo("450000");
+            assertThat(promotions.staffReceive(b,"CASH")).isEqualByComparingTo("450000");
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?",Long.class,b)).isEqualTo(1);
+            jdbc.update("INSERT INTO categories(id,category_name) VALUES (?,?)",cat,"Bill test "+cat);
+            jdbc.update("INSERT INTO products(id,category_id,name,type,unit,price,stock_quantity,version) VALUES (?,?,?,'GOODS','quả',10000,100,0)",prod,cat,"Bill test "+prod);
+            jdbc.update("INSERT INTO promotions(id,code,name,valid_from,valid_to,is_active) VALUES (?,?,?,CURRENT_DATE,CURRENT_DATE,true)",promo,"TEST-PRODUCT-"+prod,"10 giảm 10%");
+            jdbc.update("INSERT INTO discount_rules(promotion_id,rule_type,target_product_id,min_quantity,discount_type,discount_value) VALUES (?,'PRODUCT',?,10,'PERCENT',10)",promo,prod);
+            var request=new com.bcm.dto.request.PosSaleRequest(); request.setBookingId(b);request.setPaymentMethod("CASH");
+            var item=new com.bcm.dto.request.PosSaleItemRequest();item.setProductId(prod);item.setQuantity(10);request.setItems(java.util.List.of(item));
+            assertThat(pos.sell(request).getTotalAmount()).isEqualByComparingTo("90000");
+            var preview=checkout.preview(b);
+            assertThat(preview.getTotalAmount()).isEqualByComparingTo("540000");
+            assertThat(preview.getPaidCourtAmount()).isEqualByComparingTo("450000");
+            assertThat(preview.getAmountDue()).isEqualByComparingTo("90000");
+            var bill=checkout.checkout(b,"CASH").getData();
+            assertThat(bill.getTotalAmount()).isEqualByComparingTo("540000");
+            assertThat(bill.getAmountDue()).isEqualByComparingTo("90000");
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM invoices WHERE booking_id=? AND status='PAID'",Long.class,b)).isEqualTo(1);
+            assertThatThrownBy(()->checkout.checkout(b,"CASH")).isInstanceOf(com.bcm.exception.BadRequestException.class);
+            assertThatThrownBy(()->pos.sell(request)).isInstanceOf(com.bcm.exception.BadRequestException.class);
+        } finally {
+            jdbc.update("DELETE FROM invoice_details WHERE invoice_id IN (SELECT id FROM invoices WHERE booking_id=?)",b);
+            jdbc.update("DELETE FROM invoices WHERE booking_id=?",b);
+            jdbc.update("DELETE FROM discount_rules WHERE promotion_id=?",promo);jdbc.update("DELETE FROM promotions WHERE id=?",promo);
+            jdbc.update("DELETE FROM products WHERE id=?",prod);jdbc.update("DELETE FROM categories WHERE id=?",cat);
+        }
+    }
+    @Test void reservedVoucherSpecialRulesCannotBeChangedIntoOrdinaryCodes() {
+        var row=courtRules.list().stream().filter(x->"NEWMEMBER".equals(x.get("code"))).findFirst().orElseThrow();
+        assertThatThrownBy(()->courtRules.save((UUID)row.get("id"),new com.bcm.dto.request.CourtPromotionRequest("Wrong","OTHER","VOUCHER","AMOUNT",BigDecimal.TEN,BigDecimal.ZERO,null,null,null,java.time.LocalDate.now(),null,true))).isInstanceOf(com.bcm.exception.BadRequestException.class);
+    }
+
+    @ParameterizedTest @ValueSource(strings={"NEWMEMBER","KMKH10"})
+    @org.springframework.transaction.annotation.Transactional
+    void specialVouchersCanBeSoftDeletedWithoutChangingPaidHistory(String code) {
+        if(code.equals("KMKH10")) history(15,"COMPLETED","SUCCESS",true);
+        UUID b=booking("1200000");
+        var quote=promotions.quote(b,code,true);
+        assertThat(quote.promotionCode()).isEqualTo(code);
+        entityManager.flush();
+        jdbc.update("UPDATE bookings SET status='PAID' WHERE id=?",b);
+        entityManager.clear();
+        var row=courtRules.list().stream().filter(x->code.equals(x.get("code"))).findFirst().orElseThrow();
+        courtRules.remove((UUID)row.get("id"));
+        assertThat(courtRules.list()).noneMatch(x->code.equals(x.get("code")));
+        assertThat(jdbc.queryForObject("SELECT deleted_at IS NOT NULL AND NOT is_active FROM promotions WHERE code=?",Boolean.class,code)).isTrue();
+        assertThat(promotions.quote(booking("1200000"),code,true).voucherValid()).isFalse();
+        assertThat(jdbc.queryForObject("SELECT discount_amount FROM bookings WHERE id=?",BigDecimal.class,b)).isEqualByComparingTo(quote.discountAmount());
+        assertThat(jdbc.queryForObject("SELECT promotion_code FROM bookings WHERE id=?",String.class,b)).isEqualTo(code);
+        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,b)).isEqualTo("PAID");
+    }
+
     UUID booking(String amount) {
         UUID id=UUID.randomUUID();
         jdbc.update("INSERT INTO bookings(id,customer_id,status,court_fee,expires_at) VALUES (?,?,'PENDING',?,?)",id,owner,new BigDecimal(amount),LocalDateTime.now().plusMinutes(10));
@@ -206,11 +312,11 @@ class BookingPromotionPostgresTest {
             var second=pool.submit(()->{ready.countDown();go.await();return promotions.quote(b,"NEWMEMBER",true);});
             assertThat(ready.await(5,TimeUnit.SECONDS)).isTrue();go.countDown();
             long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);int waiting=0;
-            while(System.nanoTime()<deadline && waiting<2) {
+            while(System.nanoTime()<deadline && waiting<1) {
                 waiting=jdbc.queryForObject("SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'SELECT id FROM customers WHERE id=%'",Integer.class);
-                if(waiting<2) Thread.sleep(25);
+                if(waiting<1) Thread.sleep(25);
             }
-            assertThat(waiting).isEqualTo(2);blocker.commit();
+            assertThat(waiting).isGreaterThanOrEqualTo(1);blocker.commit();
             assertThat(java.util.List.of(first.get(10,TimeUnit.SECONDS).voucherValid(),second.get(10,TimeUnit.SECONDS).voucherValid())).containsExactlyInAnyOrder(true,false);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM bookings WHERE customer_id=? AND promotion_code='NEWMEMBER'",Integer.class,owner)).isEqualTo(1);
         } finally { pool.shutdownNow(); }

@@ -54,6 +54,7 @@ class BookingModificationPostgresTest {
     static final LocalDate DATE = LocalDate.of(2031, 2, 20);
     UUID user, customer, court, booking, foreignUser, foreignCustomer;
     List<UUID> slots;
+    UUID createCourt;
     String token, foreignToken;
 
     @BeforeEach void fixtures() {
@@ -86,6 +87,7 @@ class BookingModificationPostgresTest {
             jdbc.update("DELETE FROM customers WHERE id=?", owner);
         }
         jdbc.update("DELETE FROM courts WHERE id=?", court);
+        if(createCourt!=null) jdbc.update("DELETE FROM courts WHERE id=?",createCourt);
         slots.forEach(id -> jdbc.update("DELETE FROM time_slots WHERE id=?", id));
         for (UUID id : List.of(user, foreignUser)) {
             jdbc.update("DELETE FROM user_roles WHERE user_id=?", id); jdbc.update("DELETE FROM users WHERE id=?", id);
@@ -313,11 +315,13 @@ class BookingModificationPostgresTest {
         var instant = vietnamNow.atZone(ZoneId.of("Asia/Ho_Chi_Minh")).toInstant();
         when(clock.instant()).thenReturn(instant);
         jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?", LocalDateTime.now(clock).plusMinutes(10), booking);
-        // Distinct template IDs isolate create and edit assertions. No changes to application master data.
-        UUID createSlot = UUID.randomUUID(), editSlot = UUID.randomUUID();
-        slots = new ArrayList<>(slots); slots.add(createSlot); slots.add(editSlot);
-        for (var id : List.of(createSlot, editSlot)) jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier) VALUES (?,?,?,1)",
-                id, java.sql.Time.valueOf(LocalTime.parse(slotStart)), java.sql.Time.valueOf(LocalTime.parse(slotStart).plusHours(1)));
+        // Reuse one valid template and isolate create/edit by court, not duplicate overlapping templates.
+        UUID createSlot=UUID.randomUUID(),editSlot=createSlot;
+        slots=new ArrayList<>(slots); slots.add(createSlot);
+        createCourt=UUID.randomUUID();
+        jdbc.update("INSERT INTO courts(id,court_code,name,type,status,base_price) VALUES (?,999822,'Create fixture','STANDARD_MAT','AVAILABLE',100000)",createCourt);
+        jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier) VALUES (?,?,?,1)",
+            createSlot,java.sql.Time.valueOf(LocalTime.parse(slotStart)),java.sql.Time.valueOf(LocalTime.parse(slotStart).plusHours(1)));
         mvc.perform(get("/api/public/booking-clock").contextPath("/api"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.today").value(DATE.toString()))
                 .andExpect(jsonPath("$.data.timeZone").value("Asia/Ho_Chi_Minh"));
@@ -334,7 +338,7 @@ class BookingModificationPostgresTest {
             boolean allowed = date.atTime(LocalTime.parse(slotStart)).isAfter(vietnamNow);
             edit(booking, token, body(date, editSlot)).andExpect(allowed ? status().isOk() : status().isBadRequest());
             var payload = mapper.createObjectNode().put("customerId", customer.toString());
-            payload.putArray("details").addObject().put("bookingDate", date.toString()).put("courtId", court.toString()).put("timeSlotId", createSlot.toString());
+            payload.putArray("details").addObject().put("bookingDate", date.toString()).put("courtId", createCourt.toString()).put("timeSlotId", createSlot.toString());
             mvc.perform(post("/api/bookings").contextPath("/api").header("Authorization", "Bearer " + token)
                     .contentType(MediaType.APPLICATION_JSON).content(payload.toString()))
                     .andExpect(allowed ? status().isCreated() : status().isBadRequest());

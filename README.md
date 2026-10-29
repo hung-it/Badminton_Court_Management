@@ -614,3 +614,8 @@ Internal project for educational purposes.
 Bản phân công mới: Sân, Khung giờ & Bảng giá, Danh mục & Sản phẩm (BE/FE/DB).
 Xem [hướng dẫn bàn giao](docs/MEMBER2-HANDOVER.md) và [Web Admin](web-admin/README.md).
 Phần phân công cũ ở trên giữ lại làm lịch sử; phạm vi mới do người dùng xác nhận được ưu tiên.
+
+
+## Chạy Admin và User với dữ liệu dùng chung
+
+Trên Windows có Docker Desktop và Node.js, chạy `powershell -ExecutionPolicy Bypass -File .\scripts\start-shared-docker.ps1` tại thư mục gốc. Web Admin (5173) và Web User (5174) cùng dùng API Docker 8080 và một database. Xem [hướng dẫn và lưu ý sao lưu DB](docs/SHARED-DOCKER.md).

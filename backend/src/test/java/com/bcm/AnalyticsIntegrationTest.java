@@ -47,6 +47,17 @@ class AnalyticsIntegrationTest {
                 .andExpect(jsonPath("$.data.total_amount").value(280000));
     }
 
+    @Test
+    void revenueSubtractsRecordedDiscounts() throws Exception {
+        invoice("PAID",100000,20000,"2040-06-15T08:00:00",false);
+        jdbc.update("update invoices set discount_amount=10000,total_amount=110000 where created_at=?",
+                LocalDateTime.parse("2040-06-15T08:00:00"));
+        mvc.perform(get("/analytics/revenue").param("period","DAY").param("date","2040-06-15"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.discount_amount").value(10000))
+                .andExpect(jsonPath("$.data.total_amount").value(110000));
+    }
+
     private void invoice(String status, int court, int product, String created, boolean deleted) {
         jdbc.update("insert into invoices(id,customer_id,status,payment_method,court_fee,product_fee,"
                         + "discount_amount,total_amount,created_at,updated_at,deleted_at) values (?,?,?,?,?,?,?,?,?,?,?)",
