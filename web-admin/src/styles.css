@@ -38,3 +38,9 @@
 .court-location,.court-address{font-size:13px;line-height:1.5;color:var(--muted,#66766d);margin:5px 0;overflow-wrap:anywhere}.court-card{min-width:0}
 .promotion-applied{display:block;color:#50793f;font-size:11px;margin-top:6px;line-height:1.5}
 .promotion-table td:first-child,.promotion-table td:nth-child(2){white-space:normal;min-width:140px;max-width:220px;overflow-wrap:anywhere}
+
+.court-schedule{padding:24px;border-top:1px solid #e1e7da}.court-schedule .field{min-width:190px}.court-schedule .toolbar{padding:12px 0;align-items:end}.court-schedule .table-scroll{margin-top:16px}
+
+@media(min-width:761px){.stats.three-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+.time-slot-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;flex:1;min-width:0}.time-slot-filters .field{margin:0;min-width:0}.time-slot-filters select{width:100%;min-width:0}@media(max-width:1150px){.time-slot-filters{flex-basis:100%}}@media(max-width:760px){.time-slot-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
