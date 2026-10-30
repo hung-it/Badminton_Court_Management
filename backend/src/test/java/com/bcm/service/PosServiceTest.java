@@ -44,6 +44,7 @@ class PosServiceTest {
 
     @Mock
     private ProductPromotionService productPromotions;
+    @Mock private ProductPriceService productPrices;
 
     @InjectMocks
     private PosService posService;

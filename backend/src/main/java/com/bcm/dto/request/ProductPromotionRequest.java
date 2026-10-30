@@ -12,4 +12,5 @@ public record ProductPromotionRequest(
         @NotNull @DecimalMin("0.01") @DecimalMax("100.00") @Digits(integer=3, fraction=2) BigDecimal discountPercent,
         @NotNull LocalDate validFrom,
         @NotNull LocalDate validTo,
-        @NotNull Boolean active) {}
+        @NotNull Boolean active,
+        @Pattern(regexp="(?:[A-Za-z0-9_-]{2,50})?") String code) {}

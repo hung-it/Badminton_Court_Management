@@ -43,4 +43,12 @@ public class PosSaleRequest {
     @Valid
     @NotEmpty
     private List<PosSaleItemRequest> items;
+
+    @jakarta.validation.constraints.Size(max=50)
+    private String promotionCode;
+
+    public PosSaleRequest(UUID customerId, UUID bookingId, UUID staffId, String paymentMethod,
+            BigDecimal courtFee, BigDecimal discountAmount, List<PosSaleItemRequest> items) {
+        this(customerId,bookingId,staffId,paymentMethod,courtFee,discountAmount,items,null);
+    }
 }
