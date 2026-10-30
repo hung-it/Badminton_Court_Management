@@ -618,4 +618,4 @@ Phần phân công cũ ở trên giữ lại làm lịch sử; phạm vi mới d
 
 ## Chạy Admin và User với dữ liệu dùng chung
 
-Trên Windows có Docker Desktop và Node.js, chạy `powershell -ExecutionPolicy Bypass -File .\scripts\start-shared-docker.ps1` tại thư mục gốc. Web Admin (5173) và Web User (5174) cùng dùng API Docker 8080 và một database. Xem [hướng dẫn và lưu ý sao lưu DB](docs/SHARED-DOCKER.md).
+Trên Windows có Docker Desktop và Node.js, chạy `powershell -ExecutionPolicy Bypass -File .\scripts\start-shared-docker.ps1` tại thư mục gốc. Web Admin (5173) và Web User (5174) cùng dùng API Docker 8080 và một database. Script tự bổ sung ba danh mục/ba hàng hóa mẫu cho máy mới; chạy lại không ghi đè giá hoặc tồn kho đã sửa. Xem [hướng dẫn và lưu ý sao lưu DB](docs/SHARED-DOCKER.md).
