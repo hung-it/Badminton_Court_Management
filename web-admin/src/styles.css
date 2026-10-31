@@ -66,3 +66,6 @@
 @media(min-width:761px){.stats.three-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
 .time-slot-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;flex:1;min-width:0}.time-slot-filters .field{margin:0;min-width:0}.time-slot-filters select{width:100%;min-width:0}@media(max-width:1150px){.time-slot-filters{flex-basis:100%}}@media(max-width:760px){.time-slot-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.period-filter{flex-wrap:wrap;align-items:center;gap:10px}.period-filter .field{margin:0;min-width:180px}.period-filter input{max-width:100%}
+.period-range{display:flex;flex-wrap:wrap;align-items:end;gap:10px}.period-range .field{min-width:150px}
+.statistics-filter{align-items:flex-end}.statistics-filter .field{flex:1 1 150px;min-width:150px}.statistics-filter .field input,.statistics-filter .field select{width:100%;height:44px}.statistics-filter>button{height:44px;flex:0 0 auto;white-space:nowrap}

@@ -19,7 +19,7 @@ const assert=require('node:assert/strict');
  });
  await page.addInitScript(()=>sessionStorage.setItem('bcm-session',JSON.stringify({accessToken:'fixture',user:{roles:['ADMIN'],fullName:'Admin Test'}})));
  await page.goto('http://127.0.0.1:5173');
- await page.getByRole('button',{name:'Doanh thu & Báo cáo',exact:true}).click();
+ await page.getByRole('button',{name:'Doanh thu',exact:true}).click();
  await page.getByRole('button',{name:'Chi tiết',exact:true}).waitFor();
  await page.getByRole('button',{name:'Chi tiết',exact:true}).click();
  const dialog=page.getByRole('dialog');

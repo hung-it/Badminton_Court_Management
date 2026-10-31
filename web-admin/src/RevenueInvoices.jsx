@@ -1,13 +1,13 @@
 import React,{useEffect,useState} from 'react';
 const money=n=>new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND'}).format(n||0);
 const methods={CASH:'Tiền mặt',BANK_TRANSFER:'Chuyển khoản',VNPAY:'VNPay'};
-export default function RevenueInvoices({api,period}){
+export default function RevenueInvoices({api,params}){
  const [page,setPage]=useState(0),[refresh,setRefresh]=useState(0),[history,setHistory]=useState(null),[busy,setBusy]=useState(true),[error,setError]=useState('');
  const [selected,setSelected]=useState(null),[detail,setDetail]=useState(null),[detailError,setDetailError]=useState('');
  useEffect(()=>{let active=true;setBusy(true);setError('');setHistory(null);
-  api('/analytics/invoices?period='+period+'&page='+page).then(v=>{if(active)setHistory(v)}).catch(e=>{if(active)setError(e.message)}).finally(()=>{if(active)setBusy(false)});
+  api('/analytics/invoices?'+params+'&page='+page).then(v=>{if(active)setHistory(v)}).catch(e=>{if(active)setError(e.message)}).finally(()=>{if(active)setBusy(false)});
   return()=>{active=false};
- },[period,page,refresh]);
+ },[params,page,refresh]);
  useEffect(()=>{let active=true;setDetail(null);setDetailError('');if(!selected)return;
   api('/analytics/invoices/'+selected).then(v=>{if(active)setDetail(v)}).catch(e=>{if(active)setDetailError(e.message)});
   const escape=e=>{if(e.key==='Escape')setSelected(null)};document.addEventListener('keydown',escape);

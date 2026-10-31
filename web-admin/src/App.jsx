@@ -3,10 +3,12 @@ import ProductPromotions from './Promotions.jsx';
 import CourtBrowser from './CourtBrowser.jsx';
 import TimeSlotFilters from './TimeSlotFilters.jsx';
 import RevenueInvoices from './RevenueInvoices.jsx';
+import Statistics from './Statistics.jsx';
+import PeriodFilter,{inPeriod} from './PeriodFilter.jsx';
 const money=n=>new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND'}).format(n||0);
 const labels={STANDARD_MAT:'Thảm tiêu chuẩn',WOODEN_FLOOR:'Sàn gỗ',AVAILABLE:'Hoạt động',MAINTENANCE:'Bảo trì',CLOSED:'Đóng cửa',GOODS:'Hàng hóa',SERVICE:'Dịch vụ'};
 const masterTabs=[['courts','Sân cầu'],['time-slots','Khung giờ & giá'],['categories','Danh mục'],['products','Hàng hóa & dịch vụ'],['product-promotions','Khuyến mãi']];
-const opTabs=[['pos','Bán tại quầy'],['checkout','Trả sân'],['inventory','Nhập kho'],['analytics','Doanh thu & Báo cáo']];
+const opTabs=[['pos','Bán tại quầy'],['checkout','Trả sân'],['inventory','Nhập kho'],['analytics','Doanh thu'],['statistics','Thống kê']];
 const allTabs=[...masterTabs,...opTabs];
 const initial={courts:{courtNumber:1,name:'',type:'STANDARD_MAT',status:'AVAILABLE',basePrice:100000,district:'',address:''},'time-slots':{startTime:'06:00',endTime:'07:00',priceMultiplier:1},categories:{categoryName:''},products:{categoryId:'',name:'',type:'GOODS',unit:'cái',price:0,stockQuantity:0}};
 function defaultMultiplier(start,end){return start>='17:00'&&end<='21:00'?1.5:1;}
@@ -51,6 +53,9 @@ export default function App(){
 
  // Inventory state
  const [importOrders,setImportOrders]=useState([]);
+ const [inventoryPeriod,setInventoryPeriod]=useState('DAY'),[inventoryMonth,setInventoryMonth]=useState('');
+ const [inventoryRange,setInventoryRange]=useState({});
+ const visibleImportOrders=importOrders.filter(o=>inPeriod(o.importDate,inventoryPeriod,inventoryMonth,undefined,inventoryRange));
  const [suppliers,setSuppliers]=useState([]);
  const [importModalOpen,setImportModalOpen]=useState(false);
  const [importForm,setImportForm]=useState({supplierName:'',productName:'',quantity:'',totalAmount:''});
@@ -66,6 +71,10 @@ export default function App(){
 
  // Analytics state
  const [analyticsPeriod,setAnalyticsPeriod]=useState('DAY');
+ const [analyticsMonth,setAnalyticsMonth]=useState('');
+ const [analyticsRange,setAnalyticsRange]=useState({});
+ const analyticsDate=analyticsMonth?analyticsMonth+'-01':'';
+ const analyticsParams=analyticsRange.from?'from='+analyticsRange.from+'&to='+analyticsRange.to:'period='+analyticsPeriod+(analyticsDate?'&date='+analyticsDate:'');
  const [revenueData,setRevenueData]=useState(null);
 
  function logout(){sessionStorage.removeItem('bcm-session');setSession(null);setData({courts:[],'time-slots':[],categories:[],products:[],'product-promotions':[]});setModal(null);setDeleteTarget(null);}
@@ -91,10 +100,7 @@ export default function App(){
    if(tab==='inventory'){
     const [orders,supps]=await Promise.all([api('/import-orders'),api('/suppliers')]);
     setImportOrders(orders||[]);setSuppliers(supps||[]);
-   }else if(tab==='analytics'){
-    const rev=await api('/analytics/revenue?period='+analyticsPeriod).catch(()=>null);
-    setRevenueData(rev);
-      }else if(tab==='checkout'){
+   }else if(tab==='checkout'){
         setActiveBusy(true);
         setActiveError('');
         try{
@@ -108,9 +114,15 @@ export default function App(){
 
  useEffect(()=>{if(session)load()},[session]);
  useEffect(()=>{
+  if(!session||tab!=='analytics')return;
+  let active=true;setRevenueData(null);
+  api('/analytics/revenue?'+analyticsParams).then(v=>{if(active)setRevenueData(v)}).catch(e=>{if(active)setError(e.message)});
+  return()=>{active=false};
+ },[session,tab,analyticsParams]);
+ useEffect(()=>{
   setQuery('');setFilter('');setNotice('');
   if(session)loadOperationalData();
- },[tab,analyticsPeriod]);
+ },[tab]);
 
  useEffect(()=>{
   let active=true;setSlotPrices({});setPriceError('');
@@ -193,7 +205,7 @@ useEffect(()=>{
    setCheckoutHistory(h=>[paidSlip,...h]);
    setCheckoutOpen(false);
    setActiveBookings(rows=>rows.filter(b=>b.bookingId!==checkoutSlip.bookingId));
-   setNotice('Kết toán thành công! Hóa đơn '+res.invoiceId+' gồm tiền sân và hàng tại quầy đã ghi nhận vào Doanh thu & Báo cáo.');
+   setNotice('Kết toán thành công! Hóa đơn '+res.invoiceId+' gồm tiền sân và hàng tại quầy đã ghi nhận vào Doanh thu.');
    if(session.user?.roles?.includes('ADMIN'))setTab('analytics');
   }catch(e){setError(e.message);}finally{setSaving(false);}
  }
@@ -252,7 +264,7 @@ useEffect(()=>{
  {tab==='product-promotions'&&<ProductPromotions promotions={data['product-promotions']||[]} products={data.products} api={api} onChanged={load} canManage={session.user?.roles?.includes('ADMIN')}/>}
  {/* MASTER DATA TABS */}
  {['courts','time-slots','categories','products'].includes(tab)&&<>
- <div className="page-heading"><div><span className="eyebrow">MASTER DATA</span><h1>{title}</h1><p className="muted">{tab==='courts'?'Theo dõi và cấu hình hệ thống sân của câu lạc bộ.':tab==='time-slots'?'Thiết lập giờ chơi và hệ số giá theo từng khung giờ.':tab==='categories'?'Tổ chức hàng hóa và dịch vụ theo danh mục.':'Quản lý thông tin bán hàng và tồn kho ban đầu.'}</p></div><button className="primary" onClick={()=>open()} disabled={busy||(tab==='products'&&!data.categories.length)}>＋ {tab==='courts'?'Thêm sân':tab==='time-slots'?'Thêm khung giờ':tab==='categories'?'Thêm danh mục':'Thêm sản phẩm'}</button></div>
+ <div className="page-heading"><div><span className="eyebrow">MASTER DATA</span><h1>{title}</h1></div><button className="primary" onClick={()=>open()} disabled={busy||(tab==='products'&&!data.categories.length)}>＋ {tab==='courts'?'Thêm sân':tab==='time-slots'?'Thêm khung giờ':tab==='categories'?'Thêm danh mục':'Thêm sản phẩm'}</button></div>
  <div className={'stats'+(tab==='time-slots'?' three-stats':'')}><div><span>Tổng số sân</span><strong>{data.courts.length.toString().padStart(2,'0')}</strong><small>Trong hệ thống</small></div><div><span>Sân hoạt động</span><strong>{data.courts.filter(c=>c.status==='AVAILABLE').length.toString().padStart(2,'0')}</strong><small className="green">Sẵn sàng phục vụ</small></div><div><span>Khung giờ</span><strong>{data['time-slots'].length.toString().padStart(2,'0')}</strong><small>Cấu hình trong ngày</small></div>{!['courts','time-slots'].includes(tab)&&<div><span>Hàng hóa & dịch vụ</span><strong>{data.products.length.toString().padStart(2,'0')}</strong><small>{data.categories.length} danh mục</small></div>}{tab==='courts'&&<div><span>Chi nhánh</span><strong>{branchCount.toString().padStart(2,'0')}</strong><small>Trong hệ thống</small></div>}</div>
  {tab==='courts'?<CourtBrowser courts={data.courts} api={api} onEdit={open} onDelete={item=>{setError('');setDeleteTarget(item)}} busy={busy} onRefresh={load}/>:<section className="content-panel"><div className="toolbar">{tab!=='time-slots'&&<label className="search"><span>⌕</span><input aria-label="Tìm kiếm" placeholder="Tìm kiếm…" value={query} onChange={e=>setQuery(e.target.value)}/></label>}{tab==='courts'&&<select aria-label="Lọc trạng thái" value={filter} onChange={e=>setFilter(e.target.value)}><option value="">Tất cả trạng thái</option>{['AVAILABLE','MAINTENANCE','CLOSED'].map(v=><option key={v} value={v}>{labels[v]}</option>)}</select>}{tab==='time-slots'&&<TimeSlotFilters courts={data.courts} branches={priceBranches} courtId={quoteCourt} onCourtChange={id=>{setQuoteCourt(id);setSlotPrices({});setPriceError('')}}/>}{tab==='products'&&<select aria-label="Lọc danh mục" value={filter} onChange={e=>setFilter(e.target.value)}><option value="">Tất cả danh mục</option>{data.categories.map(c=><option key={c.id} value={c.id}>{c.categoryName}</option>)}</select>}<span className="count">{rows.length} kết quả</span><button className="secondary" onClick={load} disabled={busy}>↻ Làm mới</button></div>
  {busy?<div className="empty" role="status">Đang tải dữ liệu…</div>:rows.length===0?<div className="empty"><span>◇</span><h3>{query||filter?'Không tìm thấy kết quả':'Chưa có dữ liệu'}</h3><p>{tab==='products'&&!data.categories.length?'Tạo danh mục trước khi thêm sản phẩm.':'Thêm dữ liệu mới hoặc thay đổi bộ lọc để tiếp tục.'}</p></div>:<div className="table-scroll"><table><thead><tr>{(tab==='courts'?['Số sân','Tên sân','Loại sân','Trạng thái','Giá gốc / khung giờ']:tab==='time-slots'?['Khung giờ','Hệ số giá','Phân loại','Giá tiền']:tab==='categories'?['Tên danh mục','Số sản phẩm']:['Tên sản phẩm','Danh mục','Loại','Đơn vị','Giá niêm yết','Tồn kho','Duyệt giá']).map(h=><th key={h}>{h}</th>)}<th>Thao tác</th></tr></thead><tbody>{rows.map(x=><tr key={x.id}>{tab==='courts'?<><td>#{String(x.courtNumber).padStart(2,'0')}</td><td><strong>{x.name}</strong><p className='court-location'>{x.district||'Chưa cập nhật quận / huyện'}</p><p className='court-address'>Địa chỉ: {x.address||'Chưa cập nhật địa chỉ'}</p></td><td>{labels[x.type]||'Chưa xác minh'}</td><td><span className={'badge '+x.status}>{labels[x.status]}</span></td><td>{money(x.basePrice)}</td></>:tab==='time-slots'?<><td><strong>{x.startTime.slice(0,5)} — {x.endTime.slice(0,5)}</strong></td><td><span className={'badge '+(x.priceMultiplier>1?'MAINTENANCE':'AVAILABLE')}>×{Number(x.priceMultiplier).toFixed(2)}</span></td><td>{x.priceMultiplier>1?'Giá cao điểm':'Giá thông thường'}</td><td>{!quoteCourt?'Chọn sân để xem giá':slotPrices[x.id]?money(slotPrices[x.id].price):priceError?'Không tải được giá':'Đang tải…'}</td></>:tab==='categories'?<><td><strong>{x.categoryName}</strong></td><td>{data.products.filter(p=>p.categoryId===x.id).length}</td></>:<><td><strong>{x.name}</strong></td><td>{data.categories.find(c=>c.id===x.categoryId)?.categoryName||'—'}</td><td><span className="badge neutral">{labels[x.type]}</span></td><td>{x.unit}</td><td>{money(x.price)}</td><td>{x.type==='SERVICE'?'—':x.stockQuantity}</td><td>{isImportProduct(x)?<span className={'badge '+(Number(x.price)>0?'AVAILABLE':'MAINTENANCE')}>{Number(x.price)>0?'Đã duyệt':'Chờ duyệt giá'}</span>:'—'}</td></>}<td><div className="actions">{tab==='products'&&isImportProduct(x)&&<button onClick={()=>{setPriceApprovalTarget(x);setApprovalPrice(Number(x.price)>0?String(x.price):'');setError('');}}>Duyệt giá niêm yết</button>}<button onClick={()=>open(x)}>Sửa</button><button className="danger" onClick={()=>{setError('');setDeleteTarget(x)}}>Xóa</button></div></td></tr>)}</tbody></table></div>}
@@ -265,7 +277,7 @@ useEffect(()=>{
 
  {/* POS PANEL */}
  {tab==='pos'&&<div>
-  <div className="page-heading"><div><span className="eyebrow">OPERATIONS</span><h1>Bán hàng tại quầy (POS)</h1><p className="muted">Lập đơn bán nhanh cho khách hàng và thu tiền tại quầy.</p></div></div>
+  <div className="page-heading"><div><span className="eyebrow">OPERATIONS</span><h1>Bán hàng tại quầy (POS)</h1></div></div>
   <div className="pos-layout">
    <div className="pos-catalog">
     <div className="toolbar" style={{padding:'0 0 16px',borderBottom:'1px solid #edf0e8'}}>
@@ -428,17 +440,19 @@ useEffect(()=>{
 
 
 
+ {tab==='statistics'&&<Statistics api={api}/>}
  {/* INVENTORY PANEL */}
  {tab==='inventory'&&<div className="inventory-panel">
   <div className="page-heading"><div><span className="eyebrow">INVENTORY</span><h1>Nhập kho</h1></div><button className="primary" onClick={()=>{setImportForm({supplierName:'',productName:'',quantity:'',totalAmount:''});setError('');setImportModalOpen(true);}}>＋ Tạo phiếu nhập</button></div>
+  <PeriodFilter period={inventoryPeriod} month={inventoryMonth} range={inventoryRange} onRangeChange={r=>{setInventoryMonth('');setInventoryRange(r)}} onChange={(p,m)=>{setInventoryRange({});setInventoryPeriod(p);setInventoryMonth(m)}}/>
   <div className="stats three-stats">
-   <div><span>Số phiếu nhập kho</span><strong>{importOrders.length}</strong></div>
-   <div><span>Số nhà cung cấp</span><strong>{suppliers.length}</strong></div>
-   <div><span>Tổng giá trị nhập</span><strong>{money(importOrders.filter(o=>o.status!=='CANCELLED').reduce((s,o)=>s+Number(o.totalAmount||0),0))}</strong><small>Không gồm phiếu đã hủy</small></div>
+   <div><span>Số phiếu nhập kho</span><strong>{visibleImportOrders.length}</strong></div>
+   <div><span>Số nhà cung cấp</span><strong>{new Set(visibleImportOrders.map(o=>o.supplierId)).size}</strong></div>
+   <div><span>Tổng giá trị nhập</span><strong>{money(visibleImportOrders.filter(o=>o.status!=='CANCELLED').reduce((s,o)=>s+Number(o.totalAmount||0),0))}</strong><small>Không gồm phiếu đã hủy</small></div>
   </div>
   <section className="content-panel">
    <div className="table-scroll"><table><thead><tr><th>Mã phiếu</th><th>Ngày nhập</th><th>Tổng tiền</th><th>Trạng thái</th></tr></thead><tbody>
-    {!importOrders.length?<tr><td colSpan="4" style={{textAlign:'center',padding:'30px'}}>Chưa có phiếu nhập nào. Bấm “Tạo phiếu nhập” để tạo mới.</td></tr>:importOrders.map(o=><tr key={o.id}>
+    {!visibleImportOrders.length?<tr><td colSpan="4" style={{textAlign:'center',padding:'30px'}}>Không có phiếu nhập trong kỳ đã chọn.</td></tr>:visibleImportOrders.map(o=><tr key={o.id}>
      <td><code title={o.id}>{o.id}</code><button className="secondary" style={{marginLeft:12}} disabled={saving} onClick={()=>openImportDetail(o)}>Chi tiết</button></td>
      <td>{o.importDate}</td>
      <td><strong>{money(o.totalAmount)}</strong></td>
@@ -463,18 +477,16 @@ useEffect(()=>{
  {/* ANALYTICS PANEL */}
  {tab==='analytics'&&<div className="analytics-panel">
   <div className="page-heading">
-   <div><span className="eyebrow">ANALYTICS</span><h1>Doanh thu & Báo cáo</h1><p className="muted">Báo cáo tổng hợp tiền sân (court_fee) và tiền dịch vụ (product_fee).</p></div>
-   <div style={{display:'flex',gap:'10px'}}>
-    {[['DAY','Hôm nay'],['WEEK','Tuần này'],['MONTH','Tháng này']].map(([p,l])=><button key={p} className={analyticsPeriod===p?'primary':'secondary'} onClick={()=>setAnalyticsPeriod(p)}>{l}</button>)}
-   </div>
+   <div><span className="eyebrow">ANALYTICS</span><h1>Doanh thu</h1></div>
+   <PeriodFilter period={analyticsPeriod} month={analyticsMonth} range={analyticsRange} onRangeChange={r=>{setRevenueData(null);setAnalyticsMonth('');setAnalyticsRange(r)}} onChange={(p,m)=>{setRevenueData(null);setAnalyticsRange({});setAnalyticsPeriod(p);setAnalyticsMonth(m)}}/>
   </div>
   <div className="stats">
-   <div><span>Doanh thu sau giảm giá</span><strong>{money(revenueData?.total_amount||revenueData?.totalAmount||0)}</strong><small className="green">Kỳ hiện tại ({analyticsPeriod})</small></div>
-   <div><span>Tiền sân (court_fee)</span><strong>{money(revenueData?.court_fee||revenueData?.courtFee||0)}</strong><small>Từ lượt đặt sân</small></div>
-   <div><span>Hàng hóa & DV (product_fee)</span><strong>{money(revenueData?.product_fee||revenueData?.productFee||0)}</strong><small>Từ bán lẻ & phụ phí</small></div>
+   <div><span>Doanh thu sau giảm giá</span><strong>{money(revenueData?.total_amount||revenueData?.totalAmount||0)}</strong><small className="green">{analyticsRange.from?'Khoảng ngày đã chọn':analyticsMonth?'Tháng '+analyticsMonth:({DAY:'Hôm nay',WEEK:'Tuần này',MONTH:'Tháng này'})[analyticsPeriod]}</small></div>
+   <div><span>Tiền sân</span><strong>{money(revenueData?.court_fee||revenueData?.courtFee||0)}</strong></div>
+   <div><span>Hàng hóa & dịch vụ</span><strong>{money(revenueData?.product_fee||revenueData?.productFee||0)}</strong></div>
    <div><span>Thời gian ghi nhận</span><strong>{revenueData?.from||'—'}</strong><small>Đến {revenueData?.to||'—'}</small></div>
   </div>
-  <RevenueInvoices key={analyticsPeriod} api={api} period={analyticsPeriod}/>
+  <RevenueInvoices key={analyticsParams} api={api} params={analyticsParams}/>
  </div>}
 
 
@@ -486,7 +498,7 @@ useEffect(()=>{
 <div className="dialog-foot"><button type="button" className="secondary" disabled={saving} onClick={()=>{setModal(null);setError('')}}>Hủy</button><button className="primary" disabled={saving}>{saving?'Đang lưu…':'Lưu thay đổi'}</button></div></form></section></div>}
 
 
- {deleteTarget&&<div className="overlay"><section className="dialog small" role="dialog" aria-modal="true" aria-labelledby="delete-title"><h2 id="delete-title">Xóa dữ liệu?</h2><p>Bạn muốn xóa <strong>{deleteTarget.name||deleteTarget.categoryName||deleteTarget.startTime+' – '+deleteTarget.endTime}</strong> khỏi danh sách?</p><p className="muted">Hệ thống sẽ kiểm tra các dữ liệu liên quan trước khi thực hiện.</p>{error&&<div className="alert error" role="alert">{error}</div>}
+ {deleteTarget&&<div className="overlay"><section className="dialog small" role="dialog" aria-modal="true" aria-labelledby="delete-title"><h2 id="delete-title">Xóa dữ liệu?</h2><p>Bạn muốn xóa <strong>{deleteTarget.name||deleteTarget.categoryName||deleteTarget.startTime+' – '+deleteTarget.endTime}</strong> khỏi danh sách?</p>{error&&<div className="alert error" role="alert">{error}</div>}
 
 <div className="dialog-foot"><button className="secondary" disabled={saving} onClick={()=>{setDeleteTarget(null);setError('')}}>Hủy</button><button className="primary delete" disabled={saving} onClick={remove}>{saving?'Đang xóa…':'Xác nhận xóa'}</button></div></section></div>}
 

@@ -42,8 +42,12 @@ public class AnalyticsService {
     private final BookingDetailRepository bookingDetails;
 
     public InvoiceReportResponse.History history(String period, LocalDate date, int page) {
+        return history(period,date,page,null,null);
+    }
+
+    public InvoiceReportResponse.History history(String period, LocalDate date, int page, LocalDate from, LocalDate to) {
         if(page<0) throw new BadRequestException("Trang phải từ 0 trở lên");
-        var range=createDateRange(normalizePeriod(period),date==null?LocalDate.now():date);
+        var range=resolveRange(period,date,from,to);
         var result=invoiceRepository.findPaidHistory(range.from().atStartOfDay(),range.toExclusive().atStartOfDay(),
             PageRequest.of(page,20,Sort.by(
                 Sort.Order.desc("createdAt"),Sort.Order.desc("id"))));
@@ -71,9 +75,12 @@ public class AnalyticsService {
     }
 
     public RevenueReportResponse getRevenue(String period, LocalDate date) {
-        String normalizedPeriod = normalizePeriod(period);
-        LocalDate referenceDate = date == null ? LocalDate.now() : date;
-        DateRange range = createDateRange(normalizedPeriod, referenceDate);
+        return getRevenue(period,date,null,null);
+    }
+
+    public RevenueReportResponse getRevenue(String period, LocalDate date, LocalDate from, LocalDate to) {
+        DateRange range = resolveRange(period,date,from,to);
+        String normalizedPeriod = from == null ? normalizePeriod(period) : "RANGE";
 
         InvoiceRepository.RevenueTotals totals = invoiceRepository.sumRevenueByPeriod(
                 PAID_STATUS,
@@ -92,6 +99,14 @@ public class AnalyticsService {
                 .discountAmount(discount)
                 .totalAmount(valueOrZero(totals.getTotalAmount()))
                 .build();
+    }
+
+    private DateRange resolveRange(String period, LocalDate date, LocalDate from, LocalDate to) {
+        if (from == null && to == null) return createDateRange(normalizePeriod(period),date == null ? LocalDate.now() : date);
+        if (from == null || to == null) throw new BadRequestException("Vui lòng chọn đủ từ ngày và đến ngày");
+        if (from.isAfter(to)) throw new BadRequestException("Từ ngày không được sau đến ngày");
+        if (to.equals(LocalDate.MAX)) throw new BadRequestException("Ngày kết thúc không hợp lệ");
+        return new DateRange(from,to.plusDays(1),to);
     }
 
     private String normalizePeriod(String period) {
