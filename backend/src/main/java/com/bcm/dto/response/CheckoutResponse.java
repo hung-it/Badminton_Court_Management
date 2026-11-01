@@ -33,6 +33,7 @@ public class CheckoutResponse {
     private BigDecimal productDiscount;
     private BigDecimal paidCourtAmount;
     private BigDecimal amountDue;
+    private boolean courtReceiptRequired;
 
     public BigDecimal getCourtAmount() {
         return courtFee;

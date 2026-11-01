@@ -23,6 +23,7 @@ public class MasterDataService {
     private final TimeSlotRepository slots;
     private final CategoryRepository categories;
     private final ProductRepository products;
+    private final ProductPriceService productPrices;
     private final JdbcTemplate jdbc;
 
     public List<Court> courts() {
@@ -38,7 +39,7 @@ public class MasterDataService {
     }
 
     public List<Product> products() {
-        return products.findByDeletedAtIsNullOrderByNameAsc();
+        return products.findByDeletedAtIsNullOrderByNameAsc().stream().map(productPrices::describe).toList();
     }
 
     public Court court(UUID id) {
@@ -58,7 +59,7 @@ public class MasterDataService {
     }
 
     public Product product(UUID id) {
-        return products.findByIdAndDeletedAtIsNull(id)
+        return products.findByIdAndDeletedAtIsNull(id).map(productPrices::describe)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy sản phẩm"));
     }
 
@@ -190,6 +191,13 @@ public class MasterDataService {
         if (r.type() == ProductType.SERVICE && r.stockQuantity() != 0)
             throw new BadRequestException("Dịch vụ phải có tồn kho bằng 0");
         Product p = id == null ? new Product() : product(id);
+        boolean managedTarget=productPrices.managed(r.categoryId());
+        if(id==null&&managedTarget&&r.price().signum()!=0)throw new BadRequestException("Tạo hàng nhập kho với giá 0, sau đó dùng Duyệt giá niêm yết");
+        if(id!=null){
+            boolean managedSource=productPrices.managed(p.getCategoryId());
+            if((managedSource||managedTarget)&&r.price().compareTo(p.getPrice())!=0)throw new BadRequestException("Vui lòng dùng Duyệt giá niêm yết để thay đổi giá hàng nhập kho");
+            if(managedSource&&p.getPrice().signum()==0&&!managedTarget)throw new BadRequestException("Cần duyệt giá trước khi chuyển danh mục");
+        }
         if (id != null) {
             if (r.version() == null || !r.version().equals(p.getVersion()))
                 throw new DuplicateResourceException("Dữ liệu đã thay đổi; hãy tải lại sản phẩm");

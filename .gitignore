@@ -25,3 +25,7 @@ backend/target/
 **/*credentials*.local
 .vscode/
 .idea/
+
+# Private browser preview, excluded from shared source.
+/web-admin/vite.local.mjs
+/web-admin/src/sampleData.local.js

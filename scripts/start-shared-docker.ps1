@@ -6,7 +6,7 @@ $dockerCommand = Get-Command docker.exe -ErrorAction SilentlyContinue
 $docker = if ($dockerCommand) { $dockerCommand.Source } else { Join-Path $env:ProgramFiles 'Docker/Docker/resources/bin/docker.exe' }
 if (!(Test-Path -LiteralPath $docker)) { throw 'Cần cài Docker Desktop và mở Docker Engine trước.' }
 $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
-$composeArgs = @('compose', '-p', 'develop-docker', '-f', (Join-Path $root 'docker-compose.yml'))
+$composeArgs = @('compose', '-p', 'badminton_court_management', '-f', (Join-Path $root 'docker-compose.yml'))
 function Assert-DockerExit([string]$message) {
     if ($LASTEXITCODE -ne 0) { throw $message }
 }

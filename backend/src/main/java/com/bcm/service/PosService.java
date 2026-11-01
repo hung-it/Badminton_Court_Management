@@ -39,12 +39,14 @@ public class PosService {
     private final InvoiceDetailRepository invoiceDetailRepository;
     private final CustomerRepository customerRepository;
     private final ProductPromotionService productPromotions;
+    private final ProductPriceService productPrices;
     private final com.bcm.repository.BookingRepository bookings;
 
     @Transactional
     public Invoice sell(PosSaleRequest request) {
         validateBooking(request);
         Map<UUID, Integer> quantitiesByProduct = aggregateQuantities(request.getItems());
+        var enteredCode=productPromotions.validatePosCode(request.getPromotionCode(),quantitiesByProduct);
         List<InvoiceDetail> invoiceDetails = new ArrayList<>();
         BigDecimal productFee = BigDecimal.ZERO;
         BigDecimal automaticDiscount = BigDecimal.ZERO;
@@ -55,6 +57,7 @@ public class PosService {
                 Product product = productRepository.findById(entry.getKey())
                         .filter(p -> p.getDeletedAt() == null)
                         .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy sản phẩm"));
+                productPrices.requireApproved(product);
                 int quantity = entry.getValue();
 
                 // Only GOODS products have physical inventory; SERVICE products are non-stocked
@@ -68,7 +71,7 @@ public class PosService {
 
                 BigDecimal lineAmount = product.getPrice().multiply(BigDecimal.valueOf(quantity));
                 productFee = productFee.add(lineAmount);
-                var discount = productPromotions.best(product, quantity, candidates);
+                var discount = productPromotions.best(product, quantity, candidates,enteredCode);
                 automaticDiscount = automaticDiscount.add(discount.amount());
                 invoiceDetails.add(InvoiceDetail.builder()
                         .productId(product.getId())
@@ -138,6 +141,7 @@ public class PosService {
     @org.springframework.transaction.annotation.Transactional
     public PosQuoteResponse quote(PosSaleRequest request) {
         validateBooking(request);
+        var enteredCode=productPromotions.validatePosCode(request.getPromotionCode(),aggregateQuantities(request.getItems()));
         List<ProductPromotionRule> candidates = productPromotions.applicable();
         List<PosQuoteResponse.Line> lines = new ArrayList<>();
         BigDecimal gross = BigDecimal.ZERO;
@@ -145,11 +149,12 @@ public class PosService {
         for (var entry : aggregateQuantities(request.getItems()).entrySet()) {
             Product product = productRepository.findByIdAndDeletedAtIsNull(entry.getKey())
                     .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy sản phẩm"));
+            productPrices.requireApproved(product);
             int quantity = entry.getValue();
             if (product.getType() == ProductType.GOODS && product.getStockQuantity() < quantity)
                 throw new BadRequestException(INSUFFICIENT_STOCK_MESSAGE);
             BigDecimal amount = product.getPrice().multiply(BigDecimal.valueOf(quantity));
-            var discount = productPromotions.best(product, quantity, candidates);
+            var discount = productPromotions.best(product, quantity, candidates,enteredCode);
             gross = gross.add(amount);
             discounts = discounts.add(discount.amount());
             lines.add(new PosQuoteResponse.Line(product.getId(), product.getName(), quantity, product.getPrice(),

@@ -11,6 +11,10 @@ import java.util.UUID;
 @Repository
 public interface ImportOrderRepository extends JpaRepository<ImportOrder, UUID> {
 
+    @org.springframework.data.jpa.repository.Query("select coalesce(sum(o.totalAmount),0) from ImportOrder o where o.status <> 'CANCELLED' and o.importDate >= :from and o.importDate < :to")
+    java.math.BigDecimal sumExpense(@org.springframework.data.repository.query.Param("from") java.time.LocalDate from,
+                                   @org.springframework.data.repository.query.Param("to") java.time.LocalDate to);
+
     List<ImportOrder> findAllByStatusNotOrderByImportDateDesc(String status);
 
     List<ImportOrder> findAllByOrderByImportDateDesc();

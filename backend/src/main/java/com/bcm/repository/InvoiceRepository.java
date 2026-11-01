@@ -11,6 +11,10 @@ import java.util.UUID;
 
 public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
 
+    @Query("select i from Invoice i where i.status='PAID' and i.deletedAt is null and i.createdAt>=:from and i.createdAt<:to")
+    org.springframework.data.domain.Page<Invoice> findPaidHistory(@Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to, org.springframework.data.domain.Pageable pageable);
+
 	@Query("select coalesce(sum(i.productFee), 0) from Invoice i "
 	    + "where i.bookingId = :bookingId and i.status = :status")
 	BigDecimal sumProductFeeByBookingIdAndStatus(

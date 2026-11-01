@@ -9,6 +9,9 @@ import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 
 public interface ProductPromotionRuleRepository extends JpaRepository<ProductPromotionRule, UUID> {
+    @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select r from ProductPromotionRule r join fetch r.promotion p where upper(p.code)=:code and r.ruleType='PRODUCT'")
+    Optional<ProductPromotionRule> findByCodeForPos(@Param("code") String code);
     @Query("select r from ProductPromotionRule r join fetch r.promotion p "
             + "where r.ruleType='PRODUCT' and r.discountType='PERCENT' and p.deletedAt is null "
             + "order by p.createdAt desc, r.id")

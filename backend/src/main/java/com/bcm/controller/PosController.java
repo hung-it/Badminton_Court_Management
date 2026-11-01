@@ -27,6 +27,7 @@ import java.util.Map;
 public class PosController {
 
     private final PosService posService;
+    private final com.bcm.service.ProductPriceService productPrices;
     private final com.bcm.repository.CustomerRepository customerRepository;
     private final com.bcm.repository.ProductRepository productRepository;
     private final com.bcm.service.ProductPromotionService productPromotions;
@@ -46,7 +47,7 @@ public class PosController {
 
     @GetMapping("/products")
     public ApiResponse<List<com.bcm.entity.Product>> products() {
-        return ApiResponse.success(productRepository.findByDeletedAtIsNullOrderByNameAsc());
+        return ApiResponse.success(productPrices.sellable());
     }
 
     @GetMapping("/product-promotions")
@@ -66,12 +67,14 @@ public class PosController {
     }
 
     @PostMapping("/sales")
+    @io.swagger.v3.oas.annotations.Operation(summary="Lưu đơn POS",description="promotionCode tùy chọn là mã khuyến mãi PRODUCT. Khi nhập mã, kiểm tra tổng số lượng giỏ và hiệu lực; áp tỷ lệ cho các mặt hàng trong đơn, không cần mặt hàng gốc. Chọn ưu đãi tốt nhất mỗi dòng, không cộng dồn và không thay đổi tiền sân. Kiểm tra lại khi lưu.")
     public ResponseEntity<ApiResponse<Invoice>> sell(@Valid @RequestBody PosSaleRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Bán hàng thành công", posService.sell(request)));
     }
 
     @PostMapping("/quote")
+    @io.swagger.v3.oas.annotations.Operation(summary="Báo giá POS",description="promotionCode được kiểm tra phía server. Mã sai, hết hạn hoặc không đủ điều kiện trả 400. Không nhập mã vẫn tự áp dụng ưu đãi PRODUCT tốt nhất.")
     public ApiResponse<com.bcm.dto.response.PosQuoteResponse> quote(@Valid @RequestBody PosSaleRequest request) {
         return ApiResponse.success(posService.quote(request));
     }
