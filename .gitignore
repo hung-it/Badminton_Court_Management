@@ -15,6 +15,7 @@ backend/target/
 **/target/
 *.local
 *.local.png
+env
 .env
 .env.*
 !.env.example
