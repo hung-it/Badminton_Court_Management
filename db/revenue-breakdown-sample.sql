@@ -110,9 +110,11 @@ VALUES
  ('b2000000-0000-4000-8000-000000000053',-903,NULL,'Sân báo cáo 3','WOODEN_FLOOR','AVAILABLE',150000,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
 ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, type=EXCLUDED.type, status=EXCLUDED.status, base_price=EXCLUDED.base_price, updated_at=CURRENT_TIMESTAMP;
 
+-- Reuse the existing 06:00-07:00 slot seeded by migration.sql; do not add demo-only slot times.
 INSERT INTO time_slots(id,start_time,end_time,price_multiplier,created_at,updated_at)
-VALUES ('b2000000-0000-4000-8000-000000000061','06:00','07:30',1.0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
-ON CONFLICT (id) DO UPDATE SET updated_at=CURRENT_TIMESTAMP;
+VALUES ('b2000000-0000-4000-8000-000000000061','06:00','07:00',1.0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+ON CONFLICT (id) DO UPDATE SET start_time=EXCLUDED.start_time, end_time=EXCLUDED.end_time,
+    price_multiplier=EXCLUDED.price_multiplier, updated_at=CURRENT_TIMESTAMP;
 
 -- Bookings tie paid invoices to courts so the court slide can split the court fee.
 INSERT INTO bookings(id,customer_id,status,court_fee,discount_amount,created_at,updated_at,expires_at)

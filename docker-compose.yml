@@ -61,6 +61,12 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ./db/revenue-breakdown-sample.sql
+        target: /docker-entrypoint-initdb.d/08-revenue-breakdown-sample.sql
+        read_only: true
+        bind:
+          create_host_path: false
 
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bcm_admin -d badminton_court_db"]
