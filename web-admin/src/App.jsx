@@ -4,11 +4,12 @@ import CourtBrowser from './CourtBrowser.jsx';
 import TimeSlotFilters from './TimeSlotFilters.jsx';
 import RevenueInvoices from './RevenueInvoices.jsx';
 import Statistics from './Statistics.jsx';
+import RevenueBreakdown from './RevenueBreakdown.jsx';
 import PeriodFilter,{inPeriod} from './PeriodFilter.jsx';
 const money=n=>new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND'}).format(n||0);
 const labels={STANDARD_MAT:'Thảm tiêu chuẩn',WOODEN_FLOOR:'Sàn gỗ',AVAILABLE:'Hoạt động',MAINTENANCE:'Bảo trì',CLOSED:'Đóng cửa',GOODS:'Hàng hóa',SERVICE:'Dịch vụ'};
 const masterTabs=[['courts','Sân cầu'],['time-slots','Khung giờ & giá'],['categories','Danh mục'],['products','Hàng hóa & dịch vụ'],['product-promotions','Khuyến mãi']];
-const opTabs=[['pos','Bán tại quầy'],['checkout','Trả sân'],['inventory','Nhập kho'],['analytics','Doanh thu'],['statistics','Thống kê']];
+const opTabs=[['pos','Bán tại quầy'],['checkout','Trả sân'],['inventory','Nhập kho'],['analytics','Doanh thu'],['statistics','Thống kê'],['revenue-breakdown','Doanh thu theo đối tượng']];
 const allTabs=[...masterTabs,...opTabs];
 const initial={courts:{courtNumber:1,name:'',type:'STANDARD_MAT',status:'AVAILABLE',basePrice:100000,district:'',address:''},'time-slots':{startTime:'06:00',endTime:'07:00',priceMultiplier:1},categories:{categoryName:''},products:{categoryId:'',name:'',type:'GOODS',unit:'cái',price:0,stockQuantity:0}};
 function defaultMultiplier(start,end){return start>='17:00'&&end<='21:00'?1.5:1;}
@@ -441,6 +442,7 @@ useEffect(()=>{
 
 
  {tab==='statistics'&&<Statistics api={api}/>}
+ {tab==='revenue-breakdown'&&<RevenueBreakdown api={api}/>}
  {/* INVENTORY PANEL */}
  {tab==='inventory'&&<div className="inventory-panel">
   <div className="page-heading"><div><span className="eyebrow">INVENTORY</span><h1>Nhập kho</h1></div><button className="primary" onClick={()=>{setImportForm({supplierName:'',productName:'',quantity:'',totalAmount:''});setError('');setImportModalOpen(true);}}>＋ Tạo phiếu nhập</button></div>

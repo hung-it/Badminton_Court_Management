@@ -40,6 +40,7 @@ public class CheckoutService {
     private final InvoiceRepository invoiceRepository;
     private final InvoiceDetailRepository invoiceDetailRepository;
     private final com.bcm.repository.PaymentTransactionRepository bookingPayments;
+    private final com.bcm.security.CurrentStaffService currentStaff;
 
     public UUID resolveBookingId(String input) {
         if (input == null || input.isBlank()) {
@@ -148,6 +149,7 @@ public class CheckoutService {
         BigDecimal totalAmount = courtFee.add(productFee).subtract(discountAmount);
         UUID customerId = booking.getCustomer() != null ? booking.getCustomer().getId() : null;
 
+        UUID cashierId = currentStaff.currentStaffId().orElse(null);
         Invoice invoice = Invoice.builder()
                 .bookingId(bookingId)
                 .customerId(customerId)
@@ -157,6 +159,8 @@ public class CheckoutService {
                 .productFee(productFee)
                 .discountAmount(discountAmount)
                 .totalAmount(totalAmount)
+                .createdBy(cashierId)
+                .updatedBy(cashierId)
                 .build();
         Invoice savedInvoice = invoiceRepository.saveAndFlush(invoice);
 

@@ -26,6 +26,7 @@ public class AnalyticsController {
 
     private final AnalyticsService analyticsService;
     private final com.bcm.service.StatisticsService statisticsService;
+    private final com.bcm.service.RevenueBreakdownService revenueBreakdownService;
 
     @GetMapping("/statistics")
     @Operation(summary="Thống kê thu, chi, lợi nhuận theo tháng/quý/năm/các năm", description="MONTH: 12 tháng; QUARTER: 4 quý; YEAR: năm được chọn; YEARS: mỗi năm trong fromYear..toYear, tối đa 50 năm. Thu từ hóa đơn PAID chưa xóa; chi từ phiếu nhập không CANCELLED, gồm phiếu chưa duyệt, theo import_date. Lợi nhuận = thu - chi.")
@@ -35,6 +36,18 @@ public class AnalyticsController {
             @RequestParam(required=false) Integer fromYear,
             @RequestParam(required=false) Integer toYear) {
         return ApiResponse.success(statisticsService.report(period,year==null?LocalDate.now().getYear():year,fromYear,toYear));
+    }
+
+    @GetMapping("/revenue-breakdown")
+    @Operation(summary = "Doanh thu theo nhân viên, khách hàng, sản phẩm và tiền sân",
+            description = "Chỉ tính hóa đơn PAID chưa xóa. QUARTER trả bốn quý; YEAR trả cả năm. Tổng sản phẩm và tiền sân được phân bổ từ tổng sau giảm giá để khớp tổng hóa đơn. Chi tiết sản phẩm kèm thu ngân, khách hàng và số lượng; tiền sân chia theo sân.")
+    public ApiResponse<com.bcm.dto.response.RevenueBreakdownResponse> revenueBreakdown(
+            @RequestParam(defaultValue = "QUARTER") String period,
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) Integer quarter,
+            @RequestParam(defaultValue = "false") boolean detail) {
+        return ApiResponse.success(revenueBreakdownService.report(period,
+                year == null ? LocalDate.now().getYear() : year, quarter, detail));
     }
 
     @GetMapping("/invoices")

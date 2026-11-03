@@ -41,6 +41,7 @@ public class PosService {
     private final ProductPromotionService productPromotions;
     private final ProductPriceService productPrices;
     private final com.bcm.repository.BookingRepository bookings;
+    private final com.bcm.security.CurrentStaffService currentStaff;
 
     @Transactional
     public Invoice sell(PosSaleRequest request) {
@@ -109,6 +110,7 @@ public class PosService {
         }
         UUID customerId = resolveCustomerId(request.getCustomerId());
 
+        UUID cashierId = currentStaff.currentStaffId().orElse(null);
         Invoice invoice = Invoice.builder()
                 .bookingId(request.getBookingId())
                 .customerId(customerId)
@@ -118,8 +120,8 @@ public class PosService {
                 .productFee(productFee)
                 .discountAmount(discountAmount)
                 .totalAmount(courtFee.add(productFee).subtract(discountAmount))
-                .createdBy(request.getStaffId())
-                .updatedBy(request.getStaffId())
+                .createdBy(cashierId)
+                .updatedBy(cashierId)
                 .build();
         Invoice savedInvoice = invoiceRepository.saveAndFlush(invoice);
 

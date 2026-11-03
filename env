@@ -1,0 +1,20 @@
+# ============================================
+# BOOKING PAYMENT - LOCAL SANDBOX
+# DO NOT COMMIT THIS FILE
+# ============================================
+
+BOOKING_PAYMENT_ENABLED_METHODS=VNPAY,BANK_TRANSFER
+
+
+# ============================================
+# VNPAY SANDBOX
+# Fill these values locally
+# ============================================
+
+BOOKING_VNPAY_PAYMENT_URL=https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+
+BOOKING_VNPAY_TMN_CODE=SU7C47PP
+BOOKING_VNPAY_HASH_SECRET=OCCXIICWPYESINMCGANDUWJQRVWIWVYV
+BOOKING_VNPAY_RETURN_URL=https://basically-preflight-antidote.ngrok-free.dev/api/payments/vnpay/return
+BOOKING_PAYMENT_FRONTEND_RESULT_URL=http://localhost:5174/payment-result
+
