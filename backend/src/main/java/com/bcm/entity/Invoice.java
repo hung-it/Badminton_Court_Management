@@ -31,8 +31,14 @@ public class Invoice extends BaseEntity {
     @Column(name = "promotion_id")
     private UUID promotionId;
 
-    @Column(name = "payment_method", nullable = false, length = 50)
+    // Optional single-method summary. Multiple methods are derived from receipts.
+    @Column(name = "payment_method", length = 50)
     private String paymentMethod;
+
+    private UUID posRequestKey;
+    private String requestFingerprint;
+    private UUID createdByUser;
+    private UUID parentInvoiceId;
 
     @Column(nullable = false, length = 20)
     private String status;

@@ -39,7 +39,7 @@ import java.util.UUID;
 public class RevenueBreakdownService {
 
     private static final String PAID_STATUS = "PAID";
-    private static final String UNASSIGNED_STAFF_NAME = "Chưa gán nhân viên";
+    private static final String UNASSIGNED_STAFF_NAME = "Online / Admin / chưa đối soát";
     private static final String WALK_IN_CUSTOMER_NAME = "Khách vãng lai";
     private static final String UNKNOWN_COURT_NAME = "Không xác định sân";
     private static final int SCALE = 2;
@@ -230,7 +230,7 @@ public class RevenueBreakdownService {
 
         Map<UUID, List<LineRow>> linesByInvoice = new LinkedHashMap<>();
         for (LineRow row : jdbc.query(
-                "SELECT d.invoice_id, d.product_id, d.quantity, d.unit_price, d.discount_amount "
+                "SELECT d.invoice_id, d.product_id, d.quantity, d.unit_price, d.discount_amount, d.added_by "
                         + "FROM invoice_details d JOIN invoices i ON i.id = d.invoice_id "
                         + "WHERE i.status = '" + PAID_STATUS + "' AND i.deleted_at IS NULL "
                         + "AND i.created_at >= ? AND i.created_at < ?",
@@ -238,7 +238,7 @@ public class RevenueBreakdownService {
                         rs.getObject("product_id", UUID.class),
                         rs.getBigDecimal("quantity"),
                         rs.getBigDecimal("unit_price"),
-                        rs.getBigDecimal("discount_amount")),
+                        rs.getBigDecimal("discount_amount"),rs.getObject("added_by",UUID.class)),
                 from, to)) {
             linesByInvoice.computeIfAbsent(row.invoiceId(), k -> new ArrayList<>()).add(row);
         }
@@ -301,7 +301,7 @@ public class RevenueBreakdownService {
             }
             for (int index = 0; index < lineShares.size(); index++) {
                 LineShare share = lineShares.get(index);
-                DetailKey key = new DetailKey(share.line().productId(), invoice.staffId(),
+                DetailKey key = new DetailKey(share.line().productId(), share.line().addedBy(),
                         invoice.customerId());
                 DetailAccumulator accumulator = products.computeIfAbsent(key, k -> new DetailAccumulator());
                 accumulator.quantity = accumulator.quantity.add(share.line().quantity());
@@ -432,13 +432,24 @@ public class RevenueBreakdownService {
     }
 
     private List<RevenueByKey> staffTotals(LocalDateTime from, LocalDateTime to) {
-        return jdbc.query(
-                "SELECT created_by AS group_key, SUM(total_amount) AS revenue FROM invoices "
-                        + "WHERE status = '" + PAID_STATUS + "' AND deleted_at IS NULL "
-                        + "AND created_at >= ? AND created_at < ? "
-                        + "GROUP BY created_by",
-                (rs, rowNum) -> new RevenueByKey(rs.getObject("group_key", UUID.class), rs.getBigDecimal("revenue")),
-                from, to);
+        // Invoice period matches Statistics. Cashier attribution follows receipts, never invoice.created_by.
+        // Online receipts and legacy unexplained balances remain visible in the unassigned row.
+        return jdbc.query("""
+            WITH paid AS (
+                SELECT id,booking_id,parent_invoice_id,total_amount FROM invoices
+                WHERE status='PAID' AND deleted_at IS NULL AND created_at>=? AND created_at<?
+            ), receipts AS (
+                SELECT i.id,p.confirmed_by,p.amount FROM paid i JOIN payment_transactions p
+                  ON (p.invoice_id=i.id OR (p.booking_id=i.booking_id AND i.parent_invoice_id IS NULL))
+                WHERE p.status='SUCCESS'
+            ), parts AS (
+                SELECT confirmed_by AS group_key,amount AS revenue FROM receipts
+                UNION ALL
+                SELECT NULL,i.total_amount-COALESCE(SUM(r.amount),0) FROM paid i
+                LEFT JOIN receipts r ON r.id=i.id GROUP BY i.id,i.total_amount
+                HAVING i.total_amount<>COALESCE(SUM(r.amount),0)
+            ) SELECT group_key,SUM(revenue) AS revenue FROM parts GROUP BY group_key
+            """, (rs,n)->new RevenueByKey(rs.getObject("group_key",UUID.class),rs.getBigDecimal("revenue")),from,to);
     }
 
     private List<RevenueByKey> customerTotals(LocalDateTime from, LocalDateTime to) {
@@ -500,7 +511,7 @@ public class RevenueBreakdownService {
                               BigDecimal totalAmount) {}
 
     private record LineRow(UUID invoiceId, UUID productId, BigDecimal quantity, BigDecimal unitPrice,
-                           BigDecimal discountAmount) {}
+                           BigDecimal discountAmount, UUID addedBy) {}
 
     private record LineShare(LineRow line, BigDecimal weight) {}
 

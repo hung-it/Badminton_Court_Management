@@ -22,6 +22,21 @@ public class CurrentStaffService {
 
     private final JdbcTemplate jdbc;
 
+    public UUID requireUserId() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()
+                || !(auth.getPrincipal() instanceof UserPrincipal principal)
+                || auth.getAuthorities().stream().noneMatch(a -> java.util.Set.of("ROLE_ADMIN", "ROLE_STAFF").contains(a.getAuthority())))
+            throw new org.springframework.security.access.AccessDeniedException("Authenticated ADMIN/STAFF required");
+        UUID userId = UUID.fromString(principal.getId());
+        if (!Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM users WHERE id=? AND deleted_at IS NULL)", Boolean.class, userId)))
+            throw new org.springframework.security.access.AccessDeniedException("Inactive actor");
+        if (auth.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
+                && findStaffIdByUserId(userId).isEmpty())
+            throw new org.springframework.security.access.AccessDeniedException("Active staff profile required");
+        return userId;
+    }
+
     /**
      * @return the {@code staffs.id} of the authenticated user, or empty when the account has
      *         no active staff profile.

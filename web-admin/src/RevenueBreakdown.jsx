@@ -51,7 +51,7 @@ export default function RevenueBreakdown({api,initialDimension}){
    <section className="content-panel breakdown-detail-panel">
     <div className="toolbar breakdown-toolbar"><h3>Chi tiết nội dung{report.period==='YEAR'?'':' theo quý'}</h3><div className="breakdown-quarters" role="group" aria-label="Chọn kỳ chi tiết">{report.period==='YEAR'?null:report.periods.map(p=><button key={p.key} type="button" aria-pressed={(quarter||report.periods[0]?.key)===p.key} className={(quarter||report.periods[0]?.key)===p.key?'primary':'secondary'} onClick={()=>pickQuarter(p.key)}>{p.label}</button>)}</div></div>
     {!detail?<p className="empty">Chưa có dữ liệu chi tiết cho kỳ này.</p>:<>
-     <div className="table-scroll"><table className="breakdown-detail-table"><thead><tr><th scope="col">Sản phẩm</th><th scope="col">Nhân viên thu ngân</th><th scope="col">Khách hàng</th><th scope="col">Số lượng</th><th scope="col">Tiền dòng hàng</th></tr></thead><tbody>
+     <div className="table-scroll"><table className="breakdown-detail-table"><thead><tr><th scope="col">Sản phẩm</th><th scope="col">Nhân viên thêm hàng</th><th scope="col">Khách hàng</th><th scope="col">Số lượng</th><th scope="col">Tiền dòng hàng</th></tr></thead><tbody>
       {!detail.products.length?<tr><td colSpan="5" className="empty-cell">Không có dòng hàng trong kỳ này.</td></tr>:detail.products.map(row=><tr key={(row.productId||'p')+'-'+(row.staffId||'s')+'-'+(row.customerId||'c')}><th scope="row">{row.productName}</th><td>{row.staffName}</td><td>{row.customerName}</td><td>{number(row.totalQuantity)}</td><td><strong>{money(row.total)}</strong></td></tr>)}
      </tbody></table></div>
      <div className="breakdown-totals">

@@ -41,6 +41,7 @@ public class CheckoutService {
     private final InvoiceDetailRepository invoiceDetailRepository;
     private final com.bcm.repository.PaymentTransactionRepository bookingPayments;
     private final com.bcm.security.CurrentStaffService currentStaff;
+    private final PosService pos;
 
     public UUID resolveBookingId(String input) {
         if (input == null || input.isBlank()) {
@@ -113,68 +114,80 @@ public class CheckoutService {
 
     @Transactional
     public ApiResponse<CheckoutResponse> checkout(UUID bookingId, String paymentMethod) {
-        Booking booking = bookingRepository.findByIdForExpiration(bookingId)
-                .orElseThrow(() -> new ResourceNotFoundException("Booking", "id", bookingId));
+        return checkout(bookingId,new com.bcm.dto.request.CheckoutRequest(paymentMethod));
+    }
 
-        String normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
-        if (booking.getStatus() != BookingStatus.PAID && booking.getStatus() != BookingStatus.CHECKED_IN) {
+    @Transactional
+    public ApiResponse<CheckoutResponse> checkout(UUID bookingId, com.bcm.dto.request.CheckoutRequest request) {
+        UUID actor=currentStaff.requireUserId();
+        Booking booking=bookingRepository.findByIdForExpiration(bookingId)
+            .orElseThrow(()->new ResourceNotFoundException("Booking not found"));
+        if(booking.getStatus()==BookingStatus.COMPLETED) {
+            var paid=invoiceRepository.findByBookingIdAndStatusForUpdate(bookingId,PAID_STATUS).stream()
+                .filter(i->i.getParentInvoiceId()==null).toList();
+            if(paid.size()!=1) throw new BadRequestException("Completed booking requires invoice reconciliation");
+            return ApiResponse.success("Checkout already completed", response(booking,paid.get(0),verifiedCourtReceipt(booking)));
+        }
+        if(booking.getStatus()!=BookingStatus.PAID && booking.getStatus()!=BookingStatus.CHECKED_IN)
             throw new BadRequestException("Booking must already be paid before staff checkout");
+        if(invoiceRepository.findByBookingIdAndStatusForUpdate(bookingId,PAID_STATUS).stream().anyMatch(i->i.getParentInvoiceId()==null))
+            throw new BadRequestException("Booking already has a paid main invoice; reconciliation required");
+        BigDecimal paidCourt=verifiedCourtReceipt(booking);
+        var drafts=invoiceRepository.findByBookingIdAndStatusForUpdate(bookingId,PENDING_POS_STATUS);
+        for(var draft:drafts) {
+            if(draft.getParentInvoiceId()!=null || bookingPayments.existsByInvoiceId(draft.getId()))
+                throw new BadRequestException("Draft already linked or has payment transactions; reconciliation required");
         }
-        BigDecimal paidCourt = verifiedCourtReceipt(booking);
-        BigDecimal courtFee = valueOrZero(booking.getCourtFee());
-        BigDecimal productFee = valueOrZero(
-                invoiceRepository.sumProductFeeByBookingIdAndStatus(bookingId, PENDING_POS_STATUS));
-        BigDecimal discountAmount = valueOrZero(
-                invoiceRepository.sumDiscountAmountByBookingIdAndStatus(bookingId, PENDING_POS_STATUS))
-                .add(booking.getDiscountAmount());
-        BigDecimal totalAmount = courtFee.add(productFee).subtract(discountAmount);
-        UUID customerId = booking.getCustomer() != null ? booking.getCustomer().getId() : null;
-
-        UUID cashierId = currentStaff.currentStaffId().orElse(null);
-        Invoice invoice = Invoice.builder()
-                .bookingId(bookingId)
-                .customerId(customerId)
-                .paymentMethod(normalizedPaymentMethod)
-                .status(PAID_STATUS)
-                .courtFee(courtFee)
-                .productFee(productFee)
-                .discountAmount(discountAmount)
-                .totalAmount(totalAmount)
-                .createdBy(cashierId)
-                .updatedBy(cashierId)
-                .build();
-        Invoice savedInvoice = invoiceRepository.saveAndFlush(invoice);
-
-        List<Invoice> pendingPosInvoices = invoiceRepository
-                .findByBookingIdAndStatus(bookingId, PENDING_POS_STATUS);
-        List<UUID> pendingInvoiceIds = pendingPosInvoices.stream().map(Invoice::getId).toList();
-        if (!pendingInvoiceIds.isEmpty()) {
-            List<InvoiceDetail> details = invoiceDetailRepository.findByInvoiceIdIn(pendingInvoiceIds);
-            for (InvoiceDetail detail : details) {
-                detail.setInvoiceId(savedInvoice.getId());
-            }
-            invoiceDetailRepository.saveAll(details);
+        BigDecimal productFee=drafts.stream().map(Invoice::getProductFee).reduce(BigDecimal.ZERO,BigDecimal::add);
+        BigDecimal productDiscount=drafts.stream().map(Invoice::getDiscountAmount).reduce(BigDecimal.ZERO,BigDecimal::add);
+        BigDecimal total=booking.getFinalAmount().add(productFee).subtract(productDiscount);
+        BigDecimal due=total.subtract(paidCourt);
+        if(due.signum()<0) throw new BadRequestException("Receipt exceeds invoice; reconciliation required");
+        if(request.getExpectedAmountDue()==null || due.compareTo(request.getExpectedAmountDue())!=0)
+            throw new com.bcm.exception.DuplicateResourceException("Bill changed; reload and confirm the current amount due");
+        String method=null;
+        if(due.signum()>0) {
+            if(!request.isPaymentConfirmed()) throw new BadRequestException("Staff must confirm receipt of the remaining amount");
+            method=pos.manualMethod(request.getPaymentMethod());
         }
-
-        pendingPosInvoices.forEach(posInvoice -> posInvoice.setStatus("CANCELLED"));
-        invoiceRepository.saveAll(pendingPosInvoices);
-
+        var methods=new java.util.HashSet<String>();
+        bookingPayments.findBookingHistory(bookingId).stream().filter(p->p.getStatus()==com.bcm.entity.PaymentStatus.SUCCESS)
+            .forEach(p->methods.add(p.getPaymentMethod().name()));
+        if(method!=null) methods.add(method);
+        // Zero-value invoices still carry a valid summary, but never a fabricated payment.
+        String summary=methods.size()==1?methods.iterator().next():null;
+        Invoice invoice=Invoice.builder().bookingId(bookingId).customerId(booking.getCustomer().getId())
+            .status(PAID_STATUS).paymentMethod(summary).courtFee(booking.getCourtFee()).productFee(productFee)
+            .discountAmount(booking.getDiscountAmount().add(productDiscount)).totalAmount(total)
+            .createdBy(currentStaff.currentStaffId().orElse(null)).updatedBy(currentStaff.currentStaffId().orElse(null))
+            .createdByUser(actor).build();
+        invoice=invoiceRepository.saveAndFlush(invoice);
+        for(var draft:drafts) {
+            for(var line:invoiceDetailRepository.findByInvoiceId(draft.getId())) line.setInvoiceId(invoice.getId());
+            draft.setParentInvoiceId(invoice.getId()); draft.setStatus("CANCELLED");
+        }
+        pos.recordReceipt(invoice,null,due,method,request.getReference());
         booking.setStatus(BookingStatus.COMPLETED);
-        bookingRepository.save(booking);
+        return ApiResponse.success("Checkout successful",response(booking,invoice,paidCourt));
+    }
 
-        CheckoutResponse response = CheckoutResponse.builder()
-                .bookingId(bookingId)
-                .invoiceId(savedInvoice.getId())
-                .courtFee(courtFee)
-                .productFee(productFee)
-                .discountAmount(discountAmount)
-                .totalAmount(totalAmount)
-                .courtDiscount(booking.getDiscountAmount())
-                .productDiscount(discountAmount.subtract(booking.getDiscountAmount()))
-                .paidCourtAmount(paidCourt)
-                .amountDue(totalAmount.subtract(paidCourt).max(BigDecimal.ZERO))
-                .build();
-        return ApiResponse.success("Checkout thành công", response);
+    private CheckoutResponse response(Booking booking,Invoice invoice,BigDecimal paidCourt) {
+        var receipts=bookingPayments.findInvoiceReceipts(invoice.getId(),booking.getId()).stream()
+            .filter(p->p.getStatus()==com.bcm.entity.PaymentStatus.SUCCESS).toList();
+        boolean valid=receipts.stream().allMatch(p->p.getAmount().signum()>0
+            && p.getTransactionDate()!=null && p.getTransactionId()!=null
+            && (("GATEWAY".equals(p.getSource()) && p.getPaymentMethod()==com.bcm.entity.PaymentMethod.VNPAY)
+                || ("MANUAL".equals(p.getSource()) && p.getConfirmedByUser()!=null)));
+        BigDecimal received=receipts.stream().map(com.bcm.entity.PaymentTransaction::getAmount).reduce(BigDecimal.ZERO,BigDecimal::add);
+        if(!valid || received.compareTo(invoice.getTotalAmount())!=0)
+            throw new BadRequestException("Invoice receipts do not reconcile with paid total");
+        return CheckoutResponse.builder().bookingId(booking.getId()).invoiceId(invoice.getId())
+            .courtFee(invoice.getCourtFee()).productFee(invoice.getProductFee()).discountAmount(invoice.getDiscountAmount())
+            .totalAmount(invoice.getTotalAmount()).courtDiscount(booking.getDiscountAmount())
+            .productDiscount(invoice.getDiscountAmount().subtract(booking.getDiscountAmount()))
+            .paidCourtAmount(paidCourt).amountDue(invoice.getTotalAmount().subtract(paidCourt))
+            .collectedAmount(invoice.getTotalAmount().subtract(paidCourt)).paymentMethod(invoice.getPaymentMethod())
+            .paymentMethods(receipts.stream().map(p->p.getPaymentMethod().name()).distinct().toList()).build();
     }
 
     @Transactional(readOnly=true)
@@ -194,11 +207,15 @@ public class CheckoutService {
     // A PAID booking header alone is not evidence of receipt. Never collect its court fee again
     // or silently treat an unverified payment as received; require reconciliation instead.
     private BigDecimal verifiedCourtReceipt(Booking booking) {
-        var receipts = bookingPayments.findBookingHistory(booking.getId()).stream()
+        var all=bookingPayments.findBookingHistory(booking.getId());
+        if(booking.getFinalAmount().signum()==0 && all.stream().noneMatch(p->p.getStatus()==com.bcm.entity.PaymentStatus.SUCCESS)) return BigDecimal.ZERO;
+        var receipts = all.stream()
                 .filter(p -> p.getStatus() == com.bcm.entity.PaymentStatus.SUCCESS
                         && p.getTransactionId() != null && p.getTransactionDate() != null
+                        && (("GATEWAY".equals(p.getSource()) && p.getPaymentMethod()==com.bcm.entity.PaymentMethod.VNPAY)
+                            || ("MANUAL".equals(p.getSource()) && p.getConfirmedByUser()!=null))
                         && p.getAmount().compareTo(booking.getFinalAmount()) == 0).toList();
-        if (receipts.size() != 1) {
+        if (receipts.size() != 1 || all.stream().filter(p->p.getStatus()==com.bcm.entity.PaymentStatus.SUCCESS).count()!=1) {
             throw new BadRequestException("Booking requires exactly one verified full court receipt before checkout");
         }
         return receipts.get(0).getAmount();
@@ -208,11 +225,4 @@ public class CheckoutService {
         return amount == null ? BigDecimal.ZERO : amount;
     }
 
-    private String normalizePaymentMethod(String paymentMethod) {
-        String normalized = paymentMethod == null ? "CASH" : paymentMethod.trim().toUpperCase();
-        if (!normalized.equals("CASH") && !normalized.equals("VNPAY")) {
-            throw new BadRequestException("Phương thức thanh toán phải là CASH hoặc VNPAY");
-        }
-        return normalized;
-    }
 }

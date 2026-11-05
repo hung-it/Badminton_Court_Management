@@ -217,7 +217,7 @@ BEGIN
   DELETE FROM booking_details WHERE booking_id=ANY(booking_ids);
   DELETE FROM bookings WHERE id=ANY(booking_ids);
  END IF;
- IF EXISTS(SELECT 1 FROM invoices WHERE payment_method NOT IN ('CASH','VNPAY')) OR EXISTS(SELECT 1 FROM payment_transactions WHERE payment_method NOT IN ('CASH','VNPAY')) THEN
+ IF EXISTS(SELECT 1 FROM invoices WHERE payment_method NOT IN ('CASH','VNPAY','MIXED')) OR EXISTS(SELECT 1 FROM payment_transactions WHERE payment_method NOT IN ('CASH','VNPAY')) THEN
   RAISE EXCEPTION 'Unsupported historical payments require a reviewed data migration; no automatic conversion is permitted';
  END IF;
  FOREACH t IN ARRAY ARRAY['invoices','payment_transactions'] LOOP
@@ -233,3 +233,63 @@ BEGIN
 END $methods$;
 COMMIT;
 -- END SECTION: payment-method-compatibility
+
+-- BEGIN SECTION: invoice-receipts
+-- No seed or historical financial mutation. Stop and report incompatible records.
+BEGIN;
+SET LOCAL lock_timeout = '5s';
+LOCK TABLE invoices,payment_transactions IN SHARE ROW EXCLUSIVE MODE;
+DO $$ DECLARE blocked text; BEGIN
+ SELECT string_agg(id::text, ', ') INTO blocked FROM (
+ SELECT id FROM invoices WHERE payment_method NOT IN ('CASH','VNPAY','MIXED') OR (status='DRAFT' AND payment_method IS NOT NULL)
+ UNION ALL SELECT id FROM payment_transactions WHERE payment_method NOT IN ('CASH','VNPAY')) x;
+ IF blocked IS NOT NULL THEN RAISE EXCEPTION 'Payment migration blocked by historical records requiring review: %', blocked; END IF;
+END $$;
+ALTER TABLE invoices ALTER COLUMN payment_method DROP NOT NULL;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pos_request_key UUID;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS request_fingerprint VARCHAR(64);
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS created_by_user UUID REFERENCES users(id);
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS parent_invoice_id UUID REFERENCES invoices(id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pos_request_key ON invoices(pos_request_key) WHERE pos_request_key IS NOT NULL;
+ALTER TABLE invoice_details ADD COLUMN IF NOT EXISTS product_name VARCHAR(255);
+ALTER TABLE invoice_details ADD COLUMN IF NOT EXISTS added_by UUID REFERENCES staffs(id);
+ALTER TABLE invoice_details ADD COLUMN IF NOT EXISTS added_by_user UUID REFERENCES users(id);
+-- NULL on legacy rows: inventory provenance must be reviewed before cancellation.
+ALTER TABLE invoice_details ADD COLUMN IF NOT EXISTS stock_deducted BOOLEAN;
+DO $$ DECLARE blocked text; BEGIN
+ IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='payment_transactions' AND column_name='source') THEN
+ SELECT string_agg(id::text,', ') INTO blocked FROM payment_transactions WHERE payment_method='CASH' OR note LIKE 'STAFF_RECEIVED;%';
+ IF blocked IS NOT NULL THEN RAISE EXCEPTION 'Legacy CASH receipt actors must be reviewed: %',blocked; END IF;
+ END IF;
+END $$;
+ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'GATEWAY';
+ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS confirmed_by UUID REFERENCES staffs(id);
+ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS confirmed_by_user UUID REFERENCES users(id);
+ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS reference VARCHAR(255);
+-- Convert only a reconciled multi-method summary, never its underlying receipts.
+DO $$ DECLARE blocked text; BEGIN
+ SELECT string_agg(i.id::text,', ') INTO blocked FROM invoices i WHERE i.payment_method='MIXED' AND
+ (SELECT count(DISTINCT p.payment_method)<2 OR coalesce(sum(p.amount),0)<>i.total_amount FROM payment_transactions p
+ WHERE p.status='SUCCESS' AND (p.invoice_id=i.id OR p.booking_id=i.booking_id));
+ IF blocked IS NOT NULL THEN RAISE EXCEPTION 'Unreconciled multi-method invoices: %',blocked; END IF;
+END $$;
+ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_payment_method_check;
+UPDATE invoices SET payment_method=NULL WHERE payment_method='MIXED';
+ALTER TABLE invoices ADD CONSTRAINT invoices_payment_method_check CHECK (
+ (status='DRAFT' AND payment_method IS NULL) OR
+ (status='PAID' AND (payment_method IS NULL OR payment_method IN ('CASH','VNPAY'))) OR
+ (status IN ('CANCELLED','REFUNDED') AND (payment_method IS NULL OR payment_method IN ('CASH','VNPAY'))));
+ALTER TABLE payment_transactions DROP CONSTRAINT IF EXISTS payment_transactions_payment_method_check;
+ALTER TABLE payment_transactions ADD CONSTRAINT payment_transactions_payment_method_check CHECK(payment_method IN ('CASH','VNPAY'));
+DO $$ BEGIN
+ IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='payment_transactions'::regclass AND conname='chk_receipt_source') THEN
+ ALTER TABLE payment_transactions ADD CONSTRAINT chk_receipt_source CHECK (
+ (source='GATEWAY' AND payment_method='VNPAY' AND confirmed_by IS NULL AND confirmed_by_user IS NULL) OR
+ (source='MANUAL' AND confirmed_by_user IS NOT NULL AND transaction_date IS NOT NULL AND status='SUCCESS' AND amount>0));
+ END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_receipt_staff ON payment_transactions(confirmed_by) WHERE status='SUCCESS';
+COMMENT ON COLUMN invoices.payment_method IS 'Receipt summary only. NULL for DRAFT, multiple methods or no receipts. payment_transactions is the evidence.';
+COMMENT ON COLUMN invoice_details.stock_deducted IS 'Stock removed at POS append; retained at checkout; restored once when an unmerged DRAFT is cancelled. NULL means unknown legacy provenance.';
+COMMIT;
+-- END SECTION: invoice-receipts

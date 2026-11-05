@@ -17,12 +17,12 @@ import java.util.concurrent.*;
 import static org.assertj.core.api.Assertions.*;
 
 @SpringBootTest(properties="booking.expiration-enabled=false")
-@EnabledIfEnvironmentVariable(named="BCM_TEST_DB_URL",matches="jdbc:postgresql:.*")
+@EnabledIfEnvironmentVariable(named="BCM_INVOICE_DEV_DB_URL",matches="jdbc:postgresql:.*")
 class PosPromotionCodePostgresTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry r) {
-        r.add("spring.datasource.url",()->System.getenv("BCM_TEST_DB_URL"));
-        r.add("spring.datasource.username",()->System.getenv("BCM_TEST_DB_USERNAME"));
-        r.add("spring.datasource.password",()->System.getenv("BCM_TEST_DB_PASSWORD"));
+        r.add("spring.datasource.url",()->System.getenv("BCM_INVOICE_DEV_DB_URL"));
+        r.add("spring.datasource.username",()->System.getenv("BCM_INVOICE_DEV_DB_USERNAME"));
+        r.add("spring.datasource.password",()->System.getenv("BCM_INVOICE_DEV_DB_PASSWORD"));
     }
     @Autowired PosService pos;
     @Autowired ProductPromotionService promotions;
@@ -35,7 +35,11 @@ class PosPromotionCodePostgresTest {
     }
     PosSaleRequest request(String voucher,int quantity) {
         var r=new PosSaleRequest(customer,null,null,"CASH",BigDecimal.ZERO,BigDecimal.ZERO,List.of(new PosSaleItemRequest(product,quantity)));
-        r.setPromotionCode(voucher);return r;
+        r.setPromotionCode(voucher);r.setIdempotencyKey(UUID.randomUUID());r.setPaymentConfirmed(true);return r;
+    }
+    void actor() {
+        var principal=new com.bcm.security.UserPrincipal(user.toString(),"invoice-promotion-test","test",List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN")),true);
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(principal,null,principal.getAuthorities()));
     }
     @BeforeEach void setup() {
         user=UUID.randomUUID();customer=UUID.randomUUID();category=UUID.randomUUID();product=UUID.randomUUID();code="POS-"+UUID.randomUUID().toString().toUpperCase(Locale.ROOT);
@@ -43,9 +47,11 @@ class PosPromotionCodePostgresTest {
         jdbc.update("INSERT INTO customers(id,user_id,full_name,phone) VALUES (?,?,'POS code','0900000001')",customer,user);
         jdbc.update("INSERT INTO categories(id,category_name) VALUES (?,'Code test')",category);
         jdbc.update("INSERT INTO products(id,category_id,name,type,price,stock_quantity) VALUES (?,?,'Test water','GOODS',10000,10)",product,category);
-        promotion=promotions.save(null,config(true));
+        promotion=promotions.save(null,config(true));actor();
     }
     @AfterEach void cleanup() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        jdbc.update("DELETE FROM payment_transactions WHERE invoice_id IN (SELECT id FROM invoices WHERE customer_id=?)",customer);
         jdbc.update("DELETE FROM invoices WHERE customer_id=?",customer);
         jdbc.update("DELETE FROM discount_rules WHERE target_product_id=?",product);
         jdbc.update("DELETE FROM promotions WHERE code=?",code);
@@ -102,7 +108,7 @@ class PosPromotionCodePostgresTest {
     @Test void concurrentSalesCannotConsumeTheSameStock() throws Exception {
         jdbc.update("UPDATE products SET stock_quantity=2 WHERE id=?",product);
         var ready=new CountDownLatch(2);var start=new CountDownLatch(1);var pool=Executors.newFixedThreadPool(2);
-        Callable<Boolean> task=()->{ready.countDown();start.await();try{pos.sell(request(code,2));return true;}catch(BadRequestException e){return false;}};
+        Callable<Boolean> task=()->{actor();ready.countDown();start.await();try{pos.sell(request(code,2));return true;}catch(BadRequestException e){return false;}};
         try{
             var first=pool.submit(task);var second=pool.submit(task);assertThat(ready.await(10,TimeUnit.SECONDS)).isTrue();start.countDown();
             assertThat(List.of(first.get(20,TimeUnit.SECONDS),second.get(20,TimeUnit.SECONDS))).containsExactlyInAnyOrder(true,false);

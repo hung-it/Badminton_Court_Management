@@ -33,9 +33,12 @@ public class BookingPromotionService {
     private final JdbcTemplate jdbc;
     private final Clock clock;
     private final CourtPromotionService courtPromotions;
+    private final PosService pos;
+    private final com.bcm.security.CurrentStaffService staff;
 
     public BookingPromotionService(BookingRepository bookings, PaymentTransactionRepository payments,
-            CurrentCustomerService customer, JdbcTemplate jdbc, @Qualifier("bookingExpirationClock") Clock clock, CourtPromotionService courtPromotions) {
+            CurrentCustomerService customer, JdbcTemplate jdbc, @Qualifier("bookingExpirationClock") Clock clock, CourtPromotionService courtPromotions, PosService pos, com.bcm.security.CurrentStaffService staff) {
+        this.pos=pos; this.staff=staff;
         this.courtPromotions=courtPromotions;
         this.bookings=bookings; this.payments=payments; this.customer=customer; this.jdbc=jdbc; this.clock=clock;
     }
@@ -74,7 +77,14 @@ public class BookingPromotionService {
 
     @Transactional
     public BigDecimal staffReceive(UUID id,String method) {
-        if(!"CASH".equals(method)) throw new com.bcm.exception.BadRequestException("Counter court receipts support CASH only; online receipts must be verified by VNPAY");
+        return staffReceive(id,method,false,null);
+    }
+
+    @Transactional
+    public BigDecimal staffReceive(UUID id,String method,boolean confirmed,String reference) {
+        staff.requireUserId();
+        pos.manualMethod(method);
+        if(!confirmed) throw new com.bcm.exception.BadRequestException("Staff must confirm receipt");
         var booking=bookings.findByIdForExpiration(id).orElseThrow(()->new ResourceNotFoundException("Booking not found"));
         if(booking.getStatus()==BookingStatus.PAID) {
             long received=jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=? AND status='SUCCESS' AND note LIKE 'STAFF_RECEIVED;%'",Long.class,id);
@@ -84,8 +94,7 @@ public class BookingPromotionService {
         requireEditable(booking);
         if(payments.existsByBookingId(id)) throw new DuplicateResourceException("Booking đã có giao dịch; cần xử lý theo luồng thanh toán hiện có");
         validatePayment(booking);
-        String actor=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
-        jdbc.update("INSERT INTO payment_transactions(id,booking_id,payment_method,status,amount,transaction_id,transaction_date,note) VALUES (?,?,?,'SUCCESS',?,?,?,?)",UUID.randomUUID(),id,method,booking.getFinalAmount(),"COUNTER-"+UUID.randomUUID(),LocalDateTime.now(clock),"STAFF_RECEIVED;"+actor);
+        pos.recordReceipt(null,booking,booking.getFinalAmount(),method,reference);
         booking.setStatus(BookingStatus.PAID);
         return booking.getFinalAmount();
     }

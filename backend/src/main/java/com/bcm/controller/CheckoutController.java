@@ -39,11 +39,11 @@ public class CheckoutController {
     }
 
     @PostMapping("/{bookingIdentifier}")
-    @io.swagger.v3.oas.annotations.Operation(summary="Checkout booking", description="CASH or VNPAY for the remaining amount. Requires a verified court receipt; PAID invoice and COMPLETED booking commit atomically.")
+    @io.swagger.v3.oas.annotations.Operation(summary="Checkout booking", description="Staff-confirmed manual CASH or VNPAY only; paymentConfirmed and expectedAmountDue required. Booking ID makes retries idempotent. Requires a verified court receipt; PAID invoice and COMPLETED booking commit atomically.")
     public ResponseEntity<ApiResponse<CheckoutResponse>> checkout(
             @PathVariable String bookingIdentifier,
             @Valid @RequestBody CheckoutRequest request) {
         UUID bookingId = checkoutService.resolveBookingId(bookingIdentifier);
-        return ResponseEntity.ok(checkoutService.checkout(bookingId, request.getPaymentMethod()));
+        return ResponseEntity.ok(checkoutService.checkout(bookingId, request));
     }
 }

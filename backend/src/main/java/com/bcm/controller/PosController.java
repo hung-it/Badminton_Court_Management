@@ -39,10 +39,12 @@ public class PosController {
         return ApiResponse.success(bookingPromotions.staffApply(id,request.code()));
     }
 
-    public record CounterReceiptRequest(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Pattern(regexp="CASH") String paymentMethod) {}
+    public record CounterReceiptRequest(
+        @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Pattern(regexp="CASH|VNPAY") String paymentMethod,
+        boolean paymentConfirmed, @jakarta.validation.constraints.Size(max=255) String reference) {}
     @PostMapping("/bookings/{id}/receive")
     public ApiResponse<?> receive(@org.springframework.web.bind.annotation.PathVariable java.util.UUID id,@Valid @RequestBody CounterReceiptRequest request) {
-        return ApiResponse.success(bookingPromotions.staffReceive(id,request.paymentMethod()));
+        return ApiResponse.success(bookingPromotions.staffReceive(id,request.paymentMethod(),request.paymentConfirmed(),request.reference()));
     }
 
     @GetMapping("/products")
@@ -66,8 +68,13 @@ public class PosController {
                         )).toList()));
     }
 
+    @PostMapping("/sales/{id}/cancel")
+    public ApiResponse<Invoice> cancelDraft(@org.springframework.web.bind.annotation.PathVariable java.util.UUID id) {
+        return ApiResponse.success(posService.cancelDraft(id));
+    }
+
     @PostMapping("/sales")
-    @io.swagger.v3.oas.annotations.Operation(summary="Lưu đơn POS",description="promotionCode tùy chọn là mã khuyến mãi PRODUCT. Khi nhập mã, kiểm tra tổng số lượng giỏ và hiệu lực; áp tỷ lệ cho các mặt hàng trong đơn, không cần mặt hàng gốc. Chọn ưu đãi tốt nhất mỗi dòng, không cộng dồn và không thay đổi tiền sân. Kiểm tra lại khi lưu.")
+    @io.swagger.v3.oas.annotations.Operation(summary="Lưu đơn POS",description="idempotencyKey UUID bắt buộc cho /sales; retry giữ nguyên key/body. Bán lẻ yêu cầu paymentConfirmed=true và CASH/VNPAY thủ công; reference tùy chọn. Gắn Booking chỉ tạo DRAFT, payment_method NULL, trừ kho ngay; hủy nháp hoàn kho một lần. staffId không quyết định actor. promotionCode tùy chọn là mã khuyến mãi PRODUCT. Khi nhập mã, kiểm tra tổng số lượng giỏ và hiệu lực; áp tỷ lệ cho các mặt hàng trong đơn, không cần mặt hàng gốc. Chọn ưu đãi tốt nhất mỗi dòng, không cộng dồn và không thay đổi tiền sân. Kiểm tra lại khi lưu.")
     public ResponseEntity<ApiResponse<Invoice>> sell(@Valid @RequestBody PosSaleRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Bán hàng thành công", posService.sell(request)));

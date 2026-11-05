@@ -33,6 +33,9 @@ public class CheckoutResponse {
     private BigDecimal productDiscount;
     private BigDecimal paidCourtAmount;
     private BigDecimal amountDue;
+    private BigDecimal collectedAmount;
+    private String paymentMethod;
+    private java.util.List<String> paymentMethods;
 
     public BigDecimal getCourtAmount() {
         return courtFee;
