@@ -31,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {"booking.expiration-enabled=true", "booking.expiration-check-interval=PT24H"})
 @AutoConfigureMockMvc
 @EnabledIfEnvironmentVariable(named = "BCM_TEST_DB_URL", matches = "jdbc:postgresql:.*")
+@org.springframework.test.context.TestExecutionListeners(listeners=com.bcm.SlotFixtureIsolation.class, mergeMode=org.springframework.test.context.TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class CheckoutHoldPostgresTest {
     static final LocalDateTime NOW = LocalDateTime.of(2026, 10, 25, 12, 0);
     static final LocalDate DATE = LocalDate.of(2031, 2, 20);
@@ -61,7 +62,7 @@ class CheckoutHoldPostgresTest {
         jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,'test','Hold test','0900000000')", userId, userId + "@hold.test");
         jdbc.update("INSERT INTO customers(id,user_id,full_name,phone) VALUES (?,?,'Hold test','0900000000')", customerId, userId);
         for (int i=0; i<2; i++) {
-            jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?,?,'Hold test',100000)", courts.get(i), -901-i);
+            jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?,?,'Hold test',100000)", courts.get(i), 100000901+i);
             jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier) VALUES (?,?,?,1)", slots.get(i), java.sql.Time.valueOf((8+i)+":00:00"), java.sql.Time.valueOf((9+i)+":00:00"));
         }
     }
@@ -133,7 +134,7 @@ class CheckoutHoldPostgresTest {
         assertThat(action(id,"resume").path("status").asText()).isEqualTo("EXPIRED"); state(id,"EXPIRED",0);
         action(id,"resume"); state(id,"EXPIRED",0);
         mvc.perform(post("/api/bookings/"+id+"/payments").contextPath("/api").with(owner()).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"paymentMethod\":\"BANK_TRANSFER\",\"bankTransfer\":{\"bankName\":\"Test bank\",\"accountHolder\":\"Test customer\",\"accountNumber\":\"1234567890\",\"transferContent\":\"Booking payment\"}}"))
+                .content("{\"paymentMethod\":\"VNPAY\"}"))
                 .andExpect(status().isConflict());
     }
     @Test void leavingAfterMoreThanAMinuteStartsANewSixtySecondReleaseWindow() throws Exception {

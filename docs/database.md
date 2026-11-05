@@ -151,7 +151,7 @@ erDiagram
         uuid booking_id FK "Nullable"
         uuid customer_id FK "Người mua"
         uuid promotion_id FK "Nullable, mã KM áp dụng"
-        string payment_method "CASH/BANK_TRANSFER/VNPAY"
+        string payment_method "CASH/VNPAY"
         string status "DRAFT/PAID/REFUNDED/CANCELLED"
         numeric court_fee "Tiền sân, Nullable nếu không có booking"
         numeric product_fee "Tiền Hàng hóa"
@@ -166,7 +166,7 @@ erDiagram
         uuid id PK
         uuid booking_id FK "Nullable, nếu thanh toán tiền sân"
         uuid invoice_id FK "Nullable, nếu thanh toán hoá đơn"
-        string payment_method "VNPAY/CASH/BANK_TRANSFER"
+        string payment_method "VNPAY/CASH"
         string transaction_id "Nullable. Mã GD từ cổng thanh toán"
         string status "PENDING/SUCCESS/FAILED/REFUNDED"
         numeric amount
@@ -296,8 +296,8 @@ erDiagram
         ```
     *   **Snapshot Price:** Khi đặt, giá cuối cùng sẽ được tính và ghi chết vào cột `price` trong `booking_details`. Dù sau này chủ sân đổi `base_price`, hóa đơn cũ vẫn giữ nguyên lịch sử.
     *   **Khóa đụng độ (Anti-Double Booking):** Hệ thống cài đặt **Unique Constraint** trên DB ở 3 cột `(booking_date, court_id, time_slot_id)` trong bảng `booking_details`. Hai người cùng lúc bấm nút đặt 1 sân sẽ có 1 người bị DB từ chối ngay lập tức (Duplicate Key Error), khắc phục triệt để lỗi Overbooking. Kết hợp với **Pessimistic Lock** (`@Lock(LockModeType.PESSIMISTIC_WRITE)`) khi query slot để giữ chỗ tạm thời.
-    *   **Payment Transactions:** Bảng `payment_transactions` lưu trữ chi tiết giao dịch từ cổng thanh toán (VNPay Sandbox) hoặc thanh toán tại quầy (CASH, BANK_TRANSFER), bao gồm mã giao dịch (`transaction_id`), trạng thái (PENDING/SUCCESS/FAILED/REFUNDED), và thời gian thực tế. Một booking hoặc invoice có thể có nhiều payment transaction.
-        *   **transaction_id nullable:** Hợp lý cho CASH/BANK_TRANSFER hoặc các payment attempts VNPay chưa được xác nhận.
+    *   **Payment Transactions:** Bảng `payment_transactions` lưu trữ chi tiết giao dịch từ cổng thanh toán (VNPay Sandbox) hoặc thanh toán tại quầy (CASH), bao gồm mã giao dịch (`transaction_id`), trạng thái (PENDING/SUCCESS/FAILED/REFUNDED), và thời gian thực tế. Một booking hoặc invoice có thể có nhiều payment transaction.
+        *   **transaction_id nullable:** Hợp lý cho CASH hoặc các payment attempts VNPay chưa được xác nhận.
         *   **transaction_id UNIQUE (partial):** Đảm bảo không duplicate transaction từ VNPay Sandbox webhook retry (`CREATE UNIQUE INDEX ... WHERE transaction_id IS NOT NULL`).
         *   **Ràng buộc XOR:** Mỗi transaction chỉ được liên kết với HOẶC booking HOẶC invoice (không cả hai), đảm bảo bởi CHECK constraint: `CHECK ((booking_id IS NOT NULL)::int + (invoice_id IS NOT NULL)::int = 1)`.
 
@@ -501,7 +501,7 @@ PAID → CHECKED_IN → COMPLETED
 ### 7.4. Payment Transaction Constraints
 - **XOR Constraint:** Mỗi transaction chỉ liên kết với HOẶC booking HOẶC invoice (không cả hai)
   - `CHECK ((booking_id IS NOT NULL)::int + (invoice_id IS NOT NULL)::int = 1)`
-- **transaction_id nullable:** Hợp lý cho CASH/BANK_TRANSFER và VNPay attempts chưa được xác nhận
+- **transaction_id nullable:** Hợp lý cho CASH và VNPay attempts chưa được xác nhận
 - **transaction_id UNIQUE (partial):** Ngăn duplicate từ VNPay Sandbox webhook retry
   - `CREATE UNIQUE INDEX uq_transaction_id ON payment_transactions(transaction_id) WHERE transaction_id IS NOT NULL`
 

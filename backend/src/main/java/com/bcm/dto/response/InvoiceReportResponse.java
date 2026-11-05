@@ -8,7 +8,7 @@ import java.util.UUID;
 public record InvoiceReportResponse(Summary invoice, List<Item> items, List<CourtLine> courts) {
     public record Summary(UUID id, UUID bookingId, String customerName, LocalDateTime createdAt,
             String paymentMethod, BigDecimal courtFee, BigDecimal productFee,
-            BigDecimal discountAmount, BigDecimal totalAmount) {}
+            BigDecimal discountAmount, BigDecimal totalAmount, String invoiceStatus, String bookingStatus) {}
     public record Item(UUID productId, String name, int quantity, BigDecimal unitPrice,
             BigDecimal discountAmount, String promotionName, BigDecimal totalAmount) {}
     public record CourtLine(String name, LocalDate date, LocalTime startTime, LocalTime endTime, BigDecimal price) {}

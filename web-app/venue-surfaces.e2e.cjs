@@ -1,3 +1,5 @@
+const {requireTestEnvironment,fakeCheckout}=require('./payment-test-fixture.cjs');
+requireTestEnvironment();
 // Writes only to the isolated PostgreSQL audit backend.
 const {chromium, request, expect}=require('playwright/test');
 const assert=require('node:assert/strict');
@@ -19,7 +21,7 @@ assert.equal(new URL(audit).port,'8088');
  const profile=await get('/bookings/customer-profile',headers);
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
-  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];await fakeCheckout(page,api);page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(s=>{sessionStorage.setItem('bcm.accessToken',s.accessToken);sessionStorage.setItem('bcm.user',JSON.stringify(s.user));},session);
   await page.route('**/api/**',async route=>{const u=new URL(route.request().url());await route.fulfill({response:await route.fetch({url:new URL(u.pathname+u.search,audit).href})});});
   await page.goto(web+'/courts?date='+day+'&timeSlotId='+normal);
@@ -45,8 +47,7 @@ assert.equal(new URL(audit).port,'8088');
   assert.equal(booking.details.length,4);assert.equal(new Set(booking.details.map(d=>d.courtId)).size,3);
   assert.equal(Number(booking.courtFee),Number(venue.basePrice)*5);
   assert.ok(Math.abs((Date.parse(booking.expiresAt)-Date.parse(booking.createdAt))/1000-600)<2);
-  await page.locator('input[value="BANK_TRANSFER"]').check();
-  for(const [label,value] of [['Ngân hàng','Test'],['Tên chủ tài khoản','Surface E2E'],['Số tài khoản','123456'],['Nội dung chuyển khoản','Three courts']])await page.getByLabel(label,{exact:true}).fill(value);
+  await page.locator('input[value="VNPAY"]').check();
   await page.getByRole('button',{name:'Thanh toán',exact:true}).click();await expect(page).toHaveURL(/payment-result/);
   const paid=await get('/bookings/'+draft.bookingId,headers);assert.equal(paid.status,'PAID');assert.equal(paid.payments.length,1);
   await page.goto(web+'/courts?date='+day+'&timeSlotId='+normal);

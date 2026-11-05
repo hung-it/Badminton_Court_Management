@@ -30,7 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Real JWT filter, services, PostgreSQL schema/transactions. Test signer is not a live gateway receipt. */
 @SpringBootTest(properties = {
         "booking.expiration-enabled=false",
-        "booking.payment.enabled-methods=VNPAY,BANK_TRANSFER",
+        "booking.payment.enabled-methods=VNPAY",
         "booking.payment.vnpay.tmn-code=TEST1234",
         "booking.payment.vnpay.hash-secret=lifecycle-test-key",
         "booking.payment.frontend-result-url=http://localhost:5174/payment-result",
@@ -38,6 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @AutoConfigureMockMvc
 @EnabledIfEnvironmentVariable(named = "BCM_TEST_DB_URL", matches = "jdbc:postgresql:.*")
+@org.springframework.test.context.TestExecutionListeners(listeners=com.bcm.SlotFixtureIsolation.class, mergeMode=org.springframework.test.context.TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class BookingPaymentLifecyclePostgresTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", () -> System.getenv("BCM_TEST_DB_URL"));
@@ -87,10 +88,7 @@ class BookingPaymentLifecyclePostgresTest {
         jdbc.update("DELETE FROM user_roles WHERE user_id=?", user);
         jdbc.update("DELETE FROM users WHERE id=?", user);
     }
-    String bankBody() {
-        return "{\"paymentMethod\":\"BANK_TRANSFER\",\"amount\":1,\"status\":\"SUCCESS\",\"bankTransfer\":{"
-                + "\"bankName\":\"Payer bank\",\"accountHolder\":\"Payer name\",\"accountNumber\":\"00123456\",\"transferContent\":\"Court booking\"}}";
-    }
+    String vnpayBody() { return "{\"paymentMethod\":\"VNPAY\"}"; }
     ResultActions pay(String body) throws Exception {
         return mvc.perform(post("/api/bookings/" + booking + "/payments").contextPath("/api")
                 .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON).content(body));
@@ -98,35 +96,30 @@ class BookingPaymentLifecyclePostgresTest {
     JsonNode data(ResultActions response) throws Exception {
         return mapper.readTree(response.andReturn().getResponse().getContentAsString()).path("data");
     }
-    @Test void transferIsPersistedPendingWithoutSensitiveDataAndReuseIsIdempotent() throws Exception {
-        var first = data(pay(bankBody()).andExpect(status().isCreated()).andExpect(jsonPath("$.data.status").value("PENDING")));
-        var second = data(pay(bankBody()).andExpect(status().isCreated()));
-        assertThat(first.path("paymentAttemptId")).isEqualTo(second.path("paymentAttemptId"));
-        var row = jdbc.queryForMap("SELECT * FROM payment_transactions WHERE booking_id=?", booking);
-        assertThat(row).containsEntry("status", "PENDING").containsEntry("payment_method", "BANK_TRANSFER").containsEntry("invoice_id", null);
-        assertThat(row.get("amount").toString()).isEqualTo("125000.00");
-        assertThat(row.get("note").toString()).doesNotContain("00123456", "Payer name", "Payer bank");
-        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?", String.class, booking)).isEqualTo("PAID");
-        assertThat(row.get("note").toString()).startsWith("CUSTOMER_DECLARED;");
-        assertThat(first.path("bookingStatus").asText()).isEqualTo("PAID");
-        assertThat(first.path("confirmationMethod").asText()).isEqualTo("CUSTOMER_DECLARED");
-        mvc.perform(get("/api/bookings/" + booking).contextPath("/api").header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.payments[0].paymentStatus").value("PENDING"))
-                .andExpect(jsonPath("$.data.payments[0].confirmationMethod").value("CUSTOMER_DECLARED"));
+    @ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings={"CASH","BANK_TRANSFER"})
+    void customerApiRejectsOtherMethodsWithoutMutatingBookingOrVoucher(String method) throws Exception {
+        var before=jdbc.queryForMap("SELECT status,discount_amount,promotion_code,requested_voucher FROM bookings WHERE id=?",booking);
+        pay("{\"paymentMethod\":\""+method+"\"}").andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?",Integer.class,booking)).isZero();
+        assertThat(jdbc.queryForMap("SELECT status,discount_amount,promotion_code,requested_voucher FROM bookings WHERE id=?",booking)).isEqualTo(before);
     }
-    @ParameterizedTest @ValueSource(strings = {"bankName", "accountHolder", "accountNumber", "transferContent"})
-    void rejectsMissingTransferFieldWithoutPersistence(String field) throws Exception {
-        var body = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(bankBody());
-        ((com.fasterxml.jackson.databind.node.ObjectNode) body.path("bankTransfer")).put(field, "");
-        pay(body.toString()).andExpect(status().isBadRequest());
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?", Integer.class, booking)).isZero();
+    @Test void vnpayInitiationRemainsPendingAndReuseIsIdempotent() throws Exception {
+        var first=data(pay(vnpayBody()).andExpect(status().isCreated()));
+        var second=data(pay(vnpayBody()).andExpect(status().isCreated()));
+        assertThat(first.path("paymentAttemptId")).isEqualTo(second.path("paymentAttemptId"));
+        assertThat(jdbc.queryForObject("SELECT payment_method FROM payment_transactions WHERE booking_id=?",String.class,booking)).isEqualTo("VNPAY");
+        assertThat(jdbc.queryForObject("SELECT note FROM payment_transactions WHERE booking_id=?",String.class,booking)).isNull();
+        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,booking)).isEqualTo("PENDING");
+    }
+    @Test void rejectsUnknownMethodBeforePersistence() throws Exception {
+        pay("{\"paymentMethod\":\"BANK_TRANSFER\"}").andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?",Integer.class,booking)).isZero();
     }
     @Test void rejectsCashInvalidAccountMissingFormAndNonPositiveAmount() throws Exception {
         pay("{\"paymentMethod\":\"CASH\"}").andExpect(status().isBadRequest());
         pay("{\"paymentMethod\":\"BANK_TRANSFER\"}").andExpect(status().isBadRequest());
-        pay(bankBody().replace("00123456", "abc")).andExpect(status().isBadRequest());
         jdbc.update("UPDATE bookings SET court_fee=0 WHERE id=?", booking);
-        pay(bankBody()).andExpect(status().isBadRequest());
+        pay(vnpayBody()).andExpect(status().isBadRequest());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?", Integer.class, booking)).isZero();
     }
     @Test void staffCheckoutCannotBypassBookingPaymentWithCashOrUnverifiedTransfer() {
@@ -156,21 +149,21 @@ class BookingPaymentLifecyclePostgresTest {
         }
     }
     @Test void declaredTransferBlocksMethodSwitchAndNeverExpires() throws Exception {
-        pay(bankBody()).andExpect(status().isCreated());
+        pay(vnpayBody()).andExpect(status().isCreated());
         pay("{\"paymentMethod\":\"VNPAY\"}").andExpect(status().isBadRequest());
         org.mockito.Mockito.when(clock.instant()).thenReturn(NOW.plusSeconds(601));
         assertThat(expiration.expireBooking(booking)).isFalse();
-        pay(bankBody()).andExpect(status().isCreated());
+        pay(vnpayBody()).andExpect(status().isCreated());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_details WHERE booking_id=?", Integer.class, booking)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT status FROM payment_transactions WHERE booking_id=?", String.class, booking)).isEqualTo("PENDING");
     }
     @ParameterizedTest @ValueSource(longs = {600, 601})
     void rejectsAtAndAfterTenMinutes(long seconds) throws Exception {
         org.mockito.Mockito.when(clock.instant()).thenReturn(NOW.plusSeconds(seconds));
-        pay(bankBody()).andExpect(status().isConflict());
+        pay(vnpayBody()).andExpect(status().isConflict());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?", Integer.class, booking)).isZero();
         assertThat(expiration.expireBooking(booking)).isTrue();
-        pay(bankBody()).andExpect(status().isConflict());
+        pay(vnpayBody()).andExpect(status().isConflict());
     }
     @Test void acceptsOneSecondBeforeDeadlineAndRejectsForeignOwner() throws Exception {
         UUID other = UUID.randomUUID(), otherUser = UUID.randomUUID();
@@ -178,21 +171,21 @@ class BookingPaymentLifecyclePostgresTest {
         jdbc.update("INSERT INTO customers(id,user_id,full_name,phone) VALUES (?,?,'Other','0900000000')", other, otherUser);
         try {
             jdbc.update("UPDATE bookings SET customer_id=? WHERE id=?", other, booking);
-            pay(bankBody()).andExpect(status().isForbidden());
+            pay(vnpayBody()).andExpect(status().isForbidden());
         } finally {
             jdbc.update("UPDATE bookings SET customer_id=? WHERE id=?", customer, booking);
             jdbc.update("DELETE FROM customers WHERE id=?", other);
             jdbc.update("DELETE FROM users WHERE id=?", otherUser);
         }
         org.mockito.Mockito.when(clock.instant()).thenReturn(NOW.plusSeconds(599));
-        pay(bankBody()).andExpect(status().isCreated());
+        pay(vnpayBody()).andExpect(status().isCreated());
     }
-    @Test void bankAndExpirationRaceAtDeadlineCannotConfirmExpiredBooking() throws Exception {
+    @Test void vnpayAndExpirationRaceAtDeadlineCannotConfirmExpiredBooking() throws Exception {
         org.mockito.Mockito.when(clock.instant()).thenReturn(NOW.plusSeconds(600));
         var workers = Executors.newFixedThreadPool(2);
         var start = new CountDownLatch(1); var ready = new CountDownLatch(2);
         try {
-            var payment = workers.submit(() -> { ready.countDown(); start.await(); return pay(bankBody()).andReturn().getResponse().getStatus(); });
+            var payment = workers.submit(() -> { ready.countDown(); start.await(); return pay(vnpayBody()).andReturn().getResponse().getStatus(); });
             var expiry = workers.submit(() -> { ready.countDown(); start.await(); return expiration.expireBooking(booking); });
             assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue(); start.countDown();
             assertThat(payment.get(20, TimeUnit.SECONDS)).isEqualTo(409);
@@ -201,39 +194,33 @@ class BookingPaymentLifecyclePostgresTest {
             assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_details WHERE booking_id=?", Integer.class, booking)).isZero();
         } finally { start.countDown(); workers.shutdownNow(); }
     }
-    @Test void bankAndExpirationRaceBeforeDeadlinePreservesConfirmedSlots() throws Exception {
+    @Test void vnpayAndExpirationRaceBeforeDeadlinePreservesHeldSlots() throws Exception {
         org.mockito.Mockito.when(clock.instant()).thenReturn(NOW.plusSeconds(599));
         var workers = Executors.newFixedThreadPool(2);
         var ready = new CountDownLatch(2); var start = new CountDownLatch(1);
         try {
-            var payment = workers.submit(() -> { ready.countDown(); start.await(); return pay(bankBody()).andReturn().getResponse().getStatus(); });
+            var payment = workers.submit(() -> { ready.countDown(); start.await(); return pay(vnpayBody()).andReturn().getResponse().getStatus(); });
             var expiry = workers.submit(() -> { ready.countDown(); start.await(); return expiration.expireBooking(booking); });
             assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue(); start.countDown();
             assertThat(payment.get(20, TimeUnit.SECONDS)).isEqualTo(201);
             assertThat(expiry.get(20, TimeUnit.SECONDS)).isFalse();
             org.mockito.Mockito.when(clock.instant()).thenReturn(NOW.plusSeconds(601));
-            assertThat(expiration.expireBooking(booking)).isFalse();
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_details WHERE booking_id=?", Integer.class, booking)).isEqualTo(1);
+            assertThat(expiration.expireBooking(booking)).isTrue();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_details WHERE booking_id=?", Integer.class, booking)).isZero();
             assertThatThrownBy(() -> checkout.checkout(booking, "BANK_TRANSFER"))
-                    .isInstanceOf(com.bcm.exception.BadRequestException.class).hasMessageContaining("not receipt of funds");
+                    .isInstanceOf(com.bcm.exception.BadRequestException.class);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM invoices WHERE booking_id=?", Integer.class, booking)).isZero();
         } finally { start.countDown(); workers.shutdownNow(); }
     }
-    @Test void pendingVnpayCannotSwitchToTransferAndLateCallbackCannotSettleDeclaredBooking() throws Exception {
-        var attempt = data(pay("{\"paymentMethod\":\"VNPAY\"}").andExpect(status().isCreated()));
-        UUID id = UUID.fromString(attempt.path("paymentAttemptId").asText());
-        pay(bankBody()).andExpect(status().isConflict());
-        // Legacy failed attempt followed by a declaration; a delayed verified receipt needs reconciliation.
-        jdbc.update("UPDATE payment_transactions SET status='FAILED' WHERE id=?", id);
-        pay(bankBody()).andExpect(status().isCreated());
-        ipn(PaymentCallbackFixtures.vnpay(id, config), "99");
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=? AND status='SUCCESS'", Integer.class, booking)).isZero();
-        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?", String.class, booking)).isEqualTo("PAID");
-        assertThat(jdbc.queryForObject("SELECT note FROM payment_transactions WHERE id=?", String.class, id)).startsWith("RECONCILIATION_REQUIRED");
+    @Test void pendingVnpayRejectsRemovedMethodWithoutChangingExistingAttempt() throws Exception {
+        var attempt=data(pay(vnpayBody()).andExpect(status().isCreated()));
+        pay("{\"paymentMethod\":\"BANK_TRANSFER\"}").andExpect(status().isBadRequest());
+        assertThat(data(pay(vnpayBody()).andExpect(status().isCreated())).path("paymentAttemptId")).isEqualTo(attempt.path("paymentAttemptId"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?",Integer.class,booking)).isEqualTo(1);
     }
     @Test void alreadyConfirmedWithoutDeclarationCannotCreateTransfer() throws Exception {
         jdbc.update("UPDATE bookings SET status='PAID' WHERE id=?", booking);
-        pay(bankBody()).andExpect(status().isBadRequest());
+        pay(vnpayBody()).andExpect(status().isBadRequest());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?", Integer.class, booking)).isZero();
     }
     @Test void checkoutClockReturnsOriginalDeadlineAndServerTimeWithoutRenewal() throws Exception {
@@ -247,7 +234,7 @@ class BookingPaymentLifecyclePostgresTest {
     }
     @Test void successfulPaymentWithInconsistentPendingHeaderCannotStartAnotherAttempt() throws Exception {
         jdbc.update("INSERT INTO payment_transactions(booking_id,payment_method,status,amount) VALUES (?,'VNPAY','SUCCESS',125000)", booking);
-        pay(bankBody()).andExpect(status().isConflict());
+        pay(vnpayBody()).andExpect(status().isConflict());
         pay("{\"paymentMethod\":\"VNPAY\"}").andExpect(status().isConflict());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?", Integer.class, booking)).isEqualTo(1);
     }
@@ -264,7 +251,7 @@ class BookingPaymentLifecyclePostgresTest {
         var workers = Executors.newFixedThreadPool(2);
         var ready = new CountDownLatch(2); var start = new CountDownLatch(1);
         Callable<String> request = () -> { ready.countDown(); assertThat(start.await(10, TimeUnit.SECONDS)).isTrue();
-            return data(pay(bankBody()).andExpect(status().isCreated())).path("paymentAttemptId").asText(); };
+            return data(pay(vnpayBody()).andExpect(status().isCreated())).path("paymentAttemptId").asText(); };
         try {
             var a = workers.submit(request); var b = workers.submit(request);
             assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue(); start.countDown();

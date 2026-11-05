@@ -102,11 +102,8 @@ public class PosService {
         if (discountAmount.compareTo(courtFee.add(productFee)) > 0)
             throw new BadRequestException("Giảm giá không được vượt giá trị hóa đơn");
         String paymentMethod = request.getPaymentMethod() == null ? "CASH" : request.getPaymentMethod().trim().toUpperCase();
-        if ("QR".equals(paymentMethod)) {
-            paymentMethod = "BANK_TRANSFER";
-        }
-        if (!paymentMethod.equals("CASH") && !paymentMethod.equals("BANK_TRANSFER") && !paymentMethod.equals("VNPAY")) {
-            throw new BadRequestException("Phương thức thanh toán phải là CASH, BANK_TRANSFER hoặc VNPAY");
+        if (!paymentMethod.equals("CASH") && !paymentMethod.equals("VNPAY")) {
+            throw new BadRequestException("Phương thức thanh toán phải là CASH hoặc VNPAY");
         }
         UUID customerId = resolveCustomerId(request.getCustomerId());
 

@@ -95,11 +95,11 @@ class AvailabilityPostgresTest {
                 userId, userId + "@availability.test", "test-only");
         jdbc.update("INSERT INTO customers (id, user_id, full_name, phone) VALUES (?, ?, ?, ?)",
                 customerId, userId, "Availability customer", "0900000000");
-        courtId = insertCourt(-20, "AVAILABLE", null);
-        otherCourtId = insertCourt(-19, "AVAILABLE", null);
-        maintenanceCourtId = insertCourt(-18, "MAINTENANCE", null);
-        closedCourtId = insertCourt(-17, "CLOSED", null);
-        deletedCourtId = insertCourt(-16, "AVAILABLE", LocalDateTime.of(2019, 1, 1, 0, 0));
+        courtId = insertCourt(99999980, "AVAILABLE", null);
+        otherCourtId = insertCourt(99999981, "AVAILABLE", null);
+        maintenanceCourtId = insertCourt(99999982, "MAINTENANCE", null);
+        closedCourtId = insertCourt(99999983, "CLOSED", null);
+        deletedCourtId = insertCourt(99999984, "AVAILABLE", LocalDateTime.of(2019, 1, 1, 0, 0));
         slotId = insertSlot("00:00:00", "01:00:00");
         otherSlotId = insertSlot("01:00:00", "02:00:00");
         deletedSlotId = insertSlot("02:00:00", "03:00:00");
@@ -229,8 +229,8 @@ class AvailabilityPostgresTest {
                 .andExpect(jsonPath("$.data.date").value(DATE.toString()))
                 .andExpect(jsonPath("$.data.courts", hasSize(1)))
                 .andExpect(jsonPath("$.data.courts[0].courtId").value(courtId.toString()))
-                .andExpect(jsonPath("$.data.courts[0].courtNumber").value(-20))
-                .andExpect(jsonPath("$.data.courts[0].name").value("Court -20"))
+                .andExpect(jsonPath("$.data.courts[0].courtNumber").value(99999980))
+                .andExpect(jsonPath("$.data.courts[0].name").value("Court 99999980"))
                 .andExpect(jsonPath("$.data.courts[0].slots[0].timeSlotId").value(slotId.toString()))
                 .andExpect(jsonPath("$.data.courts[0].slots[0].startTime").value("00:00:00"))
                 .andExpect(jsonPath("$.data.courts[0].slots[0].endTime").value("01:00:00"))

@@ -13,14 +13,14 @@ Web-admin dùng `strictPort: true`; cần giải phóng cổng 5173 nếu tiến
 ## Bán tại quầy
 
 - **Trả sân** là mục duy nhất cho danh sách booking và kết toán. Danhsách giữ mã rút gọn 8 ký tự, sao chép UUID đầy đủ và tìm kiếm; chọn **Kết toán** mở bill cùng ba phương thức thanh toán. Đóng bill quay về danh sách; đơn kết toán thành công được bỏ khỏi danh sách đang hoạt động.
-- Nếu tiền sân đã được xác nhận và không phát sinh tiền hàng, bill còn 0đ: chỉ **Hoàn tất trả sân**, không chọn phương thức thu tiền. Với giao dịch khách tự khai chuyển khoản, nhân viên đối soát khoản đã chuyển; tích xác nhận sẽ khấu trừ ngay trên bill, không yêu cầu khách chuyển lại. Ba phương thức thu tiền chỉ hiện khi còn tiền phát sinh cần thu sau đối soát.
+- If the verified court fee is already paid and no products remain due, checkout only completes the booking. Otherwise select CASH or VNPAY for the remaining amount. No unverified payment is treated as received.
 
 - Trong **Đơn hàng hiện tại**, chọn **Khách thuê sân** và nhập **booking UUID** của đơn trong mục **Trả sân** (không phải UUID sân vật lý).
 - Đơn phải đã thanh toán sân và chưa kết toán. Hệ thống kiểm tra booking khi báo giá và khi lưu hàng.
 - **Thêm hàng & xem bill gộp** lưu hàng vào booking rồi mở phiếu kết toán gồm tiền sân và hàng hóa. Tiền sân đã thanh toán được khấu trừ khỏi số còn phải thu; xác nhận thu tiền ở màn hình Trả sân sẽ hoàn tất lượt thuê.
-- Chọn **Khách vãng lai** để thu tiền hàng ngay bằng tiền mặt; request không gắn booking và hóa đơn không có tiền sân.
+- Chọn **Khách vãng lai** để thu tiền hàng ngay bằng CASH hoặc VNPAY; request không gắn booking và hóa đơn không có tiền sân.
 - Tái sử dụng `/pos/quote`, `/pos/sales` và `/checkout/{bookingId}`; không thay đổi schema.
-- Khi khách tự khai đã chuyển khoản, phiếu kết toán yêu cầu nhân viên xác nhận thực nhận tiền sân. `courtReceiptConfirmed=true` đối soát giao dịch cùng transaction với hóa đơn; không đánh dấu thành công chỉ từ lời khai khách. Hóa đơn gồm cả sân và hàng hóa được tính một lần vào báo cáo; tổng còn phải thu khấu trừ tiền sân đã nhận. Admin được chuyển tới Doanh thu & Báo cáo sau kết toán.
+- Checkout requires one verified full court receipt (SUCCESS with transaction ID/time). No receipt-confirmation checkbox exists. The remaining amount is collected once using CASH or VNPAY; the combined invoice retains the full saved court/product/discount totals.
 
 ## Nhập kho
 

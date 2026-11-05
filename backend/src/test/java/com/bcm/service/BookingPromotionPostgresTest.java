@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.when;
 
 /** Committed UUID-scoped fixtures in a dedicated PostgreSQL DB. No outer test transaction. */
-@SpringBootTest(properties={"booking.expiration-enabled=false", "booking.payment.enabled-methods=VNPAY,BANK_TRANSFER"})
+@SpringBootTest(properties={"booking.expiration-enabled=false", "booking.payment.enabled-methods=VNPAY"})
 @EnabledIfEnvironmentVariable(named="BCM_TEST_DB_URL",matches="jdbc:postgresql:.*")
 class BookingPromotionPostgresTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry r) {
@@ -167,8 +167,8 @@ class BookingPromotionPostgresTest {
         for(int i=0;i<n;i++) {
             UUID b=booking("720000");
             jdbc.update("UPDATE bookings SET status=? WHERE id=?",status,b);
-            jdbc.update("INSERT INTO payment_transactions(booking_id,payment_method,status,amount,transaction_id,transaction_date,note) VALUES (?,'BANK_TRANSFER',?,720000,?,?,?)",
-                    b,payment,verified?UUID.randomUUID().toString():null,verified?LocalDateTime.now():null,verified?null:"CUSTOMER_DECLARED; receipt=UNVERIFIED");
+            jdbc.update("INSERT INTO payment_transactions(booking_id,payment_method,status,amount,transaction_id,transaction_date,note) VALUES (?,'CASH',?,720000,?,?,?)",
+                    b,payment,verified?UUID.randomUUID().toString():null,verified?LocalDateTime.now():null,verified?null:"UNVERIFIED_TEST_RECEIPT");
         }
     }
     @ParameterizedTest @CsvSource({"299999,0,299999","300000,30000,270000","499999,30000,469999","500000,50000,450000","720000,50000,670000","0,0,0"})
@@ -219,12 +219,12 @@ class BookingPromotionPostgresTest {
         history(1,"COMPLETED","SUCCESS",true);
         assertThat(promotions.quote(booking("720000"),"KMKH10",true).voucherValid()).isTrue();
     }
-    @Test void declaredAuditAndPartialReceiptsCannotEarnLoyaltyOrConsumeFirstVerifiedUse() {
+    @Test void pendingAndPartialReceiptsCannotEarnLoyaltyOrConsumeFirstVerifiedUse() {
         history(15,"COMPLETED","SUCCESS",true);
-        jdbc.update("UPDATE payment_transactions SET note='CUSTOMER_DECLARED; receipt=UNVERIFIED' WHERE booking_id IN (SELECT id FROM bookings WHERE customer_id=?)",owner);
+        jdbc.update("UPDATE payment_transactions SET status='PENDING' WHERE booking_id IN (SELECT id FROM bookings WHERE customer_id=?)",owner);
         assertThat(promotions.quote(booking("720000"),"KMKH10",false).message()).isEqualTo("Bạn chưa đủ điều kiện sử dụng mã KMKH10");
         assertThat(promotions.quote(booking("100000"),"NEWMEMBER",false).voucherValid()).isTrue();
-        jdbc.update("UPDATE payment_transactions SET note=NULL,amount=1 WHERE booking_id IN (SELECT id FROM bookings WHERE customer_id=?)",owner);
+        jdbc.update("UPDATE payment_transactions SET status='SUCCESS',note=NULL,amount=1 WHERE booking_id IN (SELECT id FROM bookings WHERE customer_id=?)",owner);
         assertThat(promotions.quote(booking("720000"),"KMKH10",false).message()).isEqualTo("Bạn chưa đủ điều kiện sử dụng mã KMKH10");
     }
     @Test void historyBelongsToCustomerDomainIdentity() {
@@ -277,14 +277,14 @@ class BookingPromotionPostgresTest {
         assertThat(callbacks.settle(good,b)).isEqualTo(PaymentCallbackTransactionService.Result.ALREADY_CONFIRMED);
         assertThat(promotions.quote(booking("100000"),"NEWMEMBER",true).voucherValid()).isFalse();
     }
-    @Test void declaredTransferUsesFinalAmountButDoesNotEarnLoyalty() {
+    @Test void pendingVnpayUsesFinalAmountButDoesNotEarnLoyalty() {
         UUID b=booking("720000");promotions.quote(b,null,true);
-        var request=new CreatePaymentAttemptRequest(PaymentMethod.BANK_TRANSFER,new CreatePaymentAttemptRequest.BankTransfer("Bank","Payer","00123","Booking"));
+        var request=new CreatePaymentAttemptRequest(PaymentMethod.VNPAY);
         var p=attempts.createOrReuseAttempt(b,request,()->{});
         assertThat(p.amount()).isEqualByComparingTo("670000");
-        assertThat(p.confirmationMethod()).isEqualTo("CUSTOMER_DECLARED");
+        assertThat(p.bookingStatus()).isEqualTo(com.bcm.entity.BookingStatus.PENDING);
         assertThat(attempts.createOrReuseAttempt(b,request,()->{}).paymentAttemptId()).isEqualTo(p.paymentAttemptId());
-        assertThatThrownBy(()->promotions.quote(b,null,true)).hasMessageContaining("BOOKING_EXPIRED");
+        assertThatThrownBy(()->promotions.quote(b,null,true)).hasMessageContaining("PAYMENT_ATTEMPT_EXISTS");
     }
     @Test void invalidCodeFallsBackAndOwnershipIsChecked() {
         UUID b=booking("400000"); var q=promotions.quote(b,"FAKE",true);
@@ -292,10 +292,10 @@ class BookingPromotionPostgresTest {
         when(customer.requireCustomerId()).thenReturn(UUID.randomUUID());
         assertThatThrownBy(()->promotions.quote(b,"NEWMEMBER",true)).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
     }
-    @Test void declaredNewmemberIsReservedWithoutClaimingVerifiedSuccessfulUse() {
+    @Test void pendingVnpayReservesNewmemberWithoutClaimingVerifiedSuccessfulUse() {
         UUID a=booking("100000");
         assertThat(promotions.quote(a,"NEWMEMBER",true).voucherValid()).isTrue();
-        var request=new CreatePaymentAttemptRequest(PaymentMethod.BANK_TRANSFER,new CreatePaymentAttemptRequest.BankTransfer("Bank","Payer","00123","Booking"));
+        var request=new CreatePaymentAttemptRequest(PaymentMethod.VNPAY);
         attempts.createOrReuseAttempt(a,request,()->{});
         var quote=promotions.quote(booking("100000"),"NEWMEMBER",false);
         assertThat(quote.voucherValid()).isFalse();

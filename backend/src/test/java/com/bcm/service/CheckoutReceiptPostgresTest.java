@@ -32,7 +32,7 @@ class CheckoutReceiptPostgresTest {
         jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,'test','Receipt test','0000000001')",user,user+"@receipt.test");
         jdbc.update("INSERT INTO customers(id,user_id,full_name,phone) VALUES (?,?,'Receipt test','0000000001')",customer,user);
         jdbc.update("INSERT INTO bookings(id,customer_id,status,court_fee) VALUES (?,?,'PAID',200000)",booking,customer);
-        jdbc.update("INSERT INTO payment_transactions(booking_id,payment_method,status,amount,note) VALUES (?,'BANK_TRANSFER','PENDING',200000,'CUSTOMER_DECLARED; receipt=UNVERIFIED')",booking);
+        jdbc.update("INSERT INTO payment_transactions(booking_id,payment_method,status,amount,note,transaction_id,transaction_date) VALUES (?,'CASH','SUCCESS',200000,'STAFF_RECEIVED; test','COUNTER-TEST',CURRENT_TIMESTAMP)",booking);
         jdbc.update("INSERT INTO invoices(customer_id,booking_id,payment_method,status,court_fee,product_fee,discount_amount,total_amount) VALUES (?,?,'CASH','DRAFT',0,30000,0,30000)",customer,booking);
     }
     @AfterEach void cleanup() {
@@ -42,28 +42,27 @@ class CheckoutReceiptPostgresTest {
         jdbc.update("DELETE FROM customers WHERE id=?",customer);
         jdbc.update("DELETE FROM users WHERE id=?",user);
     }
-    @Test void requiresReceiptThenPostsCombinedRevenueExactlyOnce() {
+    @Test void verifiedReceiptPostsCombinedRevenueExactlyOnce() {
         var preview=checkout.preview(booking);
-        assertThat(preview.isCourtReceiptRequired()).isTrue();
-        assertThat(preview.getPaidCourtAmount()).isEqualByComparingTo("0");
-        assertThat(preview.getAmountDue()).isEqualByComparingTo("230000");
-        assertThatThrownBy(()->checkout.checkout(booking,"CASH")).hasMessageContaining("xác nhận");
-        assertThat(jdbc.queryForObject("SELECT status FROM payment_transactions WHERE booking_id=?",String.class,booking)).isEqualTo("PENDING");
+
+        assertThat(preview.getPaidCourtAmount()).isEqualByComparingTo("200000");
+        assertThat(preview.getAmountDue()).isEqualByComparingTo("30000");
+        assertThat(jdbc.queryForObject("SELECT status FROM payment_transactions WHERE booking_id=?",String.class,booking)).isEqualTo("SUCCESS");
         var before=analytics.getRevenue("DAY",LocalDate.now()).getTotalAmount();
-        var response=checkout.checkout(booking,"CASH",true).getData();
+        var response=checkout.checkout(booking,"CASH").getData();
         assertThat(response.getTotalAmount()).isEqualByComparingTo("230000");
         assertThat(response.getAmountDue()).isEqualByComparingTo("30000");
         assertThat(jdbc.queryForObject("SELECT status FROM payment_transactions WHERE booking_id=?",String.class,booking)).isEqualTo("SUCCESS");
         assertThat(jdbc.queryForObject("SELECT note FROM payment_transactions WHERE booking_id=?",String.class,booking)).startsWith("STAFF_RECEIVED;");
         assertThat(analytics.getRevenue("DAY",LocalDate.now()).getTotalAmount().subtract(before)).isEqualByComparingTo("230000");
-        assertThatThrownBy(()->checkout.checkout(booking,"CASH",true)).isInstanceOf(com.bcm.exception.BadRequestException.class);
+        assertThatThrownBy(()->checkout.checkout(booking,"CASH")).isInstanceOf(com.bcm.exception.BadRequestException.class);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM invoices WHERE booking_id=? AND status='PAID'",Integer.class,booking)).isEqualTo(1);
     }
     @Test void mismatchedReceiptRollsBack() {
         jdbc.update("UPDATE payment_transactions SET amount=1 WHERE booking_id=?",booking);
-        assertThatThrownBy(()->checkout.checkout(booking,"CASH",true)).hasMessageContaining("không khớp");
+        assertThatThrownBy(()->checkout.checkout(booking,"CASH")).hasMessageContaining("verified full court receipt");
         assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,booking)).isEqualTo("PAID");
-        assertThat(jdbc.queryForObject("SELECT status FROM payment_transactions WHERE booking_id=?",String.class,booking)).isEqualTo("PENDING");
+        assertThat(jdbc.queryForObject("SELECT status FROM payment_transactions WHERE booking_id=?",String.class,booking)).isEqualTo("SUCCESS");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM invoices WHERE booking_id=? AND status='PAID'",Integer.class,booking)).isZero();
     }
     @Test void invoiceHistoryAndDetailsUseStoredPricesAndExcludeDrafts() {
@@ -74,7 +73,7 @@ class CheckoutReceiptPostgresTest {
             UUID draft=jdbc.queryForObject("SELECT id FROM invoices WHERE booking_id=?",UUID.class,booking);
             jdbc.update("INSERT INTO invoice_details(invoice_id,product_id,quantity,unit_price) VALUES (?,?,3,10000)",draft,product);
             assertThatThrownBy(()->analytics.invoice(draft)).isInstanceOf(com.bcm.exception.ResourceNotFoundException.class);
-            var paid=checkout.checkout(booking,"CASH",true).getData().getInvoiceId();
+            var paid=checkout.checkout(booking,"CASH").getData().getInvoiceId();
             jdbc.update("UPDATE products SET price=99999,deleted_at=CURRENT_TIMESTAMP WHERE id=?",product);
             var detail=analytics.invoice(paid);
             assertThat(detail.invoice().totalAmount()).isEqualByComparingTo("230000");
@@ -99,7 +98,7 @@ class CheckoutReceiptPostgresTest {
     @Test void concurrentCheckoutsCreateOnePaidInvoice() throws Exception {
         var pool=Executors.newFixedThreadPool(2);
         var ready=new CountDownLatch(2);var start=new CountDownLatch(1);
-        Callable<Boolean> task=()->{ready.countDown();start.await();try{checkout.checkout(booking,"CASH",true);return true;}catch(com.bcm.exception.BadRequestException e){return false;}};
+        Callable<Boolean> task=()->{ready.countDown();start.await();try{checkout.checkout(booking,"CASH");return true;}catch(com.bcm.exception.BadRequestException e){return false;}};
         try {
             var first=pool.submit(task);var second=pool.submit(task);
             assertThat(ready.await(10,TimeUnit.SECONDS)).isTrue();start.countDown();

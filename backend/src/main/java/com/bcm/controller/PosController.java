@@ -39,7 +39,7 @@ public class PosController {
         return ApiResponse.success(bookingPromotions.staffApply(id,request.code()));
     }
 
-    public record CounterReceiptRequest(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Pattern(regexp="CASH|BANK_TRANSFER") String paymentMethod) {}
+    public record CounterReceiptRequest(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Pattern(regexp="CASH") String paymentMethod) {}
     @PostMapping("/bookings/{id}/receive")
     public ApiResponse<?> receive(@org.springframework.web.bind.annotation.PathVariable java.util.UUID id,@Valid @RequestBody CounterReceiptRequest request) {
         return ApiResponse.success(bookingPromotions.staffReceive(id,request.paymentMethod()));

@@ -5,7 +5,6 @@ import com.bcm.dto.response.PaymentAttemptResponse;
 import com.bcm.entity.BookingStatus;
 import com.bcm.entity.Booking;
 import com.bcm.entity.PaymentStatus;
-import com.bcm.entity.PaymentMethod;
 import jakarta.validation.Validator;
 import com.bcm.entity.PaymentTransaction;
 import com.bcm.exception.BadRequestException;
@@ -63,9 +62,8 @@ public class PaymentAttemptService {
             throw new BadRequestException("Booking ID and payment method are required");
         }
         gateway.validateMethod(request.getPaymentMethod());
-        if (!validator.validate(request).isEmpty()
-                || (request.getPaymentMethod() == PaymentMethod.BANK_TRANSFER && request.getBankTransfer() == null)) {
-            throw new BadRequestException("Complete valid bank transfer information is required");
+        if (!validator.validate(request).isEmpty()) {
+            throw new BadRequestException("Valid payment method is required");
         }
         UUID trustedCustomerId = currentCustomer.requireCustomerId();
         // Reuse the existing Booking row lock without changing expiration's query or lock order.
@@ -74,21 +72,6 @@ public class PaymentAttemptService {
         requireOwner(booking, trustedCustomerId);
         // Configuration validation is local only, before persistence and after ownership.
         validateConfiguration.run();
-        if (request.getPaymentMethod() == PaymentMethod.BANK_TRANSFER) {
-            var declared = payments.findBookingHistory(bookingId).stream()
-                    .filter(p -> p.getPaymentMethod() == PaymentMethod.BANK_TRANSFER
-                            && p.getStatus() == PaymentStatus.PENDING
-                            && p.getNote() != null && p.getNote().startsWith("CUSTOMER_DECLARED;"))
-                    .findFirst();
-            if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.EXPIRED
-                    && declared.isPresent()) {
-                return response(declared.get(), booking);
-            }
-            if (booking.getStatus() == BookingStatus.EXPIRED || (booking.getStatus() == BookingStatus.PENDING
-                    && (booking.getExpiresAt() == null || !booking.getExpiresAt().isAfter(LocalDateTime.now(clock))))) {
-                throw new DuplicateResourceException("BOOKING_EXPIRED: Booking payment deadline has passed");
-            }
-        }
         requireEligible(booking);
         if (reuse) {
             var pending = payments.findFirstByBookingIdAndStatusOrderByCreatedAtAscIdAsc(bookingId, PaymentStatus.PENDING);
@@ -97,7 +80,7 @@ public class PaymentAttemptService {
                 if (existing.getInvoice() != null || existing.getPaymentMethod() != request.getPaymentMethod()) {
                     throw new DuplicateResourceException("A PENDING payment attempt exists with a different method or target");
                 }
-                confirmDeclaredTransfer(existing, booking);
+
                 return response(existing, booking);
             }
         }
@@ -112,16 +95,9 @@ public class PaymentAttemptService {
         promotions.validatePayment(booking);
         payment.setAmount(booking.getFinalAmount());
         // invoice, transaction ID and transaction date remain NULL; no gateway result exists yet.
-        confirmDeclaredTransfer(payment, booking);
+
         payments.saveAndFlush(payment);
         return response(payment, booking);
-    }
-
-    private void confirmDeclaredTransfer(PaymentTransaction payment, Booking booking) {
-        if (payment.getPaymentMethod() != PaymentMethod.BANK_TRANSFER) return;
-        // Booking confirmation is a business policy; PENDING still means money is unverified.
-        payment.setNote("CUSTOMER_DECLARED; receipt=UNVERIFIED; declaredAt=" + LocalDateTime.now(clock));
-        booking.setStatus(BookingStatus.PAID);
     }
 
     @Transactional
@@ -173,8 +149,6 @@ public class PaymentAttemptService {
         var preparation = gateway.prepare(payment.getPaymentMethod(), payment.getId(), payment.getAmount());
         return new PaymentAttemptResponse(payment.getId(), booking.getId(), payment.getPaymentMethod(),
                 payment.getStatus(), payment.getAmount(), booking.getExpiresAt(), preparation,
-                booking.getStatus(), payment.getPaymentMethod() == PaymentMethod.BANK_TRANSFER
-                        && payment.getNote() != null && payment.getNote().startsWith("CUSTOMER_DECLARED;")
-                        ? "CUSTOMER_DECLARED" : null);
+                booking.getStatus());
     }
 }

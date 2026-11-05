@@ -30,7 +30,7 @@ class CourtNumberMigrationPostgresTest {
                 sql.execute("INSERT INTO customers(user_id,full_name,phone) SELECT id,'Number','0900000000' FROM users");
                 sql.execute("INSERT INTO bookings(customer_id,status,court_fee) SELECT id,'PAID',100000 FROM customers");
                 sql.execute("INSERT INTO booking_details(booking_id,court_id,time_slot_id,booking_date,price) SELECT b.id,c.id,s.id,DATE '2035-01-01',100000 FROM bookings b CROSS JOIN courts c CROSS JOIN time_slots s LIMIT 1");
-                sql.execute("INSERT INTO payment_transactions(booking_id,payment_method,status,amount,note) SELECT id,'BANK_TRANSFER','PENDING',100000,'CUSTOMER_DECLARED; receipt=UNVERIFIED' FROM bookings");
+                sql.execute("INSERT INTO payment_transactions(booking_id,payment_method,status,amount,note) SELECT id,'VNPAY','PENDING',100000,'MIGRATION_TEST_NOTE' FROM bookings");
                 scenario.run(sql);
             } finally { sql.execute("ROLLBACK");sql.execute("SET search_path TO public");sql.execute("DROP SCHEMA "+schema+" CASCADE"); }
         }

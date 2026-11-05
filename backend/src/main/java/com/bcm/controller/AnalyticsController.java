@@ -57,8 +57,9 @@ public class AnalyticsController {
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam(defaultValue="0") int page,
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to) {
-        return ApiResponse.success(analyticsService.history(period,date,page,from,to));
+            @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue="") String search,@RequestParam(defaultValue="") String method) {
+        return ApiResponse.success(analyticsService.history(period,date,page,from,to,search,method));
     }
 
     @GetMapping("/invoices/{id}")

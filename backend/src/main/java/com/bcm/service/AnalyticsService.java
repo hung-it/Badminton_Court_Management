@@ -40,15 +40,20 @@ public class AnalyticsService {
     private final ProductRepository products;
     private final CustomerRepository customers;
     private final BookingDetailRepository bookingDetails;
+    private final com.bcm.repository.BookingRepository bookings;
 
     public InvoiceReportResponse.History history(String period, LocalDate date, int page) {
         return history(period,date,page,null,null);
     }
 
     public InvoiceReportResponse.History history(String period, LocalDate date, int page, LocalDate from, LocalDate to) {
+        return history(period,date,page,from,to,"","");
+    }
+    public InvoiceReportResponse.History history(String period,LocalDate date,int page,LocalDate from,LocalDate to,String search,String method) {
+        if(!List.of("","CASH","VNPAY").contains(method)) throw new BadRequestException("Invalid payment method");
         if(page<0) throw new BadRequestException("Trang phải từ 0 trở lên");
         var range=resolveRange(period,date,from,to);
-        var result=invoiceRepository.findPaidHistory(range.from().atStartOfDay(),range.toExclusive().atStartOfDay(),
+        var result=invoiceRepository.searchPaidHistory(range.from().atStartOfDay(),range.toExclusive().atStartOfDay(),"%"+search.trim().toLowerCase(java.util.Locale.ROOT)+"%",method,
             PageRequest.of(page,20,Sort.by(
                 Sort.Order.desc("createdAt"),Sort.Order.desc("id"))));
         return new InvoiceReportResponse.History(result.stream().map(this::summary).toList(),page,result.getTotalPages(),result.getTotalElements());
@@ -71,7 +76,7 @@ public class AnalyticsService {
     private InvoiceReportResponse.Summary summary(Invoice i) {
         String name=customers.findById(i.getCustomerId()).map(Customer::getFullName).orElse("Khách vãng lai");
         return new InvoiceReportResponse.Summary(i.getId(),i.getBookingId(),name,i.getCreatedAt(),i.getPaymentMethod(),
-            valueOrZero(i.getCourtFee()),i.getProductFee(),i.getDiscountAmount(),i.getTotalAmount());
+            valueOrZero(i.getCourtFee()),i.getProductFee(),i.getDiscountAmount(),i.getTotalAmount(),i.getStatus(),i.getBookingId()==null?null:bookings.findById(i.getBookingId()).map(b->b.getStatus().name()).orElse(null));
     }
 
     public RevenueReportResponse getRevenue(String period, LocalDate date) {

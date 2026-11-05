@@ -155,7 +155,7 @@ export default function CustomerCourts() {
           const futureDetails = sortBookingDetails(detail?.details).filter(entry => entry.bookingDate >= now);
           const future = futureDetails[0];
           if (future) {
-            upcoming = {header: item, detail: future, details: futureDetails, declared: detail.payments?.some(payment => payment.confirmationMethod === 'CUSTOMER_DECLARED' && payment.paymentStatus === 'PENDING')};
+            upcoming = {header: item, detail: future, details: futureDetails};
             break;
           }
         } catch {
@@ -315,7 +315,7 @@ export default function CustomerCourts() {
           {bookings.upcoming ? <>
             <strong>{bookings.upcoming.detail.courtName}</strong>
             <span>{bookings.upcoming.detail.bookingDate} • {bookingTimeLabel(bookings.upcoming.details)}</span>
-            <a href={`/payment-result?bookingId=${encodeURIComponent(bookings.upcoming.header.bookingId)}`}>Mã đặt {bookings.upcoming.header.bookingId.slice(0, 8)} · {bookings.upcoming.declared ? 'Đã xác nhận đặt sân · Thanh toán chờ xác nhận' : bookings.upcoming.header.status}</a>
+            <a href={`/payment-result?bookingId=${encodeURIComponent(bookings.upcoming.header.bookingId)}`}>Mã đặt {bookings.upcoming.header.bookingId.slice(0, 8)} · {bookings.upcoming.header.status}</a>
           </> : <><strong>{!session ? 'Lịch chơi sắp tới' : loading ? 'Đang tải lịch đặt…' : bookings.error ? 'Không tải được lịch đặt' : 'Chưa có lịch chơi sắp tới'}</strong><span>{!session ? 'Đăng nhập để xem lịch đặt của bạn.' : loading ? ' ' : bookings.error ? 'Thử lại để xem các lịch đặt của bạn.' : 'Các lịch đặt sắp tới của bạn sẽ hiển thị ở đây.'}</span><a href={bookings.error ? '#upcoming-booking' : '#search-courts'} onClick={bookings.error ? event => {event.preventDefault(); fetchPageData();} : undefined}>{bookings.error ? 'Tải lại lịch đặt' : 'Tìm sân phù hợp →'}</a></>}
         </aside>
       </section>

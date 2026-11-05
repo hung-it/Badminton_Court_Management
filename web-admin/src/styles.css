@@ -113,3 +113,27 @@
 .breakdown-total-line.grand{margin-top:12px;padding:14px 16px;border:0;border-radius:9px;background:#eaf2e2;color:#174d3a;font-weight:700;font-size:14px}
 .breakdown-total-line.grand strong{font-size:16px}
 @media(max-width:760px){.breakdown-toolbar .field{min-width:100%}.breakdown-bar{width:70px}.year-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.year-list button{min-width:0}.breakdown-quarters{flex-wrap:nowrap;overflow-x:auto;max-width:100%;padding-bottom:4px}.breakdown-quarters button{flex:0 0 auto}.breakdown-totals{margin:0 16px 16px}.breakdown-detail-table th[scope="row"]{min-width:150px}}
+
+/* Customer and invoice screens share the existing BCM controls and tokens. */
+.admin-records{min-width:0;max-width:100%}
+.admin-records .record-heading{justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}
+.record-heading h2,.record-heading h3{margin:0}
+.record-heading .count{margin-left:auto}
+.admin-records .record-filters{display:grid;gap:16px;align-items:center;grid-template-columns:minmax(260px,1fr) minmax(160px,220px)}
+.invoices-panel .record-filters{grid-template-columns:minmax(140px,1fr) minmax(140px,1fr) minmax(260px,2fr) minmax(150px,1fr)}
+.admin-records .record-filters input,.admin-records .record-filters select{width:100%;min-width:0;height:44px;padding:10px 12px;border:1px solid #d9e1d2;border-radius:8px;font:inherit;color:#284430;background:#fff}
+.admin-records .table-scroll{max-width:100%;overflow:auto}
+.admin-records > .table-scroll > table{table-layout:fixed;min-width:960px}
+.admin-records > .table-scroll th,.admin-records > .table-scroll td{padding:14px 10px;vertical-align:middle}
+.admin-records .record-wrap{white-space:normal;overflow-wrap:anywhere}
+.admin-records .record-number{text-align:right;font-variant-numeric:tabular-nums}
+.admin-records .record-actions{display:flex;flex-wrap:wrap;gap:8px}
+.admin-records .record-actions button{padding:8px 10px;white-space:nowrap}
+.accounts-panel > .table-scroll th:nth-child(1){width:8%}.accounts-panel > .table-scroll th:nth-child(2){width:13%}.accounts-panel > .table-scroll th:nth-child(3){width:20%}.accounts-panel > .table-scroll th:nth-child(4){width:10%}.accounts-panel > .table-scroll th:nth-child(5){width:15%}.accounts-panel > .table-scroll th:nth-child(6){width:10%}.accounts-panel > .table-scroll th:nth-child(7){width:10%}.accounts-panel > .table-scroll th:nth-child(8){width:14%}
+.accounts-panel .record-filters{grid-template-columns:minmax(260px,1fr) minmax(150px,180px) minmax(160px,200px)}.account-role{display:inline-block;margin:3px 4px 3px 0}
+.invoices-panel > .table-scroll th:nth-child(1){width:9%}.invoices-panel > .table-scroll th:nth-child(2){width:15%}.invoices-panel > .table-scroll th:nth-child(3){width:15%}.invoices-panel > .table-scroll th:nth-child(4){width:9%}.invoices-panel > .table-scroll th:nth-child(5){width:8%}.invoices-panel > .table-scroll th:nth-child(6){width:10%}.invoices-panel > .table-scroll th:nth-child(7){width:8%}.invoices-panel > .table-scroll th:nth-child(8){width:14%;text-align:right}.invoices-panel > .table-scroll th:nth-child(9){width:12%}
+.customer-dialog p{overflow-wrap:anywhere}.customer-dialog .dialog-foot{flex-wrap:wrap}
+@media(max-width:1150px){.invoices-panel .record-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.admin-records .record-filters{grid-template-columns:minmax(0,1fr)}.admin-records .record-heading{gap:12px}.admin-records .record-heading .count{margin-left:0}.customer-dialog{max-height:90dvh}.admin-records .dialog-foot button{min-height:42px}}
+
+@media(max-width:760px){.accounts-panel .record-filters{grid-template-columns:minmax(0,1fr)}}

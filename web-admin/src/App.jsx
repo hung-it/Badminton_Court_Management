@@ -3,14 +3,16 @@ import ProductPromotions from './Promotions.jsx';
 import CourtBrowser from './CourtBrowser.jsx';
 import TimeSlotFilters from './TimeSlotFilters.jsx';
 import RevenueInvoices from './RevenueInvoices.jsx';
+import Accounts from './Accounts.jsx';
 import Statistics from './Statistics.jsx';
 import RevenueBreakdown from './RevenueBreakdown.jsx';
 import PeriodFilter,{inPeriod} from './PeriodFilter.jsx';
 const money=n=>new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND'}).format(n||0);
 const labels={STANDARD_MAT:'Thảm tiêu chuẩn',WOODEN_FLOOR:'Sàn gỗ',AVAILABLE:'Hoạt động',MAINTENANCE:'Bảo trì',CLOSED:'Đóng cửa',GOODS:'Hàng hóa',SERVICE:'Dịch vụ'};
 const masterTabs=[['courts','Sân cầu'],['time-slots','Khung giờ & giá'],['categories','Danh mục'],['products','Hàng hóa & dịch vụ'],['product-promotions','Khuyến mãi']];
-const opTabs=[['pos','Bán tại quầy'],['checkout','Trả sân'],['inventory','Nhập kho'],['analytics','Doanh thu'],['statistics','Thống kê'],['revenue-breakdown','Doanh thu theo đối tượng']];
-const allTabs=[...masterTabs,...opTabs];
+const dataNavTabs=[['accounts','Tài khoản'],...masterTabs];
+const opTabs=[['invoices','Hóa đơn'],['pos','Bán tại quầy'],['checkout','Trả sân'],['inventory','Nhập kho'],['statistics','Thống kê'],['revenue-breakdown','Doanh thu theo đối tượng']];
+const allTabs=[...dataNavTabs,...opTabs];
 const initial={courts:{courtNumber:1,name:'',type:'STANDARD_MAT',status:'AVAILABLE',basePrice:100000,district:'',address:''},'time-slots':{startTime:'06:00',endTime:'07:00',priceMultiplier:1},categories:{categoryName:''},products:{categoryId:'',name:'',type:'GOODS',unit:'cái',price:0,stockQuantity:0}};
 function defaultMultiplier(start,end){return start>='17:00'&&end<='21:00'?1.5:1;}
 function validateCourtLocation(form){
@@ -23,7 +25,9 @@ function validateCourtLocation(form){
 
 export default function App(){
  const [session,setSession]=useState(()=>{try{return JSON.parse(sessionStorage.getItem('bcm-session'))}catch{return null}});
- const [tab,setTab]=useState(()=>session?.user?.roles?.includes('ADMIN')?'courts':'pos'),[data,setData]=useState({courts:[],'time-slots':[],categories:[],products:[],'product-promotions':[]});
+ const isAdmin=!!session?.user?.roles?.includes('ADMIN');
+ const [tab,setTab]=useState(()=>{const requested=new URLSearchParams(window.location.search).get('tab')||window.location.pathname.split('/')[1];return allTabs.some(([k])=>k===requested)&&(isAdmin||['pos','checkout','product-promotions'].includes(requested))?requested:(isAdmin?'accounts':'pos')}),[data,setData]=useState({courts:[],'time-slots':[],categories:[],products:[],'product-promotions':[]});
+ useEffect(()=>{if(!session)return;if(!isAdmin&&!['pos','checkout','product-promotions'].includes(tab)){setTab('pos');return}window.history.replaceState(null,'','/?tab='+tab)},[session,isAdmin,tab]);
  const [busy,setBusy]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[query,setQuery]=useState(''),[filter,setFilter]=useState('');
  const [modal,setModal]=useState(null),[form,setForm]=useState({}),[fieldErrors,setFieldErrors]=useState({}),[deleteTarget,setDeleteTarget]=useState(null);
  const [credentials,setCredentials]=useState({email:'',password:''}),[quoteCourt,setQuoteCourt]=useState('');
@@ -36,17 +40,17 @@ export default function App(){
  const [posSearch,setPosSearch]=useState('');
  const [posHistory,setPosHistory]=useState([]);
  const [posMode,setPosMode]=useState('booking');
+ const [posPaymentMethod,setPosPaymentMethod]=useState('CASH');
  const [posPromotionCode,setPosPromotionCode]=useState('');
  const [posBookingPreview,setPosBookingPreview]=useState(null);
 
  // Checkout state
+ const [openedInvoice,setOpenedInvoice]=useState(null);
  const [checkoutBookingId,setCheckoutBookingId]=useState('');
  const [posBookingId,setPosBookingId]=useState('');
  const [checkoutPaymentMethod,setCheckoutPaymentMethod]=useState('CASH');
  const [checkoutSlip,setCheckoutSlip]=useState(null);
  const [checkoutOpen,setCheckoutOpen]=useState(false);
- const [courtReceiptConfirmed,setCourtReceiptConfirmed]=useState(false);
- useEffect(()=>setCourtReceiptConfirmed(false),[checkoutSlip]);
  const [checkoutHistory,setCheckoutHistory]=useState([]);
   const [activeBookings,setActiveBookings]=useState([]);
   const [activeBusy,setActiveBusy]=useState(false);
@@ -69,14 +73,6 @@ export default function App(){
   try{await api('/admin/products/'+priceApprovalTarget.id+'/approve-price','POST',{price:approvalPrice,version:priceApprovalTarget.version});setPriceApprovalTarget(null);setNotice('Đã duyệt giá niêm yết. Sản phẩm được phép bán tại quầy.');await load();}
   catch(e){setError(e.message);}finally{setSaving(false);}
  }
-
- // Analytics state
- const [analyticsPeriod,setAnalyticsPeriod]=useState('DAY');
- const [analyticsMonth,setAnalyticsMonth]=useState('');
- const [analyticsRange,setAnalyticsRange]=useState({});
- const analyticsDate=analyticsMonth?analyticsMonth+'-01':'';
- const analyticsParams=analyticsRange.from?'from='+analyticsRange.from+'&to='+analyticsRange.to:'period='+analyticsPeriod+(analyticsDate?'&date='+analyticsDate:'');
- const [revenueData,setRevenueData]=useState(null);
 
  function logout(){sessionStorage.removeItem('bcm-session');setSession(null);setData({courts:[],'time-slots':[],categories:[],products:[],'product-promotions':[]});setModal(null);setDeleteTarget(null);}
  async function api(path,method='GET',body,token=session?.accessToken){
@@ -115,12 +111,6 @@ export default function App(){
 
  useEffect(()=>{if(session)load()},[session]);
  useEffect(()=>{
-  if(!session||tab!=='analytics')return;
-  let active=true;setRevenueData(null);
-  api('/analytics/revenue?'+analyticsParams).then(v=>{if(active)setRevenueData(v)}).catch(e=>{if(active)setError(e.message)});
-  return()=>{active=false};
- },[session,tab,analyticsParams]);
- useEffect(()=>{
   setQuery('');setFilter('');setNotice('');
   if(session)loadOperationalData();
  },[tab]);
@@ -132,7 +122,7 @@ export default function App(){
    .then(entries=>{if(active)setSlotPrices(Object.fromEntries(entries))}).catch(e=>{if(active)setPriceError(e.message)});
   return()=>{active=false};
  },[tab,quoteCourt,data]);
- async function login(e){e.preventDefault();setSaving(true);setError('');try{const s=await api('/auth/login','POST',credentials,null);if(!s.user?.roles?.some(r=>['ADMIN','STAFF'].includes(r)))throw new Error('Tài khoản cần quyền ADMIN hoặc STAFF.');setTab(s.user.roles.includes('ADMIN')?'courts':'pos');sessionStorage.setItem('bcm-session',JSON.stringify(s));setSession(s);setCredentials({email:'',password:''})}catch(e){setError(e.message)}finally{setSaving(false)}}
+ async function login(e){e.preventDefault();setSaving(true);setError('');try{const s=await api('/auth/login','POST',credentials,null);if(!s.user?.roles?.some(r=>['ADMIN','STAFF'].includes(r)))throw new Error('Tài khoản cần quyền ADMIN hoặc STAFF.');setTab(s.user.roles.includes('ADMIN')?'accounts':'pos');sessionStorage.setItem('bcm-session',JSON.stringify(s));setSession(s);setCredentials({email:'',password:''})}catch(e){setError(e.message)}finally{setSaving(false)}}
  function open(item=null){setModal({id:item?.id||null});setForm(item?{...item,...(tab==='courts'?{courtNumber:item.courtCode??item.courtNumber,type:'STANDARD_MAT'}:{})}:{...initial[tab],...(tab==='courts'?{courtNumber:Math.max(0,...data.courts.map(c=>c.courtCode??c.courtNumber))+1}:{}),...(tab==='products'?{categoryId:data.categories[0]?.id||''}:{})});setFieldErrors({});setError('');}
  function change(key,value){setForm(old=>{const next={...old,[key]:value};if(tab==='products'&&key==='type'&&value==='SERVICE')next.stockQuantity=0;if(tab==='time-slots'&&(key==='startTime'||key==='endTime'))next.priceMultiplier=defaultMultiplier(next.startTime.slice(0,5),next.endTime.slice(0,5));return next});}
  async function save(e){e.preventDefault();setSaving(true);setFieldErrors({});setError('');try{let payload={...form};if(tab==='courts')validateCourtLocation(payload);for(const key of ['courtNumber','basePrice','priceMultiplier','price','stockQuantity'])if(key in payload)payload[key]=Number(payload[key]);await api('/admin/'+tab+(modal.id?'/'+modal.id:''),modal.id?'PUT':'POST',payload);setModal(null);setNotice('Đã lưu dữ liệu thành công.');await load()}catch(e){setError(e.message);if(e.fields&&typeof e.fields==='object')setFieldErrors(e.fields)}finally{setSaving(false)}}
@@ -145,11 +135,11 @@ useEffect(()=>{
  const timer=setTimeout(async()=>{try{
   const bookingId=posMode==='booking'?posBookingId.trim():null;
   if(posMode==='booking'&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bookingId))throw new Error('Vui lòng nhập mã đơn đặt sân (UUID) hợp lệ.');
-  const [quote,preview]=await Promise.all([api('/pos/quote','POST',{bookingId,promotionCode:posPromotionCode.trim()||null,paymentMethod:'CASH',items:posCart.map(i=>({productId:i.id,quantity:i.quantity}))}),bookingId?api('/checkout/'+bookingId):Promise.resolve(null)]);
+  const [quote,preview]=await Promise.all([api('/pos/quote','POST',{bookingId,promotionCode:posPromotionCode.trim()||null,paymentMethod:posMode==='booking'?'CASH':posPaymentMethod,items:posCart.map(i=>({productId:i.id,quantity:i.quantity}))}),bookingId?api('/checkout/'+bookingId):Promise.resolve(null)]);
   if(active){setPosQuote(quote);setPosBookingPreview(preview);}
  }catch(e){if(active)setPosQuoteError(e.message)}finally{if(active)setPosQuoteBusy(false)}},150);
  return ()=>{active=false;clearTimeout(timer)};
-},[session,tab,posCart,posMode,posBookingId,posPromotionCode]);
+},[session,tab,posCart,posMode,posBookingId,posPromotionCode,posPaymentMethod]);
  // POS handlers
  function addToCart(p){
   setPosCart(old=>{
@@ -174,11 +164,12 @@ useEffect(()=>{
     customerId:null,
     bookingId,
     promotionCode:posPromotionCode.trim()||null,
-    paymentMethod:'CASH',
+    paymentMethod:posMode==='booking'?'CASH':posPaymentMethod,
     courtFee:0,
     items:posCart.map(i=>({productId:i.id,quantity:i.quantity}))
    };
    const inv=await api('/pos/sales','POST',payload);
+   if(!bookingId&&session.user?.roles?.includes('ADMIN')){setOpenedInvoice(inv.id);setTab('invoices');}
    const totalAmt=inv.total_amount??inv.totalAmount;
    const discountAmt=inv.discountAmount??inv.discount_amount??0;
    setPosHistory(h=>[{id:inv.id||`#HD-${Date.now().toString().slice(-4)}`,time:new Date().toLocaleTimeString('vi-VN'),total:totalAmt,discount:discountAmt,status:inv.status,items:[...posCart]},...h]);
@@ -200,14 +191,14 @@ useEffect(()=>{
   if(!checkoutSlip||checkoutSlip.status==='PAID')return;
   setSaving(true);setError('');
   try{
-   const res=await api('/checkout/'+checkoutSlip.bookingId,'POST',{paymentMethod:checkoutPaymentMethod,courtReceiptConfirmed});
+   const res=await api('/checkout/'+checkoutSlip.bookingId,'POST',{paymentMethod:checkoutPaymentMethod});
    const paidSlip={...checkoutSlip,...res,status:'PAID',paymentMethod:checkoutPaymentMethod,invoiceId:res.invoiceId,totalAmount:res.total_amount??res.totalAmount??checkoutSlip.totalAmount};
    setCheckoutSlip(paidSlip);
    setCheckoutHistory(h=>[paidSlip,...h]);
    setCheckoutOpen(false);
    setActiveBookings(rows=>rows.filter(b=>b.bookingId!==checkoutSlip.bookingId));
    setNotice('Kết toán thành công! Hóa đơn '+res.invoiceId+' gồm tiền sân và hàng tại quầy đã ghi nhận vào Doanh thu.');
-   if(session.user?.roles?.includes('ADMIN'))setTab('analytics');
+   if(session.user?.roles?.includes('ADMIN')){setOpenedInvoice(res.invoiceId);setTab('invoices');}
   }catch(e){setError(e.message);}finally{setSaving(false);}
  }
 
@@ -243,9 +234,8 @@ useEffect(()=>{
 
  const rows=data[tab]?data[tab].filter(x=>{const text=[x.name,x.categoryName,x.courtNumber,x.startTime,x.endTime,labels[x.type],labels[x.status]].join(' ').toLocaleLowerCase('vi');if(tab==='time-slots')return true;return text.includes(query.toLocaleLowerCase('vi'))&&(!filter||(tab==='products'?x.categoryId===filter:x.status===filter))}):[];
  const title=allTabs.find(([k])=>k===tab)?.[1]||'';
- const checkoutPaidCourt=Number(checkoutSlip?.paidCourtAmount||0)+(checkoutSlip?.courtReceiptRequired&&courtReceiptConfirmed?Number(checkoutSlip.courtFee||0)-Number(checkoutSlip.courtDiscount||0):0);
+ const checkoutPaidCourt=Number(checkoutSlip?.paidCourtAmount||0);
  const checkoutDue=Math.max(0,Number(checkoutSlip?.totalAmount||0)-checkoutPaidCourt);
- const awaitingCourtReceipt=!!checkoutSlip?.courtReceiptRequired&&!courtReceiptConfirmed;
  const filteredBookings=activeBookings.filter(b=>[b.bookingId,b.shortId,b.courtDetails,b.customerName,b.customerPhone].join(' ').toLocaleLowerCase('vi').includes(query.trim().toLocaleLowerCase('vi')));
  function field(key,label,type='text',extra={}){return <label className="field" key={key}>{label}<input aria-label={label} name={key} type={type} value={form[key]??''} onChange={e=>change(key,e.target.value)} required {...extra}/>{fieldErrors[key]&&<small className="invalid">{fieldErrors[key]}</small>}</label>}
  function select(key,label,options){return <label className="field" key={key}>{label}<select aria-label={label} name={key} value={form[key]??''} onChange={e=>change(key,e.target.value)} required>{options.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>{fieldErrors[key]&&<small className="invalid">{fieldErrors[key]}</small>}</label>}
@@ -254,7 +244,7 @@ useEffect(()=>{
 
 <button className="primary wide" disabled={saving}>{saving?'Đang đăng nhập…':'Đăng nhập →'}</button></form></section></div>;
 
- return <div className="app-shell"><aside className="sidebar"><div className="brand">BCM<span>COURT MANAGEMENT</span></div><span className="nav-caption">QUẢN LÝ DỮ LIỆU</span><nav>{masterTabs.filter(([key])=>session.user?.roles?.includes('ADMIN')||key==='product-promotions').map(([key,label])=><button key={key} className={tab===key?'nav active':'nav'} onClick={()=>setTab(key)}>{label}</button>)}</nav><span className="tab-section-label">VẬN HÀNH & POS</span><nav>{opTabs.filter(([key])=>session.user?.roles?.includes('ADMIN')||['pos','checkout'].includes(key)).map(([key,label])=><button key={key} className={tab===key?'nav active':'nav'} onClick={()=>setTab(key)}>{label}</button>)}</nav><div className="sidebar-bottom"><div className="avatar">A</div><div><strong>{session.user?.fullName||'Quản trị viên'}</strong><small>{session.user?.roles?.includes('ADMIN')?'Administrator':'Nhân viên'}</small></div><button aria-label="Đăng xuất" title="Đăng xuất" onClick={logout}>↗</button></div></aside><main><header className="topbar"><span>Vận hành / <strong>{title}</strong></span><span className="live"><i/> Web Admin</span><button className="mobile-logout secondary" onClick={logout}>Đăng xuất</button></header><div className="workspace">
+ return <div className="app-shell"><aside className="sidebar"><div className="brand">BCM<span>COURT MANAGEMENT</span></div><span className="nav-caption">QUẢN LÝ DỮ LIỆU</span><nav>{dataNavTabs.filter(([key])=>session.user?.roles?.includes('ADMIN')||key==='product-promotions').map(([key,label])=><button key={key} className={tab===key?'nav active':'nav'} onClick={()=>setTab(key)}>{label}</button>)}</nav><span className="tab-section-label">VẬN HÀNH & POS</span><nav>{opTabs.filter(([key])=>session.user?.roles?.includes('ADMIN')||['pos','checkout'].includes(key)).map(([key,label])=><button key={key} className={tab===key?'nav active':'nav'} onClick={()=>setTab(key)}>{label}</button>)}</nav><div className="sidebar-bottom"><div className="avatar">A</div><div><strong>{session.user?.fullName||'Quản trị viên'}</strong><small>{session.user?.roles?.includes('ADMIN')?'Administrator':'Nhân viên'}</small></div><button aria-label="Đăng xuất" title="Đăng xuất" onClick={logout}>↗</button></div></aside><main><header className="topbar"><span>{tab==='accounts'?'Quản lý dữ liệu':'Vận hành'} / <strong>{title}</strong></span><span className="live"><i/> Web Admin</span><button className="mobile-logout secondary" onClick={logout}>Đăng xuất</button></header><div className="workspace">
 
  {error&&!modal&&!deleteTarget&&<div role="alert" className="alert error">{error} <button onClick={load}>Thử lại</button></div>}
 
@@ -328,7 +318,8 @@ useEffect(()=>{
       {posPromotionCode.trim()&&<div className="pos-summary-line"><span>Tiền hàng sau giảm giá:</span><strong>{money(Math.max(0,Number(posBookingPreview.product_fee)+Number(posQuote.productFee)-Number(posBookingPreview.productDiscount||0)-Number(posQuote.discountAmount||0)))}</strong></div>}
       <div className="pos-summary-total"><span>Còn phải thu:</span><span>{money(Number(posBookingPreview.amountDue)+Number(posQuote.totalAmount))}</span></div>
      </div>}
-     <button className="primary wide" style={{marginTop:'14px'}} disabled={!posCart.length||saving||posQuoteBusy||!posQuote||!!posQuoteError||(posMode==='booking'&&!posBookingPreview)} onClick={handlePosSale}>{saving?'Đang xử lý…':posMode==='booking'?'Thêm hàng & xem bill gộp':'✓ Thu tiền hàng (CASH)'}</button>
+     {posMode==='walk-in'&&<label className="field">Phương thức thanh toán<select aria-label="Phương thức POS" value={posPaymentMethod} disabled={saving} onChange={e=>setPosPaymentMethod(e.target.value)}><option value="CASH">Tiền mặt (CASH)</option><option value="VNPAY">VNPay (VNPAY)</option></select></label>}
+     <button className="primary wide" style={{marginTop:'14px'}} disabled={!posCart.length||saving||posQuoteBusy||!posQuote||!!posQuoteError||(posMode==='booking'&&!posBookingPreview)} onClick={handlePosSale}>{saving?'Đang xử lý…':posMode==='booking'?'Thêm hàng & xem bill gộp':`✓ Thu tiền hàng (${posPaymentMethod})`}</button>
     </div>
    </div>
   </div>
@@ -404,10 +395,9 @@ useEffect(()=>{
      <div className="invoice-row"><span>Giảm tiền sân:</span><strong>{money(checkoutSlip.courtDiscount||0)}</strong></div>
      <div className="invoice-row"><span>Giảm sản phẩm:</span><strong>{money(checkoutSlip.productDiscount||0)}</strong></div>
      <div className="invoice-row"><span>Tiền sân đã xác nhận nhận:</span><strong>{money(checkoutPaidCourt)}</strong></div>
-     {awaitingCourtReceipt&&<div className="alert" role="status">Khách đã khai báo chuyển khoản tiền sân {money(Number(checkoutSlip.courtFee)-Number(checkoutSlip.courtDiscount||0))}. Cần đối soát giao dịch này, không yêu cầu khách chuyển lại tiền sân.</div>}
-     <div className="invoice-row"><span>{awaitingCourtReceipt?'Tiền hàng còn phải thu:':'Còn phải thu:'}</span><strong>{money(awaitingCourtReceipt?Math.max(0,Number(checkoutSlip.productFee||0)-Number(checkoutSlip.productDiscount||0)):checkoutDue)}</strong></div>
+     <div className="invoice-row"><span>Còn phải thu:</span><strong>{money(checkoutDue)}</strong></div>
      <div className="invoice-total-block">
-      <div className="total-line"><span>{awaitingCourtReceipt?'CHỜ ĐỐI SOÁT TIỀN SÂN:':'TỔNG BILL SAU GIẢM:'}</span><span>{awaitingCourtReceipt?'Chưa xác nhận':money(checkoutDue)}</span></div>
+      <div className="total-line"><span>TỔNG BILL SAU GIẢM:</span><span>{money(checkoutDue)}</span></div>
      </div>
     </div>}
 
@@ -415,22 +405,18 @@ useEffect(()=>{
    </div>
 
    <div className="pos-cart-panel">
-    <h3>{awaitingCourtReceipt?'Đối soát tiền sân':checkoutSlip&&checkoutDue===0?'Hoàn tất trả sân':'Thu tiền còn lại'}</h3>
-    {!awaitingCourtReceipt&&checkoutSlip&&checkoutDue===0&&<p className="muted">Tiền sân đã được ghi nhận. Không có khoản phát sinh cần thu thêm.</p>}
-    {!awaitingCourtReceipt&&checkoutDue>0&&<><p className="muted">Chọn phương thức thu phần còn lại:</p>
+    <h3>{checkoutSlip&&checkoutDue===0?'Hoàn tất trả sân':'Thu tiền còn lại'}</h3>
+    {checkoutSlip&&checkoutDue===0&&<p className="muted">Tiền sân đã được ghi nhận. Không có khoản phát sinh cần thu thêm.</p>}
+    {checkoutDue>0&&<><p className="muted">Chọn phương thức thu phần còn lại:</p>
     <div className="payment-picker">
      <button className={'payment-btn '+(checkoutPaymentMethod==='CASH'?'selected':'')} onClick={()=>setCheckoutPaymentMethod('CASH')}>
       <span>💵 Tiền mặt (CASH)</span>{checkoutPaymentMethod==='CASH'&&<span>✓</span>}
-     </button>
-     <button className={'payment-btn '+(checkoutPaymentMethod==='BANK_TRANSFER'?'selected':'')} onClick={()=>setCheckoutPaymentMethod('BANK_TRANSFER')}>
-      <span>🏦 Chuyển khoản / QR (BANK_TRANSFER)</span>{checkoutPaymentMethod==='BANK_TRANSFER'&&<span>✓</span>}
      </button>
      <button className={'payment-btn '+(checkoutPaymentMethod==='VNPAY'?'selected':'')} onClick={()=>setCheckoutPaymentMethod('VNPAY')}>
       <span>💳 VNPay (VNPAY)</span>{checkoutPaymentMethod==='VNPAY'&&<span>✓</span>}
      </button>
     </div></>}
-    {checkoutSlip?.courtReceiptRequired&&checkoutSlip.status!=='PAID'&&<label className="pos-customer-options"><input type="checkbox" checked={courtReceiptConfirmed} disabled={saving} onChange={e=>setCourtReceiptConfirmed(e.target.checked)}/> Tôi đã kiểm tra và nhận đủ tiền sân (tiền chuyển khoản khách đã khai báo).</label>}
-    <button className="primary wide" disabled={!checkoutSlip||checkoutSlip.status==='PAID'||saving||awaitingCourtReceipt} onClick={confirmCheckout}>{saving?'Đang xử lý…':checkoutSlip&&checkoutDue===0?'✓ Hoàn tất trả sân':'✓ Xác nhận & thu tiền'}</button>
+    <button className="primary wide" disabled={!checkoutSlip||checkoutSlip.status==='PAID'||saving} onClick={confirmCheckout}>{saving?'Đang xử lý…':checkoutSlip&&checkoutDue===0?'✓ Hoàn tất trả sân':'✓ Xác nhận & thu tiền'}</button>
    </div>
   </div>
 
@@ -441,8 +427,8 @@ useEffect(()=>{
 
 
 
- {tab==='statistics'&&<Statistics api={api}/>}
- {tab==='revenue-breakdown'&&<RevenueBreakdown api={api}/>}
+ {isAdmin&&tab==='statistics'&&<Statistics api={api}/>}
+ {isAdmin&&tab==='revenue-breakdown'&&<RevenueBreakdown api={api}/>}
  {/* INVENTORY PANEL */}
  {tab==='inventory'&&<div className="inventory-panel">
   <div className="page-heading"><div><span className="eyebrow">INVENTORY</span><h1>Nhập kho</h1></div><button className="primary" onClick={()=>{setImportForm({supplierName:'',productName:'',quantity:'',totalAmount:''});setError('');setImportModalOpen(true);}}>＋ Tạo phiếu nhập</button></div>
@@ -477,19 +463,9 @@ useEffect(()=>{
 
 
  {/* ANALYTICS PANEL */}
- {tab==='analytics'&&<div className="analytics-panel">
-  <div className="page-heading">
-   <div><span className="eyebrow">ANALYTICS</span><h1>Doanh thu</h1></div>
-   <PeriodFilter period={analyticsPeriod} month={analyticsMonth} range={analyticsRange} onRangeChange={r=>{setRevenueData(null);setAnalyticsMonth('');setAnalyticsRange(r)}} onChange={(p,m)=>{setRevenueData(null);setAnalyticsRange({});setAnalyticsPeriod(p);setAnalyticsMonth(m)}}/>
-  </div>
-  <div className="stats">
-   <div><span>Doanh thu sau giảm giá</span><strong>{money(revenueData?.total_amount||revenueData?.totalAmount||0)}</strong><small className="green">{analyticsRange.from?'Khoảng ngày đã chọn':analyticsMonth?'Tháng '+analyticsMonth:({DAY:'Hôm nay',WEEK:'Tuần này',MONTH:'Tháng này'})[analyticsPeriod]}</small></div>
-   <div><span>Tiền sân</span><strong>{money(revenueData?.court_fee||revenueData?.courtFee||0)}</strong></div>
-   <div><span>Hàng hóa & dịch vụ</span><strong>{money(revenueData?.product_fee||revenueData?.productFee||0)}</strong></div>
-   <div><span>Thời gian ghi nhận</span><strong>{revenueData?.from||'—'}</strong><small>Đến {revenueData?.to||'—'}</small></div>
-  </div>
-  <RevenueInvoices key={analyticsParams} api={api} params={analyticsParams}/>
- </div>}
+ {isAdmin&&tab==='accounts'&&<Accounts api={api} currentUserId={session.user?.id}/>}
+ {isAdmin&&tab==='invoices'&&<RevenueInvoices key={openedInvoice} openId={openedInvoice} api={api} params="from=1900-01-01&to=2100-12-31"/>}
+
 
 
 

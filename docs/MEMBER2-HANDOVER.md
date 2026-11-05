@@ -8,7 +8,7 @@ Không triển khai booking engine, hóa đơn, nhập/xuất kho, upload ảnh,
 Đã chuẩn bị JDK 17, Maven portable `.tools/apache-maven-3.9.9`, PostgreSQL portable `.tools/pgsql`; Node.js có sẵn.
 Mở các terminal riêng ở thư mục gốc:
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/start-local-db.ps1 -Demo
+powershell -ExecutionPolicy Bypass -File scripts/start-local-db.ps1
 powershell -ExecutionPolicy Bypass -File scripts/start-backend.ps1
 powershell -ExecutionPolicy Bypass -File scripts/start-frontend.ps1
 ```
@@ -21,10 +21,10 @@ Không đổi database cũ ở cổng 5433.
 ## Máy khác / leader
 Cần JDK 17, Maven 3.8+, Node.js 22+ và PostgreSQL 15+.
 `.tools` là công cụ/dữ liệu cục bộ, không commit. `node_modules`, `dist`, `target` cũng được bỏ qua.
-1. Database mới: chạy `db/migration.sql`, rồi `db/member2-upgrade.sql` và `db/member2-payment-method-upgrade.sql`.
-2. Database đã có schema: chạy `db/member2-upgrade.sql` và `db/member2-payment-method-upgrade.sql` sau khi sao lưu và kiểm tra dữ liệu hiện có.
+1. Database mới: chạy `db/migration.sql`, rồi `db/booking-ux-upgrade.sql` và `db/booking-ux-upgrade.sql`.
+2. Database đã có schema: chạy `db/booking-ux-upgrade.sql` và `db/booking-ux-upgrade.sql` sau khi sao lưu và kiểm tra dữ liệu hiện có.
 3. Upgrade không ghi đè giá/tồn hiện có. Dữ liệu cũ trùng tên danh mục, chồng khung giờ hoặc giá/tồn không hợp lệ sẽ khiến migration dừng để sửa dữ liệu có chủ đích.
-4. Seed demo là tùy chọn `db/member2-demo.sql`.
+4. The obsolete member2 demo seed was removed; use current admin APIs for controlled demo data.
 5. Đặt biến môi trường `DB_URL`, `DB_USER`, `DB_PASSWORD`; chạy backend với profile `local`, hoặc sửa cấu hình database theo môi trường của nhóm.
 6. FE nằm trong `web-admin/`: `npm ci`, `npm run dev`; build: `npm run build`.
 

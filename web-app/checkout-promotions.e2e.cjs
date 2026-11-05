@@ -1,3 +1,5 @@
+const {requireTestEnvironment,fakeCheckout}=require('./payment-test-fixture.cjs');
+requireTestEnvironment();
 // Real HTTP/JWT/browser/PostgreSQL. Run against the dedicated promotion audit runtime only.
 // VNPay is a locally signed contract test, not a real provider transaction.
 const {chromium, request, expect}=require('playwright/test');
@@ -41,7 +43,7 @@ const sign=fields=>{
   try {
     const context=await browser.newContext({viewport:{width:1440,height:1100}});
     await context.addInitScript(s=>{sessionStorage.setItem('bcm.accessToken',s.accessToken);sessionStorage.setItem('bcm.user',JSON.stringify(s.user));},owner);
-    const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+    const page=await context.newPage();await fakeCheckout(page,api);const errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto(`${baseURL}/checkout?bookingId=${hold.bookingId}`);
     await expect(page.locator('.checkout-grand-total')).toContainText(money(670000));
     await expect(page.locator('.checkout-totals').first()).toContainText(money(720000));
@@ -83,17 +85,13 @@ const sign=fields=>{
     assert.equal(await page.locator('textarea').count(),0);
     console.log('PASS KMKH10, PostgreSQL snapshot, desktop/mobile 1440/375/320, no customer note');
     await page.setViewportSize({width:1440,height:1100});
-    await page.locator('input[value=BANK_TRANSFER]').check();
-    await page.getByLabel('Ngân hàng',{exact:true}).fill('Test bank');
-    await page.getByLabel('Tên chủ tài khoản',{exact:true}).fill('Promotion E2E');
-    await page.getByLabel('Số tài khoản',{exact:true}).fill('001234');
-    await page.getByLabel('Nội dung chuyển khoản',{exact:true}).fill('Promotion test');
+    await page.locator('input[value=VNPAY]').check();
     await page.getByRole('button',{name:'Thanh toán',exact:true}).click();
     await expect(page).toHaveURL(/payment-result/);
     const paid=await get(`/bookings/${hold.bookingId}`);
-    assert.equal(Number(paid.payments[0].amount),648000);assert.equal(paid.payments[0].paymentStatus,'PENDING');
-    assert.equal(paid.payments[0].confirmationMethod,'CUSTOMER_DECLARED');
-    console.log('PASS browser BANK_TRANSFER pays final amount and retains unverified declaration policy');
+    assert.equal(Number(paid.payments[0].amount),648000);assert.equal(paid.payments[0].paymentStatus,'SUCCESS');
+    assert.equal(paid.payments[0].paymentMethod,'VNPAY');
+    console.log('PASS browser VNPay fixture pays final amount and retains verified test callback policy');
     const vn=await create([[0,0]],'2035-08-21');const q=await apply(vn.bookingId,'KMKH10');assert.equal(Number(q.finalAmount),162000);
     const pay=await api.post(`/api/bookings/${vn.bookingId}/payments`,{headers,data:{paymentMethod:'VNPAY'}});
     assert.equal(pay.status(),201,await pay.text());const p=(await pay.json()).data;

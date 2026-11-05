@@ -31,11 +31,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /** Committed fixtures, real JWT and PostgreSQL locks/unique index; only time is controlled. */
-@SpringBootTest(properties = {"booking.expiration-enabled=false", "booking.payment.enabled-methods=VNPAY,BANK_TRANSFER",
+@SpringBootTest(properties = {"booking.expiration-enabled=false", "booking.payment.enabled-methods=VNPAY",
         "booking.payment.vnpay.tmn-code=TEST1234", "booking.payment.vnpay.hash-secret=edit-tests-only",
         "booking.payment.vnpay.return-url=http://localhost/api/payments/vnpay/return"})
 @AutoConfigureMockMvc
 @EnabledIfEnvironmentVariable(named = "BCM_TEST_DB_URL", matches = "jdbc:postgresql:.*")
+@org.springframework.test.context.TestExecutionListeners(listeners=com.bcm.SlotFixtureIsolation.class, mergeMode=org.springframework.test.context.TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class BookingModificationPostgresTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry r) {
         r.add("spring.datasource.url", () -> System.getenv("BCM_TEST_DB_URL"));
@@ -256,12 +257,12 @@ class BookingModificationPostgresTest {
             assertThat(jdbc.queryForObject("SELECT time_slot_id FROM booking_details WHERE booking_id=?", UUID.class, booking)).isEqualTo(slots.get(0));
         } finally { worker.shutdownNow(); }
     }
-    @Test void bankPaymentAfterEditUsesNewAmountAndPreservesPaymentEvidence() throws Exception {
+    @Test void vnpayAfterEditUsesNewAmountWithoutClaimingReceipt() throws Exception {
         edit(booking, token, body(DATE, slots.get(1))).andExpect(status().isOk());
         mvc.perform(post("/api/bookings/" + booking + "/payments").contextPath("/api").header("Authorization", "Bearer " + token)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"paymentMethod\":\"BANK_TRANSFER\",\"bankTransfer\":{\"bankName\":\"Test\",\"accountHolder\":\"Test\",\"accountNumber\":\"123\",\"transferContent\":\"Test\"}}"))
-                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.amount").value(125000)).andExpect(jsonPath("$.data.bookingStatus").value("PAID"));
-        assertThat(jdbc.queryForObject("SELECT note FROM payment_transactions WHERE booking_id=?", String.class, booking)).startsWith("CUSTOMER_DECLARED;");
+                .contentType(MediaType.APPLICATION_JSON).content("{\"paymentMethod\":\"VNPAY\"}"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.amount").value(125000)).andExpect(jsonPath("$.data.bookingStatus").value("PENDING"));
+        assertThat(jdbc.queryForObject("SELECT note FROM payment_transactions WHERE booking_id=?", String.class, booking)).isNull();
     }
     @Test void courtStateIsReadFreshAfterWaitingForItsLock() throws Exception {
         var worker = Executors.newSingleThreadExecutor();

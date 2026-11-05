@@ -39,11 +39,11 @@ public class CheckoutController {
     }
 
     @PostMapping("/{bookingIdentifier}")
-    @io.swagger.v3.oas.annotations.Operation(summary="Kết toán tiền sân và hàng hóa", description="Giao dịch khách tự khai chuyển khoản cần courtReceiptConfirmed=true sau khi nhân viên kiểm tra đã nhận đủ tiền sân. Đối soát, hóa đơn PAID và hoàn tất booking cùng transaction. Doanh thu tính toàn bộ hóa đơn sau giảm, không chỉ phần còn phải thu.")
+    @io.swagger.v3.oas.annotations.Operation(summary="Checkout booking", description="CASH or VNPAY for the remaining amount. Requires a verified court receipt; PAID invoice and COMPLETED booking commit atomically.")
     public ResponseEntity<ApiResponse<CheckoutResponse>> checkout(
             @PathVariable String bookingIdentifier,
             @Valid @RequestBody CheckoutRequest request) {
         UUID bookingId = checkoutService.resolveBookingId(bookingIdentifier);
-        return ResponseEntity.ok(checkoutService.checkout(bookingId, request.getPaymentMethod(), request.isCourtReceiptConfirmed()));
+        return ResponseEntity.ok(checkoutService.checkout(bookingId, request.getPaymentMethod()));
     }
 }

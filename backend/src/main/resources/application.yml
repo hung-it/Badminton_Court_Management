@@ -11,7 +11,7 @@ booking:
   expiration-check-interval: ${BOOKING_EXPIRATION_CHECK_INTERVAL:PT1S}
   payment:
     # Provider availability also requires valid sandbox configuration.
-    enabled-methods: ${BOOKING_PAYMENT_ENABLED_METHODS:VNPAY,BANK_TRANSFER}
+    enabled-methods: ${BOOKING_PAYMENT_ENABLED_METHODS:VNPAY}
     frontend-result-url: ${BOOKING_PAYMENT_FRONTEND_RESULT_URL:}
     vnpay:
       payment-url: ${BOOKING_VNPAY_PAYMENT_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}

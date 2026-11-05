@@ -26,8 +26,7 @@ import java.util.Set;
 public class BookingPromotionService {
     // A booking header confirms the reservation; only a verified full receipt earns paid history.
     private static final String VERIFIED_RECEIPT = "p.status='SUCCESS' AND p.amount=b.final_amount "
-            + "AND p.transaction_id IS NOT NULL AND p.transaction_date IS NOT NULL "
-            + "AND (p.note IS NULL OR p.note NOT LIKE 'CUSTOMER_DECLARED;%')";
+            + "AND p.transaction_id IS NOT NULL AND p.transaction_date IS NOT NULL ";
     private final BookingRepository bookings;
     private final PaymentTransactionRepository payments;
     private final CurrentCustomerService customer;
@@ -75,7 +74,7 @@ public class BookingPromotionService {
 
     @Transactional
     public BigDecimal staffReceive(UUID id,String method) {
-        if(!Set.of("CASH","BANK_TRANSFER").contains(method)) throw new com.bcm.exception.BadRequestException("Thu tại quầy chỉ hỗ trợ tiền mặt hoặc chuyển khoản đã xác nhận");
+        if(!"CASH".equals(method)) throw new com.bcm.exception.BadRequestException("Counter court receipts support CASH only; online receipts must be verified by VNPAY");
         var booking=bookings.findByIdForExpiration(id).orElseThrow(()->new ResourceNotFoundException("Booking not found"));
         if(booking.getStatus()==BookingStatus.PAID) {
             long received=jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=? AND status='SUCCESS' AND note LIKE 'STAFF_RECEIVED;%'",Long.class,id);

@@ -113,11 +113,6 @@ public class CheckoutService {
 
     @Transactional
     public ApiResponse<CheckoutResponse> checkout(UUID bookingId, String paymentMethod) {
-        return checkout(bookingId, paymentMethod, false);
-    }
-
-    @Transactional
-    public ApiResponse<CheckoutResponse> checkout(UUID bookingId, String paymentMethod, boolean courtReceiptConfirmed) {
         Booking booking = bookingRepository.findByIdForExpiration(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", "id", bookingId));
 
@@ -125,21 +120,7 @@ public class CheckoutService {
         if (booking.getStatus() != BookingStatus.PAID && booking.getStatus() != BookingStatus.CHECKED_IN) {
             throw new BadRequestException("Booking must already be paid before staff checkout");
         }
-        var declarations = bookingPayments.findBookingHistory(bookingId).stream().filter(p ->
-                p.getPaymentMethod() == com.bcm.entity.PaymentMethod.BANK_TRANSFER
-                        && p.getStatus() == com.bcm.entity.PaymentStatus.PENDING
-                        && p.getNote() != null && p.getNote().startsWith("CUSTOMER_DECLARED;")).toList();
-        if (!declarations.isEmpty()) {
-            if (!courtReceiptConfirmed) throw new BadRequestException("Vui lòng xác nhận đã nhận đủ tiền sân trước khi lập hóa đơn thanh toán.");
-            if (declarations.size()!=1 || declarations.get(0).getAmount().compareTo(booking.getFinalAmount())!=0)
-                throw new BadRequestException("Giao dịch tiền sân không khớp; cần đối soát trước khi kết toán.");
-            var payment=bookingPayments.findByIdForCallback(declarations.get(0).getId()).orElseThrow();
-            payment.setStatus(com.bcm.entity.PaymentStatus.SUCCESS);
-            payment.setTransactionId("RECONCILED-"+payment.getId());
-            payment.setTransactionDate(java.time.LocalDateTime.now());
-            var actor=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-            payment.setNote("STAFF_RECEIVED; actor="+(actor==null?"unknown":actor.getName())+"; previous="+payment.getNote());
-        }
+        BigDecimal paidCourt = verifiedCourtReceipt(booking);
         BigDecimal courtFee = valueOrZero(booking.getCourtFee());
         BigDecimal productFee = valueOrZero(
                 invoiceRepository.sumProductFeeByBookingIdAndStatus(bookingId, PENDING_POS_STATUS));
@@ -190,8 +171,8 @@ public class CheckoutService {
                 .totalAmount(totalAmount)
                 .courtDiscount(booking.getDiscountAmount())
                 .productDiscount(discountAmount.subtract(booking.getDiscountAmount()))
-                .paidCourtAmount(booking.getFinalAmount())
-                .amountDue(totalAmount.subtract(booking.getFinalAmount()).max(BigDecimal.ZERO))
+                .paidCourtAmount(paidCourt)
+                .amountDue(totalAmount.subtract(paidCourt).max(BigDecimal.ZERO))
                 .build();
         return ApiResponse.success("Checkout thành công", response);
     }
@@ -203,14 +184,24 @@ public class CheckoutService {
         BigDecimal products=valueOrZero(invoiceRepository.sumProductFeeByBookingIdAndStatus(id,PENDING_POS_STATUS));
         BigDecimal productDiscount=valueOrZero(invoiceRepository.sumDiscountAmountByBookingIdAndStatus(id,PENDING_POS_STATUS));
         BigDecimal total=b.getFinalAmount().add(products).subtract(productDiscount);
-        boolean unverified=bookingPayments.findBookingHistory(id).stream().anyMatch(p ->
-            p.getPaymentMethod()==com.bcm.entity.PaymentMethod.BANK_TRANSFER && p.getStatus()==com.bcm.entity.PaymentStatus.PENDING
-            && p.getNote()!=null && p.getNote().startsWith("CUSTOMER_DECLARED;"));
-        BigDecimal paidCourt=unverified?BigDecimal.ZERO:b.getFinalAmount();
+        BigDecimal paidCourt=verifiedCourtReceipt(b);
         return CheckoutResponse.builder().bookingId(id).courtFee(b.getCourtFee()).productFee(products)
             .discountAmount(b.getDiscountAmount().add(productDiscount)).courtDiscount(b.getDiscountAmount())
             .productDiscount(productDiscount).totalAmount(total).paidCourtAmount(paidCourt)
-            .courtReceiptRequired(unverified).amountDue(total.subtract(paidCourt)).build();
+            .amountDue(total.subtract(paidCourt)).build();
+    }
+
+    // A PAID booking header alone is not evidence of receipt. Never collect its court fee again
+    // or silently treat an unverified payment as received; require reconciliation instead.
+    private BigDecimal verifiedCourtReceipt(Booking booking) {
+        var receipts = bookingPayments.findBookingHistory(booking.getId()).stream()
+                .filter(p -> p.getStatus() == com.bcm.entity.PaymentStatus.SUCCESS
+                        && p.getTransactionId() != null && p.getTransactionDate() != null
+                        && p.getAmount().compareTo(booking.getFinalAmount()) == 0).toList();
+        if (receipts.size() != 1) {
+            throw new BadRequestException("Booking requires exactly one verified full court receipt before checkout");
+        }
+        return receipts.get(0).getAmount();
     }
 
     private BigDecimal valueOrZero(BigDecimal amount) {
@@ -219,11 +210,8 @@ public class CheckoutService {
 
     private String normalizePaymentMethod(String paymentMethod) {
         String normalized = paymentMethod == null ? "CASH" : paymentMethod.trim().toUpperCase();
-        if ("QR".equals(normalized)) {
-            normalized = "BANK_TRANSFER";
-        }
-        if (!normalized.equals("CASH") && !normalized.equals("BANK_TRANSFER") && !normalized.equals("VNPAY")) {
-            throw new BadRequestException("Phương thức thanh toán phải là CASH, BANK_TRANSFER hoặc VNPAY");
+        if (!normalized.equals("CASH") && !normalized.equals("VNPAY")) {
+            throw new BadRequestException("Phương thức thanh toán phải là CASH hoặc VNPAY");
         }
         return normalized;
     }

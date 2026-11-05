@@ -1,10 +1,11 @@
+const {requireTestEnvironment,fakeCheckout}=require('./payment-test-fixture.cjs');
+requireTestEnvironment();
 // Real API/browser/PostgreSQL checks. Uses only the isolated audit DB, never the app DB.
 const {chromium, request, expect} = require('playwright/test');
 const {execFileSync} = require('node:child_process');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const baseURL = process.env.BCM_E2E_WEB_URL || 'http://127.0.0.1:5174';
-const bankTransfer = {bankName: 'Test bank', accountHolder: 'Test payer', accountNumber: '123456', transferContent: 'Test declaration'};
 
 (async () => {
   const api = await request.newContext({baseURL});
@@ -42,7 +43,7 @@ const bankTransfer = {bankName: 'Test bank', accountHolder: 'Test payer', accoun
       sessionStorage.setItem('bcm.accessToken', s.accessToken);
       sessionStorage.setItem('bcm.user', JSON.stringify(s.user));
     }, session);
-    const page = await context.newPage();
+    const page = await context.newPage();await fakeCheckout(page,api);
     const errors = []; let writes = 0;
     page.on('pageerror', error => errors.push(error.message));
     context.on('request', req => { if (req.method() === 'POST' && /\/bookings(?:\?|$)|\/payments(?:\?|$)/.test(req.url())) writes++; });
@@ -63,7 +64,7 @@ const bankTransfer = {bankName: 'Test bank', accountHolder: 'Test payer', accoun
     const other = await readClock(tab);
     assert.ok(Math.abs(other - after) <= 3);
     assert.equal(writes, 0, 'StrictMode, refresh and new tab must not create a booking or payment');
-    await page.locator('input[value=BANK_TRANSFER]').check();
+    await page.locator('input[value=VNPAY]').check();
     assert.ok(await readClock(page) <= after, 'Method switch must not reset the deadline');
     await setDeadline(330);
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
@@ -73,13 +74,12 @@ const bankTransfer = {bankName: 'Test bank', accountHolder: 'Test payer', accoun
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(page.locator('.checkout-alert-error')).toContainText('Sắp hết thời gian giữ sân');
     assert.ok(await readClock(page) <= 59);
-    for (const [name, value] of Object.entries(bankTransfer)) await page.locator(`#checkout-${name}`).fill(value);
     await setDeadline(2);
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect.poll(() => readClock(page)).toBeLessThanOrEqual(2);
     await expect(page.getByRole('button', {name: 'Thanh toán', exact: true})).toBeDisabled({timeout: 5000});
-    const late = await api.post(`/api/bookings/${booking.bookingId}/payments`, {headers, data: {paymentMethod: 'BANK_TRANSFER', bankTransfer}});
-    assert.equal(late.status(), 409, 'Backend rejects after natural countdown expiry even while the other tab has stale state');
+    const late = await api.post(`/api/bookings/${booking.bookingId}/payments`, {headers, data: {paymentMethod: 'VNPAY'}});
+    assert.equal(late.status(), 400, 'Backend rejects after natural countdown expiry even while the other tab has stale state');
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(page.getByRole('button', {name: 'Thanh toán', exact: true})).toBeDisabled();
     await expect(page.getByText('Thời gian giữ sân 10 phút đã hết.', {exact: false})).toBeVisible();

@@ -13,5 +13,4 @@ public class CheckoutRequest {
     @NotBlank
     private String paymentMethod;
 
-    private boolean courtReceiptConfirmed;
 }

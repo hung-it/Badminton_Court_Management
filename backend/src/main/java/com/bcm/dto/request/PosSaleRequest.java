@@ -24,6 +24,7 @@ public class PosSaleRequest {
     private UUID staffId;
 
     @NotNull
+    @jakarta.validation.constraints.Pattern(regexp="(?i)CASH|VNPAY", message="Payment method must be CASH or VNPAY")
     private String paymentMethod;
 
     @JsonProperty("court_fee")

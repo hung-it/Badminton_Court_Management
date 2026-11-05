@@ -28,7 +28,7 @@ Dùng invoices, invoice_details, bookings, payment_transactions hiện có; khô
 
 ## Database và triển khai
 Giữ ddl-auto: validate và SQL init never. Sao lưu trước khi nâng cấp DB đang sử dụng.
-Trên schema develop đã chạy booking-ux-upgrade.sql và member2-upgrade.sql, chạy product-promotions-upgrade.sql rồi court-promotions-upgrade.sql với psql -v ON_ERROR_STOP=1.
+Trên schema develop đã chạy booking-ux-upgrade.sql và booking-ux-upgrade.sql, chạy product-promotions-upgrade.sql rồi court-promotions-upgrade.sql với psql -v ON_ERROR_STOP=1.
 Migration mới chỉ thêm max_discount_amount, max_total_usage vào discount_rules và seed hai ngưỡng tiền sân nếu chưa có; chạy lại không ghi đè cấu hình Admin. Script local và Docker volume mới đã nối bước này.
 
 ## Lượt voucher và concurrency

@@ -27,7 +27,7 @@ class BookingUxMigrationPostgresTest {
                 statement.execute("INSERT INTO customers(user_id,full_name,phone) SELECT id,'Legacy','0900000000' FROM users");
                 statement.execute("INSERT INTO bookings(customer_id,status,court_fee,expires_at) SELECT id,'PENDING',100000,TIMESTAMP '2031-01-01 12:10:00' FROM customers");
                 statement.execute("INSERT INTO booking_details(booking_id,court_id,time_slot_id,booking_date,price) SELECT b.id,c.id,t.id,DATE '2031-01-01',100000 FROM bookings b CROSS JOIN courts c CROSS JOIN time_slots t LIMIT 1");
-                statement.execute("INSERT INTO payment_transactions(booking_id,payment_method,status,amount,note) SELECT id,'BANK_TRANSFER','PENDING',100000,'CUSTOMER_DECLARED; receipt=UNVERIFIED' FROM bookings");
+                statement.execute("INSERT INTO payment_transactions(booking_id,payment_method,status,amount,note) SELECT id,'VNPAY','PENDING',100000,'MIGRATION_TEST_NOTE' FROM bookings");
                 String upgrade = upgrade("district");
                 statement.execute(upgrade); statement.execute(upgrade);
                 String contactUpgrade = upgrade("contact");
@@ -36,7 +36,7 @@ class BookingUxMigrationPostgresTest {
                     assertThat(rows.next()).isTrue();
                     assertThat(rows.getBigDecimal("court_fee")).isEqualByComparingTo("100000");
                     assertThat(rows.getTimestamp("expires_at").toLocalDateTime().toString()).isEqualTo("2031-01-01T12:10");
-                    assertThat(rows.getString("note")).isEqualTo("CUSTOMER_DECLARED; receipt=UNVERIFIED");
+                    assertThat(rows.getString("note")).isEqualTo("MIGRATION_TEST_NOTE");
                     assertThat(rows.getInt("courts")).isEqualTo(8); assertThat(rows.getInt("details")).isEqualTo(1);
                 }
                 try (var rows = statement.executeQuery("SELECT count(*) FROM courts WHERE district IS NOT NULL")) {

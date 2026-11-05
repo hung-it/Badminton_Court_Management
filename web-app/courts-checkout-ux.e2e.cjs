@@ -1,3 +1,5 @@
+const {requireTestEnvironment,fakeCheckout}=require('./payment-test-fixture.cjs');
+requireTestEnvironment();
 // Real browser/API/PostgreSQL. Synthetic location labels exist only on new audit DB fixtures.
 const {chromium, request, expect} = require('playwright/test');
 const {execFileSync} = require('node:child_process');
@@ -10,7 +12,6 @@ const names = ['A', 'B', 'C'].map(letter => `UX ${run} ${letter}`);
 const prices = [200000, 100000, 300000];
 const dateAfter = days => { const d = new Date(); d.setDate(d.getDate() + days); return d.toLocaleDateString('en-CA'); };
 const pass = name => console.log(`PASS ${name}`);
-const bankTransfer = {bankName: 'Test bank', accountHolder: 'Test payer', accountNumber: '123456', transferContent: 'Test court booking'};
 const sql = text => execFileSync('docker', ['exec', process.env.BCM_E2E_DB_CONTAINER || 'bcm-booking-audit-20261022', 'psql', '-U', process.env.BCM_E2E_DB_USER || 'bcm_test',
   '-d', process.env.BCM_E2E_DB_NAME || 'bcm_booking_audit', '-v', 'ON_ERROR_STOP=1', '-c', text], {encoding: 'utf8'});
 
@@ -35,7 +36,7 @@ const sql = text => execFileSync('docker', ['exec', process.env.BCM_E2E_DB_CONTA
     await context.addInitScript(s => {
       sessionStorage.setItem('bcm.accessToken', s.accessToken); sessionStorage.setItem('bcm.user', JSON.stringify(s.user));
     }, owner);
-    const page = await context.newPage(); const errors = [];
+    const page = await context.newPage();await fakeCheckout(page,api); const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`${baseURL}/courts?date=${dateAfter(150)}`);
     await page.getByLabel('Tên sân', {exact: true}).fill(`UX ${run}`);
@@ -113,9 +114,7 @@ const sql = text => execFileSync('docker', ['exec', process.env.BCM_E2E_DB_CONTA
     assert.equal(Object.hasOwn(await getBooking(), 'customerNote'), false);
     await page.reload();
     await expect(page.getByRole('button', {name: 'Thanh toán', exact: true})).toBeEnabled();
-    await page.locator('input[value=BANK_TRANSFER]').check();
-    await page.getByRole('button', {name: 'Thanh toán', exact: true}).click();
-    await expect(page.locator('.checkout-bank-transfer-error')).toHaveCount(4);
+    await expect(page.locator('input[value=VNPAY]')).toBeChecked();
     pass('Checkout has no customer note; reload and bank form validation work');
 
     await page.getByRole('button', {name: 'Chỉnh sửa thông tin', exact: true}).click();
@@ -155,19 +154,18 @@ const sql = text => execFileSync('docker', ['exec', process.env.BCM_E2E_DB_CONTA
       await page.setViewportSize({width, height: 1000});
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `Checkout overflow ${width}`);
     }
-    await page.locator('input[value=BANK_TRANSFER]').check();
-    for (const [key, value] of Object.entries(bankTransfer)) await page.locator(`#checkout-${key}`).fill(value);
+    await page.locator('input[value=VNPAY]').check();
     await page.getByRole('button', {name: 'Thanh toán', exact: true}).click();
-    await expect(page.getByRole('heading', {name: 'Đã xác nhận đặt sân', exact: true})).toBeVisible();
+    await expect(page.getByRole('heading', {name: 'Thanh toán thành công', exact: true})).toBeVisible();
     current = await getBooking(); assert.equal(current.status, 'PAID');
     assert.equal(Number(current.payments[0].amount), expected);
-    assert.equal(current.payments[0].confirmationMethod, 'CUSTOMER_DECLARED');
-    assert.equal(current.payments[0].paymentStatus, 'PENDING');
+    assert.equal(current.payments[0].paymentMethod,'VNPAY');
+    assert.equal(current.payments[0].paymentStatus, 'SUCCESS');
     const confirmedEdit = await api.patch(`/api/bookings/${bookingId}/details`, {headers, data: {bookingDate: dateAfter(153), timeSlotIds: [publicSlots[0].id]}});
     assert.equal(confirmedEdit.status(), 409);
-    await page.reload(); await expect(page.getByRole('heading', {name: 'Đã xác nhận đặt sân', exact: true})).toBeVisible();
+    await page.reload(); await expect(page.getByRole('heading', {name: 'Thanh toán thành công', exact: true})).toBeVisible();
     assert.deepEqual(errors, []);
-    pass('BANK_TRANSFER after editing uses new amount; payment evidence preserved, confirmed booking immutable, result refresh and responsive UI pass');
+    pass('VNPay fixture after editing uses new amount; payment evidence preserved, confirmed booking immutable, result refresh and responsive UI pass');
     console.log(`Fixtures retained in audit DB only: ${ids.join(', ')}`);
   } finally { await browser.close(); await api.dispose(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
