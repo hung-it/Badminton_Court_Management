@@ -10,9 +10,7 @@ const STATUS_OPTIONS = [
   {value: '', label: 'Tất cả trạng thái'},
   {value: 'PENDING', label: 'Chờ thanh toán'},
   {value: 'PAID', label: 'Đã thanh toán'},
-  {value: 'CHECKED_IN', label: 'Đang sử dụng'},
   {value: 'COMPLETED', label: 'Hoàn thành'},
-  {value: 'NO_SHOW', label: 'Không đến'},
   {value: 'EXPIRED', label: 'Hết hạn'},
 ];
 

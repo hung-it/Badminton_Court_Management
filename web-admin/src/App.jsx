@@ -38,6 +38,7 @@ export default function App(){
  const [posCart,setPosCart]=useState([]);
  const [posQuote,setPosQuote]=useState(null),[posQuoteBusy,setPosQuoteBusy]=useState(false),[posQuoteError,setPosQuoteError]=useState('');
  const [posSearch,setPosSearch]=useState('');
+ const [posQuoteVersion,setPosQuoteVersion]=useState(0);
  const [posHistory,setPosHistory]=useState([]);
  const [posMode,setPosMode]=useState('booking');
  const [posPaymentMethod,setPosPaymentMethod]=useState('CASH');
@@ -59,7 +60,7 @@ export default function App(){
   const [activeBusy,setActiveBusy]=useState(false);
   const [activeError,setActiveError]=useState('');
 
- useEffect(()=>{setPosConfirmed(false);posAttempt.current=null;},[posCart,posMode,posBookingId,posPromotionCode,posPaymentMethod,posReference]);
+ useEffect(()=>{setPosConfirmed(false);posAttempt.current=null;},[posCart,posMode,posBookingId,posPromotionCode,posPaymentMethod,posReference,posQuote?.totalAmount]);
  useEffect(()=>{setCheckoutConfirmed(false);setCheckoutReference('');},[checkoutSlip?.bookingId,checkoutSlip?.amountDue,checkoutPaymentMethod]);
 
  // Inventory state
@@ -145,7 +146,7 @@ useEffect(()=>{
   if(active){setPosQuote(quote);setPosBookingPreview(preview);}
  }catch(e){if(active)setPosQuoteError(e.message)}finally{if(active)setPosQuoteBusy(false)}},150);
  return ()=>{active=false;clearTimeout(timer)};
-},[session,tab,posCart,posMode,posBookingId,posPromotionCode,posPaymentMethod]);
+},[session,tab,posCart,posMode,posBookingId,posPromotionCode,posPaymentMethod,posQuoteVersion]);
  // POS handlers
  function addToCart(p){
   setPosCart(old=>{
@@ -175,7 +176,7 @@ useEffect(()=>{
     items:posCart.map(i=>({productId:i.id,quantity:i.quantity}))
    };
    if(!bookingId&&!posConfirmed)throw new Error('Vui lòng xác nhận đã nhận tiền.');
-   if(!posAttempt.current)posAttempt.current={...payload,idempotencyKey:crypto.randomUUID(),paymentConfirmed:posConfirmed,reference:posReference.trim()||null};
+   if(!posAttempt.current)posAttempt.current={...payload,idempotencyKey:crypto.randomUUID(),paymentConfirmed:posConfirmed,expectedTotal:posQuote.totalAmount,reference:posReference.trim()||null};
    const inv=await api('/pos/sales','POST',posAttempt.current);
    if(!bookingId&&session.user?.roles?.includes('ADMIN')){setOpenedInvoice(inv.id);setTab('invoices');}
    const totalAmt=inv.total_amount??inv.totalAmount;
@@ -186,7 +187,7 @@ useEffect(()=>{
    setNotice(bookingId?'Đã thêm hàng vào đơn đặt sân. Xem bill gộp và xác nhận phần tiền còn phải thu.':'Bán hàng thành công! Hóa đơn chỉ gồm hàng hóa, không kèm tiền sân.');
    if(bookingId){setCheckoutBookingId(bookingId);setCheckoutOpen(true);setCheckoutPaymentMethod('CASH');setCheckoutSlip(null);setTab('checkout');try{const v=await api('/checkout/'+bookingId);setCheckoutSlip({...v,id:'Xem trước',bookingId,courtFee:v.court_fee,productFee:v.product_fee,totalAmount:v.total_amount,status:'DRAFT'});}catch(e){setError('Đã lưu hàng vào đơn. Không tải được bill; hãy lập phiếu để tải lại. '+e.message);}}
    await load();
-  }catch(e){setError(e.message);}finally{setSaving(false);}
+  }catch(e){setError(e.message);if(e.message.includes('Báo giá')){posAttempt.current=null;setPosConfirmed(false);setPosQuoteVersion(v=>v+1);}}finally{setSaving(false);}
  }
 
  // Checkout handlers
@@ -327,7 +328,7 @@ useEffect(()=>{
       <div className="pos-summary-total"><span>Còn phải thu:</span><span>{money(Number(posBookingPreview.amountDue)+Number(posQuote.totalAmount))}</span></div>
      </div>}
      {posMode==='walk-in'&&<label className="field">Phương thức thanh toán<select aria-label="Phương thức POS" value={posPaymentMethod} disabled={saving} onChange={e=>setPosPaymentMethod(e.target.value)}><option value="CASH">Tiền mặt (CASH)</option><option value="VNPAY">VNPay · xác nhận thủ công (VNPAY)</option></select></label>}
-     {posMode==='walk-in'&&<><label className="field">Mã tham chiếu (nếu có)<input maxLength={255} value={posReference} disabled={saving} onChange={e=>setPosReference(e.target.value)}/></label><label><input type="checkbox" checked={posConfirmed} disabled={saving} onChange={e=>setPosConfirmed(e.target.checked)}/> Tôi xác nhận đã nhận {money(posQuote?.totalAmount)} từ khách</label></>}
+     {posMode==='walk-in'&&<><label className="field">Mã tham chiếu (nếu có)<input maxLength={255} value={posReference} disabled={saving} onChange={e=>setPosReference(e.target.value)}/></label><label><input type="checkbox" checked={posConfirmed} disabled={saving||posQuoteBusy||!posQuote} onChange={e=>setPosConfirmed(e.target.checked)}/> Tôi xác nhận đã nhận {money(posQuote?.totalAmount)} từ khách</label></>}
      <button className="primary wide" style={{marginTop:'14px'}} disabled={(posMode==='walk-in'&&!posConfirmed)||!posCart.length||saving||posQuoteBusy||!posQuote||!!posQuoteError||(posMode==='booking'&&!posBookingPreview)} onClick={handlePosSale}>{saving?'Đang xử lý…':posMode==='booking'?'Thêm hàng & xem bill gộp':`✓ Thu tiền hàng (${posPaymentMethod})`}</button>
     </div>
    </div>
@@ -375,7 +376,7 @@ useEffect(()=>{
                   <td>{b.customerName||'—'} ({b.customerPhone||'—'})</td>
                   <td>{b.courtDetails?.match(/\(([^)]+)\)/)?.[1] ?? '—'}</td>
                   <td>{money(b.courtFee ?? b.court_fee ?? b.totalAmount ?? b.amountDue ?? 0)}</td>
-                  <td><button className="primary" disabled={saving} onClick={()=>createCheckoutSlip(b.bookingId)}>Kết toán</button></td>
+                  <td>{b.status==='PENDING'?<span className="muted">Chưa thanh toán tiền sân · Hoàn tất VNPay hoặc xác nhận thu tiền sân tại quầy.</span>:<button className="primary" disabled={saving} onClick={()=>createCheckoutSlip(b.bookingId)}>Kết toán</button>}</td>
                 </tr>
               ))}
             </tbody>
@@ -406,7 +407,7 @@ useEffect(()=>{
      <div className="invoice-row"><span>Tiền sân đã xác nhận nhận:</span><strong>{money(checkoutPaidCourt)}</strong></div>
      <div className="invoice-row"><span>Còn phải thu:</span><strong>{money(checkoutDue)}</strong></div>
      <div className="invoice-total-block">
-      <div className="total-line"><span>TỔNG BILL SAU GIẢM:</span><span>{money(checkoutDue)}</span></div>
+      <div className="total-line"><span>TỔNG BILL SAU GIẢM:</span><span>{money(checkoutSlip?.totalAmount)}</span></div>
      </div>
     </div>}
 
@@ -414,7 +415,7 @@ useEffect(()=>{
    </div>
 
    <div className="pos-cart-panel">
-    <h3>{checkoutSlip&&checkoutDue===0?'Hoàn tất trả sân':'Thu tiền còn lại'}</h3>
+    <>{checkoutSlip?.checkoutMessage&&<p className="alert error">{checkoutSlip.checkoutMessage}</p>}</><h3>{checkoutSlip&&checkoutDue===0?'Hoàn tất trả sân':'Thu tiền còn lại'}</h3>
     {checkoutSlip&&checkoutDue===0&&<p className="muted">Tiền sân đã được ghi nhận. Không có khoản phát sinh cần thu thêm.</p>}
     {checkoutDue>0&&<><p className="muted">Chọn phương thức thu phần còn lại:</p>
     <div className="payment-picker">
@@ -426,7 +427,7 @@ useEffect(()=>{
      </button>
     </div></>}
     {checkoutDue>0&&<><label className="field">Mã tham chiếu (nếu có)<input maxLength={255} disabled={saving||checkoutSlip?.status==='PAID'} value={checkoutReference} onChange={e=>setCheckoutReference(e.target.value)}/></label><label><input type="checkbox" disabled={saving||checkoutSlip?.status==='PAID'} checked={checkoutConfirmed} onChange={e=>setCheckoutConfirmed(e.target.checked)}/> Tôi xác nhận đã nhận {money(checkoutDue)} còn lại</label></>}
-    <button className="primary wide" disabled={(checkoutDue>0&&!checkoutConfirmed)||!checkoutSlip||checkoutSlip.status==='PAID'||saving} onClick={confirmCheckout}>{saving?'Đang xử lý…':checkoutSlip&&checkoutDue===0?'✓ Hoàn tất trả sân':'✓ Xác nhận & thu tiền'}</button>
+    <button className="primary wide" disabled={!checkoutSlip?.checkoutEligible||(checkoutDue>0&&!checkoutConfirmed)||!checkoutSlip||checkoutSlip.status==='PAID'||saving} onClick={confirmCheckout}>{saving?'Đang xử lý…':checkoutSlip&&checkoutDue===0?'✓ Hoàn tất trả sân':'✓ Xác nhận & thu tiền'}</button>
    </div>
   </div>
 
@@ -465,7 +466,7 @@ useEffect(()=>{
    <label className="field">Số lượng<input aria-label="Số lượng" type="number" min="1" max="2147483647" step="1" value={importForm.quantity} onChange={e=>setImportForm({...importForm,quantity:e.target.value})} required/></label>
    <label className="field">Tổng tiền<input aria-label="Tổng tiền" type="number" min="0" max="99999999.99" step="0.01" value={importForm.totalAmount} onChange={e=>setImportForm({...importForm,totalAmount:e.target.value})} required/></label>
   </fieldset>{error&&<p className="alert error" role="alert">{error}</p>}<div className="dialog-foot"><button type="button" className="secondary" disabled={saving} onClick={()=>setImportModalOpen(false)}>Hủy</button><button className="primary" disabled={saving||!importForm.supplierName.trim()||!importForm.productName.trim()||!importForm.quantity||importForm.totalAmount===''}>{saving?'Đang tạo…':'Tạo phiếu nhập'}</button></div></form></section></div>}
-  {selectedImport&&<div className="overlay"><section className="dialog" role="dialog" aria-modal="true" aria-labelledby="import-detail-title"><div className="dialog-head"><h2 id="import-detail-title">Chi tiết phiếu nhập</h2><button aria-label="Đóng chi tiết phiếu nhập" disabled={saving} onClick={()=>setSelectedImport(null)}>✕</button></div><p className="invoice-reference">Mã phiếu: {selectedImport.id}</p><p>Nhà cung cấp: {suppliers.find(s=>s.id===selectedImport.supplierId)?.name||'—'}</p><p>Ngày nhập: {selectedImport.importDate}</p><p>Trạng thái: {({DRAFT:'Chờ duyệt',CONFIRMED:'Đã xác nhận',RECEIVED:'Đã nhập kho',CANCELLED:'Đã hủy'})[selectedImport.status]||selectedImport.status}</p><div className="table-scroll"><table><thead><tr><th>Loại sản phẩm</th><th>Số lượng</th><th>Tổng tiền</th></tr></thead><tbody>{[...new Set((selectedImport.details||[]).map(d=>d.productId))].map(id=>{const lines=selectedImport.details.filter(d=>d.productId===id);return <tr key={id}><td>{data.products.find(p=>p.id===id)?.name||id}</td><td>{lines.reduce((s,d)=>s+d.quantity,0)}</td><td>{money(lines.reduce((s,d)=>s+d.quantity*Number(d.importPrice),0))}</td></tr>})}</tbody></table></div><div className="invoice-row"><span>Tổng tiền:</span><strong>{money(selectedImport.totalAmount)}</strong></div>{error&&<p className="alert error" role="alert">{error}</p>}<div className="dialog-foot"><button className="secondary" disabled={saving} onClick={()=>setSelectedImport(null)}>Đóng</button>{['DRAFT','CONFIRMED'].includes(selectedImport.status)&&<button className="primary" disabled={saving} onClick={()=>handleApproveImportOrder(selectedImport.id)}>{saving?'Đang duyệt…':'Duyệt nhập kho'}</button>}</div></section></div>}
+  {selectedImport&&<div className="overlay"><section className="dialog" role="dialog" aria-modal="true" aria-labelledby="import-detail-title"><div className="dialog-head"><h2 id="import-detail-title">Chi tiết phiếu nhập</h2><button aria-label="Đóng chi tiết phiếu nhập" disabled={saving} onClick={()=>setSelectedImport(null)}>✕</button></div><p className="invoice-reference">Mã phiếu: {selectedImport.id}</p><p>Nhà cung cấp: {suppliers.find(s=>s.id===selectedImport.supplierId)?.name||'—'}</p><p>Ngày nhập: {selectedImport.importDate}</p><p>Trạng thái: {({DRAFT:'Chờ duyệt',CONFIRMED:'Đã xác nhận',RECEIVED:'Đã nhập kho',CANCELLED:'Đã hủy'})[selectedImport.status]||selectedImport.status}</p><div className="table-scroll"><table><thead><tr><th>Loại sản phẩm</th><th>Số lượng</th><th>Tổng tiền</th></tr></thead><tbody>{[...new Set((selectedImport.details||[]).map(d=>d.productId))].map(id=>{const lines=selectedImport.details.filter(d=>d.productId===id);return <tr key={id}><td>{data.products.find(p=>p.id===id)?.name||id}</td><td>{lines.reduce((s,d)=>s+d.quantity,0)}</td><td>{money(lines.reduce((s,d)=>s+d.quantity*Number(d.importPrice),0))}</td></tr>})}</tbody></table></div><div className="invoice-row"><span>Tổng tiền:</span><strong>{money(selectedImport.totalAmount)}</strong></div>{error&&<p className="alert error" role="alert">{error}</p>}<div className="dialog-foot"><button className="secondary" disabled={saving} onClick={()=>setSelectedImport(null)}>Đóng</button>{selectedImport.status==='DRAFT'&&<button className="primary" disabled={saving} onClick={()=>handleApproveImportOrder(selectedImport.id)}>{saving?'Đang duyệt…':'Duyệt nhập kho'}</button>}</div></section></div>}
 
 
  </div>}

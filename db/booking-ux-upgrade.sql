@@ -293,3 +293,26 @@ COMMENT ON COLUMN invoices.payment_method IS 'Receipt summary only. NULL for DRA
 COMMENT ON COLUMN invoice_details.stock_deducted IS 'Stock removed at POS append; retained at checkout; restored once when an unmerged DRAFT is cancelled. NULL means unknown legacy provenance.';
 COMMIT;
 -- END SECTION: invoice-receipts
+
+-- BEGIN SECTION: import-actors
+-- Add nullable real-user audit references; never invent a Staff or backfill history.
+BEGIN;
+SET LOCAL lock_timeout = '5s';
+ALTER TABLE import_orders ADD COLUMN IF NOT EXISTS created_by_user UUID REFERENCES users(id);
+ALTER TABLE import_orders ADD COLUMN IF NOT EXISTS updated_by_user UUID REFERENCES users(id);
+COMMIT;
+-- END SECTION: import-actors
+
+-- BEGIN SECTION: booking-statuses
+-- Refuse rather than reinterpret legacy statuses. No historical row is converted.
+BEGIN;
+SET LOCAL lock_timeout = '5s';
+LOCK TABLE bookings IN SHARE ROW EXCLUSIVE MODE;
+DO $$ DECLARE blocked text; BEGIN
+ SELECT string_agg(id::text,', ') INTO blocked FROM bookings WHERE status NOT IN ('PENDING','PAID','COMPLETED','EXPIRED');
+ IF blocked IS NOT NULL THEN RAISE EXCEPTION 'Legacy booking statuses require review; keep compatibility enum: %',blocked; END IF;
+END $$;
+ALTER TABLE bookings DROP CONSTRAINT IF EXISTS bookings_status_check;
+ALTER TABLE bookings ADD CONSTRAINT bookings_status_check CHECK(status IN ('PENDING','PAID','COMPLETED','EXPIRED'));
+COMMIT;
+-- END SECTION: booking-statuses

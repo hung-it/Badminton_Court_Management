@@ -144,7 +144,7 @@ export default function PaymentResult() {
       if (foundBooking.status === 'EXPIRED') {
         setState('expired');
         setNotice('Thời gian giữ sân đã hết hạn. Trạng thái thanh toán cần được bộ phận hỗ trợ kiểm tra.');
-      } else if (['PAID', 'CHECKED_IN', 'COMPLETED', 'NO_SHOW'].includes(foundBooking.status) && foundPayment.paymentStatus === 'SUCCESS') {
+      } else if (['PAID', 'COMPLETED'].includes(foundBooking.status) && foundPayment.paymentStatus === 'SUCCESS') {
         setState('success');
         setNotice(foundPayment.paymentStatus === 'SUCCESS' ? 'Thanh toán thành công' : 'Thanh toán chờ xác nhận');
       } else if (foundPayment.paymentStatus === 'REFUNDED') {

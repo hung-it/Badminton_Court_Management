@@ -118,6 +118,9 @@ public class PosService {
         if (discountAmount.compareTo(courtFee.add(productFee)) > 0)
             throw new BadRequestException("Giảm giá không được vượt giá trị hóa đơn");
         String paymentMethod = request.getBookingId()==null ? manualMethod(request.getPaymentMethod()) : null;
+        BigDecimal actual=courtFee.add(productFee).subtract(discountAmount);
+        if(request.getExpectedTotal()==null || request.getExpectedTotal().compareTo(actual)!=0)
+            throw new com.bcm.exception.DuplicateResourceException("Báo giá đã thay đổi; tải lại báo giá và xác nhận lại số tiền.");
         UUID customerId = resolveCustomerId(request.getCustomerId());
 
         UUID cashierId = currentStaff.currentStaffId().orElse(null);
@@ -185,9 +188,11 @@ public class PosService {
     }
 
     private void validateBooking(PosSaleRequest request) {
+        if((request.getCourtFee()!=null && request.getCourtFee().signum()!=0) || (request.getDiscountAmount()!=null && request.getDiscountAmount().signum()!=0))
+            throw new BadRequestException("POS không nhập lại tiền sân hoặc giảm giá thủ công; chỉ dùng ưu đãi sản phẩm hệ thống.");
         if(request.getBookingId()==null) return;
         var b=bookings.findByIdForExpiration(request.getBookingId()).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy booking"));
-        if(b.getStatus()!=com.bcm.entity.BookingStatus.PAID && b.getStatus()!=com.bcm.entity.BookingStatus.CHECKED_IN) throw new BadRequestException("Chỉ thêm hàng cho booking đã thanh toán, chưa kết toán");
+        if(b.getStatus()!=com.bcm.entity.BookingStatus.PAID) throw new BadRequestException("Chỉ thêm hàng cho booking đã thanh toán, chưa kết toán");
         if((request.getCourtFee()!=null && request.getCourtFee().signum()!=0) || (request.getDiscountAmount()!=null && request.getDiscountAmount().signum()!=0)) throw new BadRequestException("Tiền sân và ưu đãi sân đã chốt trên booking; không nhập lại tại POS");
         request.setCustomerId(b.getCustomer().getId());
     }
@@ -250,7 +255,7 @@ public class PosService {
     }
 
     private String fingerprint(PosSaleRequest r,UUID actor) {
-        String value=actor+"|"+r.getCustomerId()+"|"+r.getBookingId()+"|"+r.getPaymentMethod()+"|"+r.getCourtFee()+"|"+r.getDiscountAmount()+"|"+r.getPromotionCode()+"|"+r.isPaymentConfirmed()+"|"+r.getReference()+"|"+new java.util.TreeMap<>(aggregateQuantities(r.getItems()));
+        String value=actor+"|"+r.getCustomerId()+"|"+r.getBookingId()+"|"+r.getPaymentMethod()+"|"+r.getCourtFee()+"|"+r.getDiscountAmount()+"|"+r.getPromotionCode()+"|"+r.isPaymentConfirmed()+"|"+r.getReference()+"|"+r.getExpectedTotal()+"|"+new java.util.TreeMap<>(aggregateQuantities(r.getItems()));
         try { return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8))); }
         catch(java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
     }

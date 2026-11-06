@@ -10,8 +10,12 @@ import java.util.UUID;
 
 @Repository
 public interface ImportOrderRepository extends JpaRepository<ImportOrder, UUID> {
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select o from ImportOrder o where o.id=:id")
+    Optional<ImportOrder> findForUpdate(@org.springframework.data.repository.query.Param("id") UUID id);
 
-    @org.springframework.data.jpa.repository.Query("select coalesce(sum(o.totalAmount),0) from ImportOrder o where o.status <> 'CANCELLED' and o.importDate >= :from and o.importDate < :to")
+
+    @org.springframework.data.jpa.repository.Query("select coalesce(sum(o.totalAmount),0) from ImportOrder o where o.status = 'RECEIVED' and o.importDate >= :from and o.importDate < :to")
     java.math.BigDecimal sumExpense(@org.springframework.data.repository.query.Param("from") java.time.LocalDate from,
                                    @org.springframework.data.repository.query.Param("to") java.time.LocalDate to);
 

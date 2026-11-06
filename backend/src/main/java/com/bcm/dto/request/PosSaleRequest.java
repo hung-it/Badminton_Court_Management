@@ -24,6 +24,8 @@ public class PosSaleRequest {
     private String paymentMethod;
     private UUID idempotencyKey;
     private boolean paymentConfirmed;
+    @jakarta.validation.constraints.DecimalMin("0.00")
+    private BigDecimal expectedTotal;
     @jakarta.validation.constraints.Size(max=255)
     private String reference;
 

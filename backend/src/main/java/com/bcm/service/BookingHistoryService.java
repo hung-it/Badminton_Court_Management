@@ -29,6 +29,8 @@ public class BookingHistoryService {
         if (page < 0 || size < 1 || size > 100) {
             throw new BadRequestException("page must be >= 0 and size must be 1..100");
         }
+        if(status!=null && !java.util.Set.of(BookingStatus.PENDING,BookingStatus.PAID,BookingStatus.COMPLETED,BookingStatus.EXPIRED).contains(status))
+            throw new BadRequestException("Unsupported booking filter");
         UUID trustedCustomerId = currentCustomer.requireCustomerId();
         if (customerId != null && !customerId.equals(trustedCustomerId)) {
             throw new org.springframework.security.access.AccessDeniedException("Customer mismatch");

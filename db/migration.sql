@@ -104,7 +104,7 @@ CREATE TABLE time_slots (
 CREATE TABLE bookings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
-    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PAID', 'CHECKED_IN', 'COMPLETED', 'NO_SHOW', 'EXPIRED')),
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PAID', 'COMPLETED', 'EXPIRED')),
     court_fee NUMERIC(10, 2) NOT NULL,
     expires_at TIMESTAMP,
     created_by UUID REFERENCES staffs(id),
@@ -290,7 +290,7 @@ CREATE TABLE import_order_details (
 -- Booking & Court Management
 CREATE INDEX idx_bookings_customer_created ON bookings(customer_id, created_at DESC);
 CREATE INDEX idx_booking_details_date_court ON booking_details(booking_date, court_id);
-CREATE INDEX idx_bookings_status ON bookings(status) WHERE status IN ('PENDING', 'PAID', 'CHECKED_IN');
+CREATE INDEX idx_bookings_status ON bookings(status) WHERE status IN ('PENDING', 'PAID');
 CREATE INDEX idx_bookings_expires ON bookings(expires_at) WHERE status = 'PENDING' AND expires_at IS NOT NULL;
 CREATE UNIQUE INDEX uq_booking_slot ON booking_details(booking_date, court_id, time_slot_id);
 

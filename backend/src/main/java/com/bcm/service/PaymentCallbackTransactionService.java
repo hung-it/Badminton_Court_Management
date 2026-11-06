@@ -100,6 +100,8 @@ public class PaymentCallbackTransactionService {
     }
 
     private Result validate(PaymentTransaction payment, PaymentNotification notification) {
+        if(notification.amount()==null || notification.amount().signum()<=0) return Result.INVALID_AMOUNT;
+        if(notification.providerSuccess() && notification.transactionDate()==null) return Result.INVALID_DATA;
         if (payment == null || payment.getBooking() == null || payment.getInvoice() != null
                 || payment.getPaymentMethod() != notification.method()) { return Result.NOT_FOUND; }
         if (payment.getAmount().compareTo(notification.amount()) != 0) { return Result.INVALID_AMOUNT; }

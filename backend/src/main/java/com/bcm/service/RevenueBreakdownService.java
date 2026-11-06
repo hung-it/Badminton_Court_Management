@@ -29,7 +29,7 @@ import java.util.UUID;
  *
  * <p>Product revenue is reconciled against invoice revenue: for each invoice the amount left
  * after discounts ({@code total_amount}) is split between products and courts in proportion to
- * their gross value. Products are then split by line value and courts by their booked slot
+ * their net value after bucket-specific discounts. Products are then split by net line value and courts by their booked slot
  * price. Rounding remainders are pushed onto the largest line so the parts always add up to the
  * invoice total exactly.
  */
@@ -217,15 +217,16 @@ public class RevenueBreakdownService {
                                        Map<UUID, String> staffNames, Map<UUID, String> customerNames,
                                        Map<UUID, String> productNames, Map<UUID, String> courtNames) {
         List<InvoiceRow> invoices = jdbc.query(
-                "SELECT id, booking_id, created_by AS group_key, customer_id, court_fee, total_amount "
-                        + "FROM invoices WHERE status = '" + PAID_STATUS + "' AND deleted_at IS NULL "
-                        + "AND created_at >= ? AND created_at < ?",
+                "SELECT i.id, i.booking_id, i.created_by AS group_key, i.customer_id, i.court_fee, i.product_fee, i.total_amount, "
+                        + "CASE WHEN i.parent_invoice_id IS NULL AND i.court_fee>0 THEN COALESCE(b.discount_amount,0) ELSE 0 END AS court_discount "
+                        + "FROM invoices i LEFT JOIN bookings b ON b.id=i.booking_id WHERE i.status = '" + PAID_STATUS + "' AND i.deleted_at IS NULL "
+                        + "AND i.created_at >= ? AND i.created_at < ?",
                 (rs, rowNum) -> new InvoiceRow(rs.getObject("id", UUID.class),
                         rs.getObject("booking_id", UUID.class),
                         rs.getObject("group_key", UUID.class),
                         rs.getObject("customer_id", UUID.class),
                         rs.getBigDecimal("court_fee"),
-                        rs.getBigDecimal("total_amount")),
+                        rs.getBigDecimal("total_amount"),rs.getBigDecimal("product_fee"),rs.getBigDecimal("court_discount")),
                 from, to);
 
         Map<UUID, List<LineRow>> linesByInvoice = new LinkedHashMap<>();
@@ -268,24 +269,21 @@ public class RevenueBreakdownService {
 
             List<LineShare> lineShares = new ArrayList<>();
             for (LineRow line : lines) {
-                BigDecimal gross = line.quantity().multiply(line.unitPrice());
+                BigDecimal gross = line.quantity().multiply(line.unitPrice()).subtract(line.discountAmount());
                 lineShares.add(new LineShare(line, gross));
             }
 
             BigDecimal courtFee = invoice.courtFee() == null ? BigDecimal.ZERO : invoice.courtFee();
             BigDecimal pool = invoice.totalAmount();
 
-            // The invoice total is the court fee plus the product value minus the discount, so the
-            // two parts share the discount proportionally to their gross value. Product lines and
-            // booked court slots then split their part by their own value.
-            BigDecimal productBase = BigDecimal.ZERO;
-            for (LineShare share : lineShares) {
-                productBase = productBase.add(share.weight());
-            }
-            BigDecimal courtBase = courtFee;
-            if (lineShares.isEmpty() && courtBase.signum() == 0) {
-                productBase = pool.max(BigDecimal.ZERO);
-            }
+            // Preserve court and product discounts in their own buckets first.
+            // Any remaining header discount is invoice-wide and is shared by net values;
+            // distribute() places cent rounding residue on the largest bucket.
+            BigDecimal lineDiscount=lines.stream().map(LineRow::discountAmount).reduce(BigDecimal.ZERO,BigDecimal::add);
+            BigDecimal productBase=invoice.productFee().subtract(lineDiscount);
+            BigDecimal courtBase=courtFee.subtract(invoice.courtDiscount());
+            if(productBase.signum()<0 || courtBase.signum()<0 || pool.compareTo(productBase.add(courtBase))>0)
+                throw new BadRequestException("Invoice discount snapshots require reconciliation: "+invoice.id());
             List<BigDecimal> parts = distribute(pool, List.of(productBase, courtBase));
             BigDecimal productPool = parts.get(0);
             BigDecimal courtPool = parts.get(1);
@@ -464,7 +462,7 @@ public class RevenueBreakdownService {
 
     private Map<UUID, String> staffNames() {
         Map<UUID, String> names = new LinkedHashMap<>();
-        jdbc.query("SELECT id, full_name FROM staffs WHERE deleted_at IS NULL",
+        jdbc.query("SELECT id, full_name FROM staffs",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> names.put(rs.getObject("id", UUID.class), rs.getString("full_name")));
         return names;
     }
@@ -508,7 +506,7 @@ public class RevenueBreakdownService {
     private record RevenueByKey(UUID key, BigDecimal revenue) {}
 
     private record InvoiceRow(UUID id, UUID bookingId, UUID staffId, UUID customerId, BigDecimal courtFee,
-                              BigDecimal totalAmount) {}
+                              BigDecimal totalAmount, BigDecimal productFee, BigDecimal courtDiscount) {}
 
     private record LineRow(UUID invoiceId, UUID productId, BigDecimal quantity, BigDecimal unitPrice,
                            BigDecimal discountAmount, UUID addedBy) {}

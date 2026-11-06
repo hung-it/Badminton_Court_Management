@@ -29,3 +29,7 @@ backend/target/
 # Private browser preview, excluded from shared source.
 /web-admin/vite.local.mjs
 /web-admin/src/sampleData.local.js
+
+/db/member2-upgrade.sql
+
+/db/member2-payment-method-upgrade.sql

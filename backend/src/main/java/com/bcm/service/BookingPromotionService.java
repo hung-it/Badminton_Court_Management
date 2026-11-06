@@ -44,6 +44,7 @@ public class BookingPromotionService {
     }
 
     public void automatic(Booking booking) {
+        if(booking.getCourtFee()==null || booking.getCourtFee().signum()<=0) throw new com.bcm.exception.BadRequestException("Tiền sân phải lớn hơn 0.");
         booking.setDiscountAmount(courtPromotions.automatic(booking.getCourtFee(),LocalDate.now(clock)));
         booking.setPromotionCode(booking.getDiscountAmount().signum()>0?"INVOICE_TOTAL":null);
         booking.setRequestedVoucher(null);
@@ -102,6 +103,7 @@ public class BookingPromotionService {
     // Called under the existing Booking lock inside the payment transaction. Customer lock serializes
     // NEWMEMBER apply/retry on different bookings. No other Booking row is locked from here.
     public void validatePayment(Booking booking) {
+        if(booking.getFinalAmount()==null || booking.getFinalAmount().signum()<=0) throw new com.bcm.exception.BadRequestException("Tiền sân sau giảm phải lớn hơn 0.");
         if (booking.getPromotionCode()==null || "INVOICE_TOTAL".equals(booking.getPromotionCode())) return;
         var quote=calculate(booking,booking.getPromotionCode());
         requireEditable(booking);
@@ -145,7 +147,7 @@ public class BookingPromotionService {
             return count>=15 ? null : "Bạn chưa đủ điều kiện sử dụng mã KMKH10";
         }
         long used=jdbc.queryForObject("SELECT count(*) FROM bookings b WHERE b.customer_id=? AND b.id<>? "
-                + "AND b.status IN ('PAID','CHECKED_IN','COMPLETED','NO_SHOW') "
+                + "AND b.status IN ('PAID','COMPLETED') "
                 + "AND EXISTS (SELECT 1 FROM payment_transactions p WHERE p.booking_id=b.id AND " + VERIFIED_RECEIPT + ")",Long.class,owner,booking.getId());
         long posUsage=jdbc.queryForObject("SELECT count(*) FROM customer_voucher_usage u JOIN discount_rules d ON d.id=u.discount_rule_id "
                 + "JOIN invoices i ON i.id=u.invoice_id WHERE u.customer_id=? AND d.voucher_code='NEWMEMBER' AND i.status='PAID'",Long.class,owner);
@@ -154,7 +156,7 @@ public class BookingPromotionService {
                 + "AND b.expires_at>? AND ((b.promotion_code='NEWMEMBER' AND NOT EXISTS "
                 + "(SELECT 1 FROM payment_transactions p WHERE p.booking_id=b.id)) OR EXISTS "
                 + "(SELECT 1 FROM payment_transactions p WHERE p.booking_id=b.id AND p.status='PENDING'))) "
-                + "OR (b.status IN ('PAID','CHECKED_IN','COMPLETED','NO_SHOW') AND b.promotion_code='NEWMEMBER' "
+                + "OR (b.status IN ('PAID','COMPLETED') AND b.promotion_code='NEWMEMBER' "
                 + "AND EXISTS (SELECT 1 FROM payment_transactions p WHERE p.booking_id=b.id AND p.status='PENDING')))",Long.class,owner,booking.getId(),LocalDateTime.now(clock));
         return held==0 ? null : "NEWMEMBER đang được giữ bởi giao dịch khác. Vui lòng kiểm tra trạng thái giao dịch đó.";
     }

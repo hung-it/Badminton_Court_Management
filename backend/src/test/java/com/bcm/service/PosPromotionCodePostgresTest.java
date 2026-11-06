@@ -37,6 +37,9 @@ class PosPromotionCodePostgresTest {
         var r=new PosSaleRequest(customer,null,null,"CASH",BigDecimal.ZERO,BigDecimal.ZERO,List.of(new PosSaleItemRequest(product,quantity)));
         r.setPromotionCode(voucher);r.setIdempotencyKey(UUID.randomUUID());r.setPaymentConfirmed(true);return r;
     }
+    com.bcm.entity.Invoice sell(PosSaleRequest request) {
+        request.setExpectedTotal(pos.quote(request).totalAmount());return pos.sell(request);
+    }
     void actor() {
         var principal=new com.bcm.security.UserPrincipal(user.toString(),"invoice-promotion-test","test",List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN")),true);
         org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(principal,null,principal.getAuthorities()));
@@ -65,7 +68,7 @@ class PosPromotionCodePostgresTest {
         assertThat(quote.discountAmount()).isEqualByComparingTo("2000");
         assertThat(quote.totalAmount()).isEqualByComparingTo("18000");
         assertThat(pos.quote(request(null,2)).totalAmount()).isEqualByComparingTo(quote.totalAmount());
-        var sale=pos.sell(request(code,2));
+        var sale=sell(request(code,2));
         assertThat(sale.getTotalAmount()).isEqualByComparingTo(quote.totalAmount());
         assertThat(jdbc.queryForObject("SELECT discount_amount FROM invoice_details WHERE invoice_id=?",BigDecimal.class,sale.getId())).isEqualByComparingTo("2000");
         assertThat(jdbc.queryForObject("SELECT promotion_name FROM invoice_details WHERE invoice_id=?",String.class,sale.getId())).isEqualTo("POS code test");
@@ -74,11 +77,11 @@ class PosPromotionCodePostgresTest {
     }
     @Test void invalidExpiredAndMissingProductsDoNotChangeStock() {
         assertThatThrownBy(()->pos.quote(request("MISSING-CODE",2))).isInstanceOf(BadRequestException.class);
-        assertThatThrownBy(()->pos.sell(request(code,1))).hasMessageContaining("ít nhất");
+        assertThatThrownBy(()->sell(request(code,1))).hasMessageContaining("ít nhất");
         var wrong=request(code,2);wrong.setItems(List.of(new PosSaleItemRequest(UUID.randomUUID(),2)));
         assertThatThrownBy(()->pos.quote(wrong)).isInstanceOf(com.bcm.exception.ResourceNotFoundException.class);
         promotions.save(promotion.id(),config(false));
-        assertThatThrownBy(()->pos.sell(request(code,2))).hasMessageContaining("hiệu lực");
+        assertThatThrownBy(()->sell(request(code,2))).hasMessageContaining("hiệu lực");
         promotions.save(promotion.id(),new ProductPromotionRequest("Expired",product,2,BigDecimal.TEN,LocalDate.now().minusDays(3),LocalDate.now().minusDays(1),true,code));
         assertThatThrownBy(()->pos.quote(request(code,2))).hasMessageContaining("hiệu lực");
         assertThat(jdbc.queryForObject("SELECT stock_quantity FROM products WHERE id=?",Integer.class,product)).isEqualTo(10);
@@ -92,7 +95,7 @@ class PosPromotionCodePostgresTest {
         assertThat(quote.productFee()).isEqualByComparingTo("40000");
         assertThat(quote.discountAmount()).isEqualByComparingTo("4000");
         assertThat(quote.totalAmount()).isEqualByComparingTo("36000");
-        var sale=pos.sell(request);
+        var sale=sell(request);
         assertThat(sale.getTotalAmount()).isEqualByComparingTo("36000");
         assertThat(jdbc.queryForObject("SELECT promotion_name FROM invoice_details WHERE invoice_id=?",String.class,sale.getId())).isEqualTo("POS code test");
         var mixed=request(code,1);mixed.setItems(List.of(new PosSaleItemRequest(product,1),new PosSaleItemRequest(other,1)));
@@ -102,13 +105,13 @@ class PosPromotionCodePostgresTest {
     }
     @Test void quoteDoesNotBypassRevalidationAtSaleAndDuplicateCodesAreRejected() {
         pos.quote(request(code,2));promotions.save(promotion.id(),config(false));
-        assertThatThrownBy(()->pos.sell(request(code,2))).isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(()->sell(request(code,2))).isInstanceOf(BadRequestException.class);
         assertThatThrownBy(()->promotions.save(null,config(true))).isInstanceOf(com.bcm.exception.DuplicateResourceException.class);
     }
     @Test void concurrentSalesCannotConsumeTheSameStock() throws Exception {
         jdbc.update("UPDATE products SET stock_quantity=2 WHERE id=?",product);
         var ready=new CountDownLatch(2);var start=new CountDownLatch(1);var pool=Executors.newFixedThreadPool(2);
-        Callable<Boolean> task=()->{actor();ready.countDown();start.await();try{pos.sell(request(code,2));return true;}catch(BadRequestException e){return false;}};
+        Callable<Boolean> task=()->{actor();ready.countDown();start.await();try{sell(request(code,2));return true;}catch(BadRequestException e){return false;}};
         try{
             var first=pool.submit(task);var second=pool.submit(task);assertThat(ready.await(10,TimeUnit.SECONDS)).isTrue();start.countDown();
             assertThat(List.of(first.get(20,TimeUnit.SECONDS),second.get(20,TimeUnit.SECONDS))).containsExactlyInAnyOrder(true,false);

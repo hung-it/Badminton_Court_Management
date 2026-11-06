@@ -52,8 +52,9 @@ public class VnPayIpnVerifier {
         boolean success = "00".equals(response) && "00".equals(status);
         if (success && new BigDecimal(transaction).signum() <= 0) { throw error(INVALID_DATA); }
         LocalDateTime date = null;
-        // vnp_PayDate is optional. Preserve NULL if omitted, never substitute the server clock.
+        // A successful receipt requires a provider date; never fabricate one from the clock.
         String payDate = fields.get("vnp_PayDate");
+        if(success && (payDate==null || payDate.isEmpty())) throw error(INVALID_DATA);
         if (payDate != null && !payDate.isEmpty()) {
             try {
                 if (!payDate.matches("[0-9]{14}")) { throw error(INVALID_DATA); }

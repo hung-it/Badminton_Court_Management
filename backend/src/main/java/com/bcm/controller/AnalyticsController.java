@@ -29,7 +29,7 @@ public class AnalyticsController {
     private final com.bcm.service.RevenueBreakdownService revenueBreakdownService;
 
     @GetMapping("/statistics")
-    @Operation(summary="Thống kê thu, chi, lợi nhuận theo tháng/quý/năm/các năm", description="MONTH: 12 tháng; QUARTER: 4 quý; YEAR: năm được chọn; YEARS: mỗi năm trong fromYear..toYear, tối đa 50 năm. Thu từ hóa đơn PAID chưa xóa; chi từ phiếu nhập không CANCELLED, gồm phiếu chưa duyệt, theo import_date. Lợi nhuận = thu - chi.")
+    @Operation(summary="Thống kê thu và giá trị hàng đã nhận theo tháng/quý/năm/các năm", description="MONTH: 12 tháng; QUARTER: 4 quý; YEAR: năm được chọn; YEARS: mỗi năm trong fromYear..toYear, tối đa 50 năm. Thu từ hóa đơn PAID chưa xóa; giá trị nhập từ phiếu RECEIVED theo import_date. Trường profit tương thích là chênh lệch thu – nhập hàng.")
     public ApiResponse<com.bcm.dto.response.StatisticsResponse> statistics(
             @RequestParam(defaultValue="MONTH") String period,
             @RequestParam(required=false) Integer year,
@@ -40,7 +40,7 @@ public class AnalyticsController {
 
     @GetMapping("/revenue-breakdown")
     @Operation(summary = "Doanh thu theo nhân viên, khách hàng, sản phẩm và tiền sân",
-            description = "Chỉ tính hóa đơn PAID chưa xóa. QUARTER trả bốn quý; YEAR trả cả năm. Tổng sản phẩm và tiền sân được phân bổ từ tổng sau giảm giá để khớp tổng hóa đơn. Doanh thu nhân viên từ khoản thu SUCCESS được xác nhận bởi staffs.id; tiền online/Admin không gán cho nhân viên Checkout. Chi tiết sản phẩm kèm người thêm hàng, khách hàng và số lượng; tiền sân chia theo sân.")
+            description = "Chỉ tính hóa đơn PAID chưa xóa. QUARTER trả bốn quý; YEAR trả cả năm. Giảm sân và giảm sản phẩm giữ đúng nguồn; chỉ phần giảm toàn hóa đơn còn lại phân bổ theo giá trị sau giảm riêng, làm tròn khớp tổng hóa đơn. Doanh thu nhân viên từ khoản thu SUCCESS được xác nhận bởi staffs.id; tiền online/Admin không gán cho nhân viên Checkout. Chi tiết sản phẩm kèm người thêm hàng, khách hàng và số lượng; tiền sân chia theo sân.")
     public ApiResponse<com.bcm.dto.response.RevenueBreakdownResponse> revenueBreakdown(
             @RequestParam(defaultValue = "QUARTER") String period,
             @RequestParam(required = false) Integer year,

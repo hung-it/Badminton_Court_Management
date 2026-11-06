@@ -93,12 +93,13 @@ class VnPayIpnVerifierTest {
     }
 
     @Test
-    void optionalDateIsNullAndSignatureTypeIsExcluded() {
+    void successfulReceiptWithoutDateIsRejected() {
         var fields = vnpay(ATTEMPT, config);
         fields.remove("vnp_PayDate");
         fields.put("vnp_SecureHashType", "HmacSHA512");
         sign(fields, config);
-        assertThat(verifier.verify(fields).transactionDate()).isNull();
+        assertThatThrownBy(()->verifier.verify(fields)).isInstanceOf(PaymentNotificationException.class)
+            .extracting("reason").isEqualTo(PaymentNotificationException.Reason.INVALID_DATA);
     }
 
     @ParameterizedTest

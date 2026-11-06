@@ -130,7 +130,7 @@ public class PaymentAttemptService {
                 && !payments.existsByBookingIdAndStatus(booking.getId(), PaymentStatus.PENDING)) {
             throw new DuplicateResourceException("BOOKING_EXPIRED: Checkout release deadline has passed");
         }
-        if (booking.getCourtFee() == null || booking.getCourtFee().signum() <= 0) {
+        if (booking.getFinalAmount() == null || booking.getFinalAmount().signum() <= 0) {
             throw new BadRequestException("Booking amount must be positive");
         }
         if (booking.getStatus() != BookingStatus.PENDING || booking.getExpiresAt() == null
