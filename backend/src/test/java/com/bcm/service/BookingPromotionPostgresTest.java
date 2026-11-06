@@ -322,3 +322,35 @@ class BookingPromotionPostgresTest {
         } finally { pool.shutdownNow(); }
     }
 }
+
+
+/** Pure clock regression; no Spring context, database or fixtures are needed. */
+class BookingPromotionClockTest {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+        "2026-11-06T16:59:59Z,2026-11-06,UTC",
+        "2026-11-06T17:00:00Z,2026-11-07,UTC",
+        "2026-12-31T17:00:00Z,2027-01-01,UTC",
+        "2026-11-06T16:59:59Z,2026-11-06,America/Los_Angeles",
+        "2026-11-06T17:00:00Z,2026-11-07,America/Los_Angeles",
+        "2026-12-31T17:00:00Z,2027-01-01,America/Los_Angeles",
+        "2026-11-06T16:59:59Z,2026-11-06,Asia/Tokyo",
+        "2026-11-06T17:00:00Z,2026-11-07,Asia/Tokyo",
+        "2026-12-31T17:00:00Z,2027-01-01,Asia/Tokyo"
+    })
+    void automaticAndVoucherUseVietnamDateRegardlessOfClockZone(String instant,String date,String zone) {
+        var rules=org.mockito.Mockito.mock(CourtPromotionService.class);
+        var clock=java.time.Clock.fixed(java.time.Instant.parse(instant),java.time.ZoneId.of(zone));
+        var service=new BookingPromotionService(null,null,null,null,clock,rules,null,null);
+        var amount=new java.math.BigDecimal("200000");
+        var expected=java.time.LocalDate.parse(date);
+        org.mockito.Mockito.when(rules.automatic(amount,expected)).thenReturn(java.math.BigDecimal.ZERO);
+        org.mockito.Mockito.when(rules.voucher("DEMO",expected)).thenReturn(null);
+        var booking=new com.bcm.entity.Booking();booking.setCourtFee(amount);
+        service.automatic(booking);
+        service.calculate(booking,"DEMO");
+        org.mockito.Mockito.verify(rules,org.mockito.Mockito.times(2)).automatic(amount,expected);
+        org.mockito.Mockito.verify(rules).voucher("DEMO",expected);
+        org.mockito.Mockito.verifyNoMoreInteractions(rules);
+    }
+}

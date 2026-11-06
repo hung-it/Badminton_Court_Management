@@ -18,6 +18,7 @@ import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.Set;
@@ -45,7 +46,7 @@ public class BookingPromotionService {
 
     public void automatic(Booking booking) {
         if(booking.getCourtFee()==null || booking.getCourtFee().signum()<=0) throw new com.bcm.exception.BadRequestException("Tiền sân phải lớn hơn 0.");
-        booking.setDiscountAmount(courtPromotions.automatic(booking.getCourtFee(),LocalDate.now(clock)));
+        booking.setDiscountAmount(courtPromotions.automatic(booking.getCourtFee(),todayVietnam()));
         booking.setPromotionCode(booking.getDiscountAmount().signum()>0?"INVOICE_TOTAL":null);
         booking.setRequestedVoucher(null);
     }
@@ -114,11 +115,12 @@ public class BookingPromotionService {
 
     public BookingPromotionResponse calculate(Booking booking, String raw) {
         String code=raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT);
-        BigDecimal subtotal=booking.getCourtFee(), discount=courtPromotions.automatic(subtotal,LocalDate.now(clock));
+        LocalDate today=todayVietnam();
+        BigDecimal subtotal=booking.getCourtFee(), discount=courtPromotions.automatic(subtotal,today);
         String selected=discount.signum()>0 ? "INVOICE_TOTAL" : null;
         boolean valid=false; String message="";
         if (!code.isEmpty()) {
-            var rule=courtPromotions.voucher(code,LocalDate.now(clock));
+            var rule=courtPromotions.voucher(code,today);
             if (rule==null) {
                 message="Mã khuyến mãi không tồn tại hoặc không còn hiệu lực.";
             } else {
@@ -135,6 +137,10 @@ public class BookingPromotionService {
         }
         return new BookingPromotionResponse(subtotal,discount,subtotal.subtract(discount),selected,
                 valid ? code : null,valid,message);
+    }
+
+    private LocalDate todayVietnam() {
+        return LocalDate.ofInstant(clock.instant(), ZoneId.of("Asia/Ho_Chi_Minh"));
     }
 
     private String eligibility(Booking booking, String code) {

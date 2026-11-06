@@ -29,7 +29,7 @@ public class AnalyticsController {
     private final com.bcm.service.RevenueBreakdownService revenueBreakdownService;
 
     @GetMapping("/statistics")
-    @Operation(summary="Thống kê thu và giá trị hàng đã nhận theo tháng/quý/năm/các năm", description="MONTH: 12 tháng; QUARTER: 4 quý; YEAR: năm được chọn; YEARS: mỗi năm trong fromYear..toYear, tối đa 50 năm. Thu từ hóa đơn PAID chưa xóa; giá trị nhập từ phiếu RECEIVED theo import_date. Trường profit tương thích là chênh lệch thu – nhập hàng.")
+    @Operation(summary="Thống kê thu và giá trị hàng đã nhận theo tháng/quý/năm/các năm", description="MONTH: 12 tháng; QUARTER: 4 quý; YEAR: năm được chọn; YEARS: mỗi năm trong fromYear..toYear, tối đa 50 năm. Thu từ hóa đơn PAID chưa xóa; Giá trị phiếu đã nhận chỉ tính RECEIVED, nhóm theo ngày trên phiếu nhập (import_date), không phải ngày duyệt/nhận thực tế. Trường profit tương thích là chênh lệch thu – nhập hàng.")
     public ApiResponse<com.bcm.dto.response.StatisticsResponse> statistics(
             @RequestParam(defaultValue="MONTH") String period,
             @RequestParam(required=false) Integer year,
