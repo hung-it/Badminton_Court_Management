@@ -31,7 +31,7 @@ for ($attempt = 0; $attempt -lt 30; $attempt++) {
 }
 if (!$dbReady) { throw 'PostgreSQL chưa sẵn sàng. Kiểm tra docker logs bcm-postgres; không xóa volume.' }
 # Mount init chỉ chạy cho volume mới. Volume đang có cần các migration cộng thêm, chạy lại an toàn.
-foreach ($migration in @('member2-upgrade.sql','member2-payment-method-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql')) {
+foreach ($migration in @('member2-upgrade.sql','member2-payment-method-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql','catalog-seed.sql')) {
     & $docker cp (Join-Path $root "db/$migration") "bcm-postgres:/tmp/bcm-$migration"
     Assert-DockerExit "Không copy được $migration."
     & $docker exec bcm-postgres psql -U bcm_admin -d badminton_court_db -v ON_ERROR_STOP=1 -f "/tmp/bcm-$migration"
