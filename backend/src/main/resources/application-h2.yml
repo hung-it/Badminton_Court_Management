@@ -1,0 +1,27 @@
+# ======================================
+# H2 DATABASE PROFILE (For Testing/Dev)
+# Use when PostgreSQL is not available
+# ======================================
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:badminton_court_db
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop  # Auto create tables for H2
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.H2Dialect
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+# JWT and other configs remain the same (inherited from main application.yml)

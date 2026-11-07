@@ -1,0 +1,248 @@
+package com.bcm.service;
+
+import com.bcm.dto.request.*;
+import com.bcm.entity.*;
+import com.bcm.exception.*;
+import com.bcm.repository.*;
+
+import lombok.RequiredArgsConstructor;
+
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.*;
+import java.time.*;
+import java.util.*;
+
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class MasterDataService {
+    private final CourtRepository courts;
+    private final TimeSlotRepository slots;
+    private final CategoryRepository categories;
+    private final ProductRepository products;
+    private final ProductPriceService productPrices;
+    private final JdbcTemplate jdbc;
+
+    public List<Court> courts() {
+        return courts.findByDeletedAtIsNullOrderByCourtCodeAsc();
+    }
+
+    public List<TimeSlot> slots() {
+        return slots.findByDeletedAtIsNullOrderByStartTimeAsc();
+    }
+
+    public List<Category> categories() {
+        return categories.findByDeletedAtIsNullOrderByCategoryNameAsc();
+    }
+
+    public List<Product> products() {
+        return products.findByDeletedAtIsNullOrderByNameAsc().stream().map(productPrices::describe).toList();
+    }
+
+    public Court court(UUID id) {
+        return courts.findByIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy sân"));
+    }
+
+    public TimeSlot slot(UUID id) {
+        return slots.findByIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy khung giờ"));
+    }
+
+    public Category category(UUID id) {
+        return categories
+                .findByIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy danh mục"));
+    }
+
+    public Product product(UUID id) {
+        return products.findByIdAndDeletedAtIsNull(id).map(productPrices::describe)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy sản phẩm"));
+    }
+
+    public Court saveCourt(UUID id, CourtRequest r) {
+        Court c = id == null ? new Court() : courts.findAllForBookingWithLock(List.of(id)).stream()
+            .filter(v->v.getDeletedAt()==null).findFirst().orElseThrow(()->new ResourceNotFoundException("Không tìm thấy sân"));
+        if(id!=null && r.status()!=CourtStatus.AVAILABLE && c.getStatus()!=r.status()) {
+            boolean affected=Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM booking_details d JOIN bookings b ON b.id=d.booking_id JOIN time_slots t ON t.id=d.time_slot_id WHERE d.court_id=? AND b.status IN ('PENDING','PAID') AND d.booking_date+t.end_time>=?)",Boolean.class,id,LocalDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"))));
+            if(affected) throw new BadRequestException("Sân còn lịch PENDING/PAID hiện tại hoặc tương lai, không thể bảo trì/đóng cửa.");
+        }
+        if (courts.existsByCourtCodeAndIdNot(r.courtNumber(), id == null ? new UUID(0, 0) : id))
+            throw new DuplicateResourceException("Số sân đã được sử dụng");
+        c.setCourtCode(r.courtNumber());
+        c.setName(r.name().strip());
+        c.setType(r.type());
+        c.setStatus(r.status());
+        c.setBasePrice(r.basePrice());
+        // Omitted optional field preserves legacy updates; an explicit blank clears the label.
+        if (r.district() != null) c.setDistrict(r.district().isBlank() ? null : r.district().strip());
+        // Omitted, null or blank addresses preserve existing metadata on legacy updates.
+        if (r.address() != null && !r.address().isBlank()) c.setAddress(r.address().strip());
+        validateCourtAddress(c.getDistrict(), c.getAddress());
+        return courts.saveAndFlush(c);
+    }
+
+    private void validateCourtAddress(String district, String address) {
+        if (address == null || address.isBlank()) return;
+        if (district == null || district.isBlank())
+            throw new BadRequestException("Vui lòng nhập quận / huyện cho địa chỉ sân");
+        // Check explicit comma-separated district components, never infer from a street/name.
+        var known = Set.of("1", "3", "5", "7", "bình thạnh", "tân bình", "gò vấp");
+        String expected = district.toLowerCase(Locale.ROOT).replaceFirst("^quận\\s+", "").strip();
+        for (String part : address.split("[,;]")) {
+            String value = part.strip().toLowerCase(Locale.ROOT);
+            boolean numericDistrict = value.matches("quận\\s+\\d+");
+            value = value.replaceFirst("^quận\\s+", "");
+            if ((numericDistrict || known.contains(value) && !value.matches("\\d+"))
+                    && !value.equals(expected))
+                throw new BadRequestException("Địa chỉ sân không khớp quận / huyện");
+        }
+    }
+
+    private boolean activeCourtBooking(UUID id) {
+        return Boolean.TRUE.equals(
+                jdbc.queryForObject(
+                        "select exists(select 1 from booking_details d join bookings b on"
+                            + " b.id=d.booking_id where d.court_id=? and b.status in"
+                            + " ('PENDING','PAID'))",
+                        Boolean.class,
+                        id));
+    }
+
+    private boolean slotReferenced(UUID id) {
+        return Boolean.TRUE.equals(
+                jdbc.queryForObject(
+                        "select exists(select 1 from booking_details where time_slot_id=?)",
+                        Boolean.class,
+                        id));
+    }
+
+    public void deleteCourt(UUID id) {
+        Court c = court(id);
+        if (activeCourtBooking(id))
+            throw new BadRequestException("Không thể xóa sân có lịch đặt chưa hoàn tất");
+        c.softDelete();
+        courts.saveAndFlush(c);
+    }
+
+    public TimeSlot saveSlot(UUID id, TimeSlotRequest r) {
+        if (!r.startTime().isBefore(r.endTime()))
+            throw new BadRequestException("Giờ bắt đầu phải trước giờ kết thúc");
+        if (r.startTime().getSecond() != 0
+                || r.endTime().getSecond() != 0
+                || r.startTime().getNano() != 0
+                || r.endTime().getNano() != 0)
+            throw new BadRequestException("Khung giờ phải chính xác đến phút");
+        if (slots.overlaps(id == null ? new UUID(0, 0) : id, r.startTime(), r.endTime()))
+            throw new DuplicateResourceException("Khung giờ bị chồng lấn");
+        TimeSlot s = id == null ? new TimeSlot() : slot(id);
+        if (id != null
+                && (!s.getStartTime().equals(r.startTime()) || !s.getEndTime().equals(r.endTime()))
+                && slotReferenced(id))
+            throw new BadRequestException(
+                    "Khung giờ đã được đặt; hãy tạo khung giờ mới để giữ lịch sử");
+        BigDecimal multiplier = r.priceMultiplier();
+        if (multiplier == null) {
+            boolean peak =
+                    r.startTime().compareTo(LocalTime.of(17, 0)) >= 0
+                            && r.endTime().compareTo(LocalTime.of(21, 0)) <= 0;
+            boolean crosses =
+                    r.startTime().isBefore(LocalTime.of(17, 0))
+                                    && r.endTime().isAfter(LocalTime.of(17, 0))
+                            || r.startTime().isBefore(LocalTime.of(21, 0))
+                                    && r.endTime().isAfter(LocalTime.of(21, 0));
+            if (crosses)
+                throw new BadRequestException(
+                        "Hãy chia khung giờ tại 17:00 hoặc 21:00, hoặc nhập hệ số riêng");
+            multiplier = new BigDecimal(peak ? "1.50" : "1.00");
+        }
+        s.setStartTime(r.startTime());
+        s.setEndTime(r.endTime());
+        s.setPriceMultiplier(multiplier);
+        return slots.saveAndFlush(s);
+    }
+
+    public void deleteSlot(UUID id) {
+        TimeSlot s = slot(id);
+        if (slotReferenced(id))
+            throw new BadRequestException("Không thể xóa khung giờ đã có lịch đặt");
+        s.softDelete();
+        slots.saveAndFlush(s);
+    }
+
+    public Category saveCategory(UUID id, CategoryRequest r) {
+        if (categories.existsByCategoryNameIgnoreCaseAndDeletedAtIsNullAndIdNot(
+                r.categoryName().strip(), id == null ? new UUID(0, 0) : id))
+            throw new DuplicateResourceException("Tên danh mục đã tồn tại");
+        Category c = id == null ? new Category() : category(id);
+        c.setCategoryName(r.categoryName().strip());
+        return categories.saveAndFlush(c);
+    }
+
+    public void deleteCategory(UUID id) {
+        Category c = category(id);
+        if (products.existsByCategoryIdAndDeletedAtIsNull(id))
+            throw new BadRequestException(
+                    "Danh mục còn sản phẩm; hãy chuyển hoặc xóa sản phẩm trước");
+        c.softDelete();
+        categories.saveAndFlush(c);
+    }
+
+    public Product saveProduct(UUID id, ProductRequest r) {
+        category(r.categoryId());
+        if (r.type() == ProductType.SERVICE && r.stockQuantity() != 0)
+            throw new BadRequestException("Dịch vụ phải có tồn kho bằng 0");
+        Product p = id == null ? new Product() : product(id);
+        boolean managedTarget=productPrices.managed(r.categoryId());
+        if(id==null&&managedTarget&&r.price().signum()!=0)throw new BadRequestException("Tạo hàng nhập kho với giá 0, sau đó dùng Duyệt giá niêm yết");
+        if(id!=null){
+            boolean managedSource=productPrices.managed(p.getCategoryId());
+            if((managedSource||managedTarget)&&r.price().compareTo(p.getPrice())!=0)throw new BadRequestException("Vui lòng dùng Duyệt giá niêm yết để thay đổi giá hàng nhập kho");
+            if(managedSource&&p.getPrice().signum()==0&&!managedTarget)throw new BadRequestException("Cần duyệt giá trước khi chuyển danh mục");
+        }
+        if (id != null) {
+            if (r.version() == null || !r.version().equals(p.getVersion()))
+                throw new DuplicateResourceException("Dữ liệu đã thay đổi; hãy tải lại sản phẩm");
+            if (!r.stockQuantity().equals(p.getStockQuantity()))
+                throw new BadRequestException(
+                        "Chỉ nhập tồn ban đầu khi tạo; điều chỉnh tồn qua phân hệ kho");
+        }
+        p.setCategoryId(r.categoryId());
+        p.setName(r.name().strip());
+        p.setType(r.type());
+        p.setUnit(r.unit().strip());
+        p.setPrice(r.price());
+        p.setStockQuantity(r.stockQuantity());
+        p.setImageUrl(r.imageUrl());
+        return products.saveAndFlush(p);
+    }
+
+    public void deleteProduct(UUID id) {
+        Product p = product(id);
+        p.softDelete();
+        products.saveAndFlush(p);
+    }
+
+    public Map<String, Object> quote(UUID courtId, UUID slotId) {
+        Court c = court(courtId);
+        TimeSlot s = slot(slotId);
+        if (c.getStatus() != CourtStatus.AVAILABLE)
+            throw new BadRequestException("Sân không hoạt động");
+        return Map.of(
+                "courtId",
+                courtId,
+                "timeSlotId",
+                slotId,
+                "basePrice",
+                c.getBasePrice(),
+                "priceMultiplier",
+                s.getPriceMultiplier(),
+                "price",
+                c.getBasePrice()
+                        .multiply(s.getPriceMultiplier())
+                        .setScale(2, RoundingMode.HALF_UP));
+    }
+}
