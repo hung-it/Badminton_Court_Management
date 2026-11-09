@@ -28,7 +28,6 @@ import java.util.UUID;
 public class ImportOrderService {
 
     private static final String DRAFT_STATUS = "DRAFT";
-    private static final String CONFIRMED_STATUS = "CONFIRMED";
     private static final String RECEIVED_STATUS = "RECEIVED";
 
     private final ImportOrderRepository importOrderRepository;
@@ -36,9 +35,11 @@ public class ImportOrderService {
     private final SupplierRepository supplierRepository;
     private final ProductRepository productRepository;
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    private final com.bcm.security.CurrentStaffService currentStaff;
 
     @Transactional
     public ImportOrderResponse createManual(com.bcm.dto.request.ManualImportOrderRequest request) {
+        currentStaff.requireUserId();
         String supplierName=request.supplierName().strip(),productName=request.productName().strip();
         if(supplierName.isBlank()||productName.isBlank())throw new BadRequestException("Vui lòng nhập nhà cung cấp và loại sản phẩm");
         // This real category row serializes name resolution/creation across independent imports.
@@ -78,14 +79,16 @@ public class ImportOrderService {
 
     @Transactional
     public ImportOrderResponse create(ImportOrderRequest request) {
+        UUID actor=currentStaff.requireUserId();
+        requireProducts(request.getDetails());
         requireSupplier(request.getSupplierId());
         ImportOrder order = ImportOrder.builder()
                 .supplierId(request.getSupplierId())
                 .status(DRAFT_STATUS)
                 .totalAmount(calculateTotal(request.getDetails()))
                 .importDate(request.getImportDate())
-                .createdBy(request.getStaffId())
-                .updatedBy(request.getStaffId())
+                .createdBy(currentStaff.currentStaffId().orElse(null)).createdByUser(actor)
+                .updatedBy(currentStaff.currentStaffId().orElse(null)).updatedByUser(actor)
                 .build();
         ImportOrder savedOrder = importOrderRepository.saveAndFlush(order);
         saveDetails(savedOrder.getId(), request.getDetails());
@@ -94,13 +97,15 @@ public class ImportOrderService {
 
     @Transactional
     public ImportOrderResponse update(UUID id, ImportOrderRequest request) {
+        UUID actor=currentStaff.requireUserId();
+        requireProducts(request.getDetails());
         requireSupplier(request.getSupplierId());
-        ImportOrder order = getOrder(id);
+        ImportOrder order = importOrderRepository.findForUpdate(id).orElseThrow(()->new ResourceNotFoundException("Import order not found"));
         ensureEditable(order);
         order.setSupplierId(request.getSupplierId());
         order.setImportDate(request.getImportDate());
         order.setTotalAmount(calculateTotal(request.getDetails()));
-        order.setUpdatedBy(request.getStaffId());
+        order.setUpdatedBy(currentStaff.currentStaffId().orElse(null));order.setUpdatedByUser(actor);
         ImportOrder savedOrder = importOrderRepository.saveAndFlush(order);
         detailRepository.deleteAllByImportOrderId(id);
         saveDetails(savedOrder.getId(), request.getDetails());
@@ -109,15 +114,18 @@ public class ImportOrderService {
 
     @Transactional
     public void delete(UUID id) {
-        ImportOrder order = getOrder(id);
+        UUID actor=currentStaff.requireUserId();
+        ImportOrder order = importOrderRepository.findForUpdate(id).orElseThrow(()->new ResourceNotFoundException("Import order not found"));
         ensureEditable(order);
         order.setStatus("CANCELLED");
+        order.setUpdatedBy(currentStaff.currentStaffId().orElse(null));order.setUpdatedByUser(actor);
         importOrderRepository.save(order);
     }
 
     @Transactional
     public ImportOrderResponse approve(UUID id) {
-        ImportOrder order = getOrder(id);
+        UUID actor=currentStaff.requireUserId();
+        ImportOrder order = importOrderRepository.findForUpdate(id).orElseThrow(()->new ResourceNotFoundException("Import order not found"));
         ensureEditable(order);
         List<ImportOrderDetail> details = detailRepository.findAllByImportOrderId(id);
         if (details.isEmpty()) {
@@ -125,19 +133,22 @@ public class ImportOrderService {
         }
 
         try {
-            for (ImportOrderDetail detail : details) {
-                Product product = productRepository.findById(detail.getProductId())
+            for (ImportOrderDetail detail : details.stream().sorted(java.util.Comparator.comparing(ImportOrderDetail::getProductId)).toList()) {
+                Product product = productRepository.findByIdForPriceApproval(detail.getProductId())
                         .orElseThrow(() -> new ResourceNotFoundException(
                                 "Product", "id", detail.getProductId()));
+                if(product.getDeletedAt()!=null || product.getType()!=com.bcm.entity.ProductType.GOODS)
+                    throw new BadRequestException("Chỉ nhận hàng GOODS đang hoạt động, chưa xóa.");
                 int currentStock = product.getStockQuantity() == null ? 0 : product.getStockQuantity();
-                product.setStockQuantity(currentStock + detail.getQuantity());
+                product.setStockQuantity(Math.addExact(currentStock,detail.getQuantity()));
                 productRepository.saveAndFlush(product);
             }
-        } catch (ObjectOptimisticLockingFailureException | OptimisticLockException exception) {
+        } catch (ObjectOptimisticLockingFailureException | OptimisticLockException | ArithmeticException exception) {
             throw new BadRequestException("Tồn kho vừa được cập nhật bởi giao dịch khác, vui lòng thử lại");
         }
 
         order.setStatus(RECEIVED_STATUS);
+        order.setUpdatedBy(currentStaff.currentStaffId().orElse(null));order.setUpdatedByUser(actor);
         ImportOrder savedOrder = importOrderRepository.saveAndFlush(order);
         return toResponse(savedOrder);
     }
@@ -154,11 +165,19 @@ public class ImportOrderService {
     }
 
     private void ensureEditable(ImportOrder order) {
-        if (!DRAFT_STATUS.equals(order.getStatus()) && !CONFIRMED_STATUS.equals(order.getStatus())) {
+        if(RECEIVED_STATUS.equals(order.getStatus())) throw new BadRequestException("Phiếu đã được nhận hàng");
+        if (!DRAFT_STATUS.equals(order.getStatus())) {
             throw new BadRequestException("Phiếu nhập không ở trạng thái có thể thay đổi");
         }
     }
 
+    private void requireProducts(List<ImportOrderDetailRequest> details) {
+        for(var detail:details) {
+            var p=productRepository.findByIdAndDeletedAtIsNull(detail.getProductId()).orElseThrow(()->new ResourceNotFoundException("Product not found"));
+            if(p.getType()!=com.bcm.entity.ProductType.GOODS) throw new BadRequestException("Chỉ nhập kho sản phẩm GOODS đang hoạt động.");
+            if(detail.getQuantity()==null || detail.getQuantity()<=0 || detail.getImportPrice()==null || detail.getImportPrice().signum()<0) throw new BadRequestException("Số lượng/giá nhập không hợp lệ");
+        }
+    }
     private BigDecimal calculateTotal(List<ImportOrderDetailRequest> details) {
         return details.stream()
                 .map(detail -> detail.getImportPrice().multiply(BigDecimal.valueOf(detail.getQuantity())))

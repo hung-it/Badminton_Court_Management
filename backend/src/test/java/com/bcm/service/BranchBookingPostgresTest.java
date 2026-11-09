@@ -27,10 +27,11 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(properties={"booking.expiration-enabled=false", "booking.hold-duration=PT10M", "booking.payment.enabled-methods=VNPAY,BANK_TRANSFER"})
+@SpringBootTest(properties={"booking.expiration-enabled=false", "booking.hold-duration=PT10M", "booking.payment.enabled-methods=VNPAY","booking.payment.vnpay.tmn-code=TEST1234","booking.payment.vnpay.hash-secret=branch-tests-only","booking.payment.vnpay.return-url=http://localhost/api/payments/vnpay/return"})
 @AutoConfigureMockMvc
 @Import(BookingWebTestConfiguration.class)
 @EnabledIfEnvironmentVariable(named="BCM_TEST_DB_URL",matches="jdbc:postgresql:.*")
+@org.springframework.test.context.TestExecutionListeners(listeners=com.bcm.SlotFixtureIsolation.class, mergeMode=org.springframework.test.context.TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class BranchBookingPostgresTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry r) {
         r.add("spring.datasource.url",()->System.getenv("BCM_TEST_DB_URL"));
@@ -56,7 +57,7 @@ class BranchBookingPostgresTest {
         jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,'test','Branch test','0900000000')",user,user+"@branch.test");
         jdbc.update("INSERT INTO customers(id,user_id,full_name,phone) VALUES (?,?,'Branch test','0900000000')",customer,user);
         for(UUID b:List.of(branch,otherBranch)) jdbc.update("INSERT INTO branches(id,code,name,district,address) VALUES (?,?, 'Branch test','Area','Area')",b,b.toString());
-        for(int i=0;i<3;i++) jdbc.update("INSERT INTO courts(id,court_code,name,type,base_price,branch_id,court_number) VALUES (?,?,'Branch court','STANDARD_MAT',?,?,?)",courts.get(i),-93001-i,100000+i*10000,branch,i+1);
+        for(int i=0;i<3;i++) jdbc.update("INSERT INTO courts(id,court_code,name,type,base_price,branch_id,court_number) VALUES (?,?,'Branch court','STANDARD_MAT',?,?,?)",courts.get(i),100093001+i,100000+i*10000,branch,i+1);
         jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier) VALUES (?,'12:00','13:00',1),(?,'17:00','18:00',1.5)",normal,peak);
     }
     @AfterEach void cleanup() {
@@ -119,9 +120,9 @@ class BranchBookingPostgresTest {
         mvc.perform(get("/public/courts").param("branchId",branch.toString())).andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(3));
         mvc.perform(get("/public/branches/"+UUID.randomUUID()+"/courts")).andExpect(status().isNotFound());
     }
-    @Test void multiCourtTransferRetryCreatesOnePaymentForWholeServerTotal() throws Exception {
+    @Test void multiCourtVnpayRetryCreatesOnePaymentForWholeServerTotal() throws Exception {
         var booking=service.createBooking(request(detail(0,normal),detail(1,peak),detail(2,normal)));
-        String body="{\"paymentMethod\":\"BANK_TRANSFER\",\"bankTransfer\":{\"bankName\":\"Test\",\"accountHolder\":\"Test\",\"accountNumber\":\"123456\",\"transferContent\":\"Courts\"}}";
+        String body="{\"paymentMethod\":\"VNPAY\"}";
         for(int i=0;i<2;i++) mvc.perform(post("/bookings/"+booking.getBookingId()+"/payments").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isCreated());
         assertThat(count("payment_transactions")).isEqualTo(1);
         assertThat(booking.getCourtFee()).isEqualByComparingTo("385000");

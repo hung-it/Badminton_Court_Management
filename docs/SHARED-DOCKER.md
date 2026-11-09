@@ -20,7 +20,7 @@ Script dùng đường dẫn tương đối theo repository, kiểm tra Docker v
 
 ## DB đang có dữ liệu
 
-**Sao lưu trước lần chạy đầu/nâng cấp backend.** Mount init SQL chỉ chạy cho volume mới. Script áp dụng member2-upgrade.sql, member2-payment-method-upgrade.sql, product-promotions-upgrade.sql và court-promotions-upgrade.sql cho volume đang có. Các script cộng cột/constraint, chạy lại không reset danh mục hay chương trình đã chỉnh. Giữ ddl-auto: validate và SQL init never.
+**Sao lưu trước lần chạy đầu/nâng cấp backend.** Mount init SQL chỉ chạy cho volume mới. Script áp dụng booking-ux-upgrade.sql, booking-ux-upgrade.sql, product-promotions-upgrade.sql và court-promotions-upgrade.sql cho volume đang có. Các script cộng cột/constraint, chạy lại không reset danh mục hay chương trình đã chỉnh. Giữ ddl-auto: validate và SQL init never.
 
 Không chạy đồng thời các script backend local/demo nếu mục tiêu là kiểm tra dữ liệu dùng chung. Không dùng docker compose down -v để sửa lỗi vì thao tác đó có thể xóa dữ liệu.
 

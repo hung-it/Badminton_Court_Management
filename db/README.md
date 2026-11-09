@@ -1,162 +1,64 @@
-# 🗄️ Database Setup với Docker
+# PostgreSQL setup and upgrades
 
-## Loại mặt sân và địa chỉ — 2026-10-24
+## Current payment contract — 2026-11-05
 
-`courts.type` đã là loại mặt sân: chỉ `STANDARD_MAT` (Thảm tiêu chuẩn) và
-`WOODEN_FLOOR` (Sàn gỗ). Tái sử dụng field này, không thêm surface_type/bảng loại sân.
-`courts-metadata-upgrade.sql` thêm `address VARCHAR(500)` nullable và CHECK hai mã type.
-Type NULL vẫn biểu thị chưa xác minh; giá trị cũ không tương thích làm upgrade rollback,
-cần quản trị viên kiểm tra, không tự chuyển đổi. Giữ Hibernate validate/SQL init never.
+Database and Java enum accept only **CASH / VNPAY**. CUSTOMER booking payments accept only VNPAY; POS/Checkout accept CASH or VNPAY. Unsupported raw payment-method requests return 400. There is no manual self-declared receipt flow, alias, bank form or reconciliation checkbox.
 
-Sau bốn script bootstrap bên dưới, chạy lần lượt:
+After explicit authorization to remove unfinished development data, a fresh custom backup was verified: `backups/bcm-remove-transfer-2026-11-05T09-39-40-425Z.dump`, SHA256 `fc29699d4333b9bacc8306f405db0a41f6d973478e1b3a2f7a974d7f03fa026c`, 155 TOC lines. The reviewed cluster contained 9 transfer payments (6 PENDING, 3 SUCCESS), 9 bookings and 5 dependent counter-settlement invoices. They were deleted atomically, not relabelled. Retained data across all 21 tables was fingerprint-checked before COMMIT, including products/stock and independent CASH/VNPAY history. Full counts and UUIDs: `docs/admin-customers-invoices.md`.
 
-5. `courts-metadata-upgrade.sql`: schema cộng thêm, không sửa migration lịch sử.
-6. `courts-metadata-seed.sql`: UPDATE metadata fixture; không INSERT sân.
+`migration.sql` creates two-method CHECKs for fresh databases. The existing `payment-method-compatibility` section in `booking-ux-upgrade.sql` upgrades existing CHECKs, aborting on unsupported data by default. Its explicitly reviewed development-only UUID cleanup is **off by default**; `SET LOCAL bcm.remove_development_transfers='on'` is only for the documented snapshot after a fresh verified backup. It refuses another database or changed cluster. It does not delete arbitrary future legacy rows. Normal Compose/bootstrap never enables this flag; no SQL file was added or restored.
 
-Compose mount cả sáu script theo thứ tự. Với database đang chạy, backup `pg_dump -Fc`
-ngoài backend/target, kiểm tra archive và counts trước khi chạy hai file mới bằng
-`psql -X -v ON_ERROR_STOP=1 -f ...`. Không cần chạy lại seed tạo sân cũ trên runtime.
+To upgrade an existing database, inspect/backup first and apply only the compatibility section; never rerun the base migration. Repeating the section on an already clean database is a no-op for application data. Historical records in the older audit sections below describe previous states and do not override this contract.
 
-Backfill dùng UUID cố định của runtime đã xác minh; UUID tám sân gốc ở database mới
-được resolve qua court_number/tên/type/giá fixture chính xác. Chỉ cập nhật khi tên,
-số sân và district còn đúng mapping. Không đổi type hợp lệ hoặc địa chỉ khác rỗng,
-không đổi ID, tên, giá, district, booking/payment/slot. Lần hai UPDATE 0.
+The optional revenue sample removed its obsolete invoice `b2000000-0000-4000-8000-000000000103` and child line `...0124` from the source, rather than converting their method. The sample was NOT imported into shared data and remains opt-in.
 
-Địa chỉ `Khu thể thao mô phỏng <số sân>, <district>, TP. Hồ Chí Minh` là fixture
-đồ án minh bạch, không phải số nhà/đường hoặc cơ sở ngoài đời đã xác minh.
-Record đổi tên/di chuyển district hoặc sân thật không khớp fixture được bỏ qua để
-quản trị viên bổ sung, không suy địa chỉ từ tên sân. Bảy district dùng quy ước đồ án.
+## Shared catalog seed
 
-Public/admin API giữ tên `type`, thêm optional `address`. POST/PUT kiểm tra enum,
-địa chỉ tối đa 500 ký tự, không control characters; địa chỉ có dữ liệu cần district.
-Các thành phần quận rõ ràng, phân cách dấu phẩy/chấm phẩy, được kiểm tra nhất quán;
-đây không phải geocoding hay xác minh địa giới. PUT bỏ/null/blank address giữ địa chỉ cũ.
-Omitted district giữ giá trị cũ; xóa district khi còn address bị từ chối.
+The shared catalog from origin/codex/catalog-seed is integrated once in the `shared-catalog-seed` section of product-promotions-upgrade.sql. No standalone catalog/demo SQL was recreated. Compose, shared startup and acceptance bootstrap already execute that file.
 
-Thông tin schema/4 bước ở phần lịch sử bên dưới mô tả checkpoint trước upgrade này.
+The section inserts missing categories Nước giải khát, Phụ kiện, Thuê vợt and products Nước suối 500ml (10000/chai, initial stock 50), Cầu lông tiêu chuẩn (25000/quả, initial stock 30), Thuê vợt theo lượt (SERVICE, 20000/lượt, stock 0). Existing prices, category relationships, stock, versions and timestamps are never updated. Existence checks include soft-deleted identities, normalize case/whitespace and never resurrect deleted rows. Ambiguous existing category identities abort; table locks serialize startup seeds. Repeated execution must insert zero rows.
 
-Folder này chứa migration script để khởi tạo PostgreSQL database cho dự án.
+This is the team's basic operational demonstration catalog, not a transaction/revenue seed. revenue-breakdown-sample.sql remains opt-in and was NOT imported: it overwrites historical rows/stock on conflict, lacks a visible DEMO discriminator in reports, and includes an inconsistent 2025 product subtotal/detail example. Do not run it against shared data until those issues and a demo-data policy are resolved. Never restore a whole pre-seed backup just to remove catalog rows when newer real transactions exist; selective rollback requires checking references to each inserted UUID first.
 
-## 📁 Files
+## Verified shared-volume rebuild
 
-- `migration.sql` - Script tạo 20 bảng + indexes + seed data
-- `court-demo-seed.sql` - Fixture cũ 5 sân của checkpoint khác; không nằm trong bootstrap hiện tại.
-- `booking-ux-upgrade.sql` - Upgrade cộng cột nullable `courts.district` (150 ký tự), chạy lặp an toàn, không backfill/quy đổi địa giới.
-- `booking-contact-upgrade.sql` - Hai cột nullable `bookings.contact_full_name` / `contact_phone`
-  để sửa tên/SĐT theo từng booking tại checkout; không sửa hồ sơ/email và không có customer_note.
-- `courts-districts-seed.sql` - Nguồn seed chính thức cho bộ dữ liệu đồ án: 15 sân có district;
-  chuyển bảy UUID cũ từ tên `[DEMO]` sang tên thường, không xóa/reinsert hoặc thay giá.
-- `demo-districts-seed.sql` - Entry point psql cũ, chỉ `\ir courts-districts-seed.sql`,
-  không chứa bộ INSERT thứ hai và không tạo thêm sân demo.
+On 2026-11-05 a new backup was captured before the main database constraint correction and container rebuild: backups/bcm-pre-rebuild-20261105-1300.dump, SHA256 345B4B9F7D90D438214F41ECABCB688CC012E650D0440C88F18A7F2D20FC1B4A. Archive listing and full SQL extraction succeeded. Only the catalog-integrity section of booking-ux-upgrade.sql was applied on the existing main DB; master_court_values now checks court_code rather than local court_number. All application data fingerprints were unchanged.
 
-## Bộ dữ liệu đồ án: 15 sân / 7 district
+All nine old BCM containers were removed without deleting any volume. The two Compose services were recreated after a no-cache backend build using the same external PostgreSQL volume. Hibernate validation/startup and the separate 16-case acceptance suite passed. This does not certify full legacy regression, empty-database bootstrap or a restore rehearsal. See docs/admin-customers-invoices.md for the full evidence and container inventory. Never run migration.sql again on the retained data directory.
 
-Thứ tự database mới (Compose tự chạy theo tên mount khi volume mới):
+Use docker-compose.yml as the bootstrap source of truth. The existing development service is bcm-postgres / badminton_court_db, exposed on localhost:5433. Resolve connection identity from the container environment; do not copy credentials into ad hoc scripts.
 
-1. `migration.sql`: schema gốc, 8 sân mẫu với UUID sinh ngẫu nhiên và 16 slot.
-2. `booking-ux-upgrade.sql`: nullable district, không có customer_note.
-3. `courts-districts-seed.sql`: gán district fixture cho 8 sân và thêm 7 sân UUID cố định.
-4. `booking-contact-upgrade.sql`: thông tin liên hệ riêng của booking, legacy NULL fallback về customer.
+## Fresh database
 
-Volume hiện có không tự chạy init lại. Sau khi xác nhận đây là bộ dữ liệu đồ án, backup
-ngoài `backend/target` rồi áp dụng upgrade nếu thiếu district, sau đó chạy seed chính:
+Init scripts execute only when the PostgreSQL data directory is empty. Never delete/reset the existing external volume to rerun them. Compose applies:
 
-```powershell
-docker cp db/courts-districts-seed.sql bcm-postgres:/tmp/courts-districts-seed.sql
-docker exec bcm-postgres psql -X -U bcm_admin -d badminton_court_db -v ON_ERROR_STOP=1 -f /tmp/courts-districts-seed.sql
-docker exec bcm-postgres psql -X -U bcm_admin -d badminton_court_db -c "SELECT district, COUNT(*) FROM courts GROUP BY district ORDER BY district;"
-```
+1. migration.sql - historical base schema and initial roles, slots and eight courts.
+2. booking-ux-upgrade.sql - consolidated court numbering, contact, branches schema, metadata, booking promotion snapshots and release deadline. Includes NEWMEMBER/KMKH10 seed.
+3. branches-seed.sql - project branch/court catalog fixtures, retained because the current project bootstrap uses this catalog. This is demo/catalog data, not verified real venue information.
+4. product-promotions-upgrade.sql - product discount snapshots and validation.
+5. court-promotions-upgrade.sql - campaign limits and COURT-BILL-300/500 seeds.
 
-Seed chạy trong transaction và khóa bảng courts để tránh cạnh tranh khi chuyển đổi. Chạy lại
-không tạo record hoặc cập nhật timestamp thừa. Bảy sân dùng lại UUID namespace
-`bcdd0000-0000-4000-8000-000000000001..007`, số sân `10001..10007`. Chỉ tên cũ chính xác
-`[DEMO] Cơ sở ... - Sân 01` được chuyển sang tên tương ứng; xung đột UUID/số sân/tên dừng toàn bộ.
-District khác rỗng, giá, status, type và deleted_at hiện có được giữ nguyên.
+Catalog integrity and legacy payment-method compatibility now execute within booking-ux-upgrade.sql, after court numbering. The three former standalone upgrade/recovery files have been deleted; do not invoke them. Existing correct constraints are retained. Only a proven legacy master_court_values binding to local court_number is repaired, after validation, to bind court_code instead. Unsupported historical payments stop the ordinary compatibility upgrade; no payments are converted. Only the explicitly enabled, reviewed development cleanup documented above can delete its fixed UUID allowlist.
 
-Tám sân gốc đã đối chiếu migration và runtime. Script chứa UUID runtime đã xác minh;
-database mới có UUID khác được đối chiếu bằng court_number unique và đầy đủ signature
-tên/type/base_price của fixture rồi cập nhật qua UUID đã resolve. Record khác hoặc không đủ
-căn cứ bị từ chối thay vì gán district tùy ý. Court number 1..8 có mapping lần lượt:
-Quận 1, Quận 3, Quận 5, Quận 7, Bình Thạnh, Tân Bình, Quận 1, Gò Vấp.
+The same sequence must be used for manual fresh initialization. New instances require the external volume named in Compose to be created explicitly. Existing volumes are never reinitialized automatically.
 
-**Nguồn district là phân bổ fixture được người dùng cho phép, không phải địa chỉ xác minh.**
-Tên "Sân cầu lông Thủ Đức" được giữ nguyên; mapping Quận 1 là cấu hình mô phỏng, không suy ra
-từ địa danh trong tên. Schema courts không có address/image/description/is_demo; không tạo
-địa chỉ đường/số nhà giả. "Chính thức" chỉ có nghĩa record thường của bộ dữ liệu đồ án.
+## Existing development database
 
-Số liệu kiểm chứng 2026-10-24 và danh sách UUID trước/sau nằm trong
-[báo cáo chuyển đổi](../docs/courts-official-2026-10-24.md). Báo cáo 2026-10-23 là checkpoint
-lịch sử trước khi chuyển đổi; không dùng số 12 sân ở môi trường cũ làm dữ liệu hiện tại.
+Confirm container/database/environment first. Capture pg_dump -Fc, read its TOC with pg_restore --list, and preserve the archive outside backend/target. Record row counts and hashes before upgrading. Inspect columns, indexes and pg_get_constraintdef; apply only missing upgrades. Use psql -X -v ON_ERROR_STOP=1; each retained upgrade provides its transaction boundary. Lock/validation failures must stop the upgrade; do not remove constraints to proceed.
 
-## Upgrade Courts / Checkout trên database hiện có
+scripts/start-shared-docker.ps1 now backs up before its additive upgrade sequence and resolves database identity through POSTGRES_USER/POSTGRES_DB. It retains the archive under backups/. It does not reset volumes. Use it only for the shared development stack, not production.
 
-Repository dùng SQL chạy thủ công và Docker init scripts; không có Flyway/Liquibase.
-Bản hiện tại chỉ thêm district; chức năng ghi chú checkout và mapping đã được loại bỏ.
-Cột ghi chú từ các lần triển khai cũ (nếu có) được giữ nguyên để bảo toàn dữ liệu; script không DROP cột.
-Không sửa `migration.sql` lịch sử. Trước khi chạy backend có mapping mới, áp dụng:
+There is no Flyway/Liquibase ledger. Applied state is inferred from the actual schema/constraints/seed, not file timestamps. Do not rerun migration.sql on an existing schema. Hibernate remains validate and SQL init remains never.
 
-```powershell
-docker cp db/booking-ux-upgrade.sql bcm-postgres:/tmp/booking-ux-upgrade.sql
-docker exec bcm-postgres psql -U bcm_admin -d badminton_court_db -v ON_ERROR_STOP=1 -f /tmp/booking-ux-upgrade.sql
-```
+## SQL inventory
 
-Compose chạy upgrade này sau schema gốc khi tạo volume mới. Với volume cũ, init scripts
-không chạy lại nên cần lệnh trên; giữ `ddl-auto: validate`, SQL init `never`.
-Upgrade không xóa bảng/dữ liệu, không đổi deadline/status/payment note và không cần index mới
-vì catalog sân hiện trả toàn bộ danh sách để lọc ở client.
+- All five scripts above: retained, referenced by Compose or supported upgrade/bootstrap paths; the current two-method schema/compatibility rules are documented above.
+- Removed obsolete member2-demo.sql and the local bootstrap Demo switch: its court fixtures use the former numbering schema. No existing demo records were deleted.
+- revenue-breakdown-sample.sql: optional report fixtures that create invoices and affect revenue. Removed from automatic Compose initialization. Run only on a controlled demo dataset after explicit authorization; existing sample rows are not deleted.
+- scripts/verify-backend-postgres.ps1 and PostgreSQL test source: retained opt-in test infrastructure. Do not run against bcm-postgres; no full integration suite is part of shared-database synchronization.
 
-Với dữ liệu người dùng thật, quận/huyện là nhãn vị trí do quản trị viên xác minh qua địa chỉ,
-không suy từ tên sân và không lấy địa chỉ khách hàng làm địa chỉ sân. Điền bằng field optional
-`district` trong API quản lý sân hiện có (`POST/PUT /api/admin/courts`). Bỏ field khi update
-giữ giá trị cũ; chuỗi trống xóa nhãn về NULL. Sân chưa xác minh giữ NULL, vẫn xuất hiện khi
-không áp dụng bộ lọc quận. Danh sách checkbox lấy từ catalog backend, không dùng danh mục địa giới hardcode.
+The three superseded standalone upgrade files were deleted after consolidation; the base migration defines the current CASH/VNPAY contract for new databases and must not be re-executed on an existing schema. Old reports may reference former per-feature SQL names; the consolidated booking-ux-upgrade.sql is the current entry point.
 
-## 🚀 Quick Start
+## Backup restore plan
 
-```bash
-# Khởi động database
-docker-compose up -d
-
-# Kiểm tra logs
-docker-compose logs -f
-
-# Dừng database
-docker-compose down
-
-```
-
-Compose chạy sáu file theo thứ tự trên. Không dùng `court-demo-seed.sql` cũ chung với bộ
-15 sân vì fixture đó dùng các court_number 1–5 cho dữ liệu khác. Không cần xóa/tạo lại volume.
-
-Với volume cũ, trước khi chạy backend hỗ trợ sửa người đặt:
-
-```powershell
-docker cp db/booking-contact-upgrade.sql bcm-postgres:/tmp/booking-contact-upgrade.sql
-docker exec bcm-postgres psql -X -U bcm_admin -d badminton_court_db -v ON_ERROR_STOP=1 -f /tmp/booking-contact-upgrade.sql
-```
-
-Backup bằng pg_dump -Fc ra ngoài backend/target trước khi upgrade. Script chỉ thêm cột,
-không backfill booking cũ, không tạo/sửa user hoặc payment, chạy lại an toàn.
-
-## 🔗 Kết nối Database
-
-```yaml
-Host: localhost
-Port: 5433
-Database: badminton_court_db
-Username: bcm_admin
-Password: 12345
-```
-
-## 📊 Verify Database
-
-```bash
-# Kiểm tra tables
-docker exec bcm-postgres psql -U bcm_admin -d badminton_court_db -c "\dt"
-
-# Kiểm tra roles
-docker exec bcm-postgres psql -U bcm_admin -d badminton_court_db -c "SELECT * FROM roles;"
-
-# Kiểm tra time slots
-docker exec bcm-postgres psql -U bcm_admin -d badminton_court_db -c "SELECT * FROM time_slots;"
-```
+Archive backups/bcm-before-sync-20261105.dump was captured from the verified development database. Its TOC and complete SQL extraction were validated. A restore rehearsal was not performed against the shared database. To recover, stop application writes, choose an approved separate recovery database, and use pg_restore --exit-on-error --no-owner into it; validate counts/constraints before switching application connectivity. Do not restore over live data or use --clean without a separately reviewed recovery action.

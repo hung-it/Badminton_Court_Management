@@ -29,6 +29,8 @@ public class BookingHistoryService {
         if (page < 0 || size < 1 || size > 100) {
             throw new BadRequestException("page must be >= 0 and size must be 1..100");
         }
+        if(status!=null && !java.util.Set.of(BookingStatus.PENDING,BookingStatus.PAID,BookingStatus.COMPLETED,BookingStatus.EXPIRED).contains(status))
+            throw new BadRequestException("Unsupported booking filter");
         UUID trustedCustomerId = currentCustomer.requireCustomerId();
         if (customerId != null && !customerId.equals(trustedCustomerId)) {
             throw new org.springframework.security.access.AccessDeniedException("Customer mismatch");
@@ -64,10 +66,7 @@ public class BookingHistoryService {
         }).toList();
         var transactions = payments.findBookingHistory(bookingId).stream().map(p ->
                 new BookingHistoryDetailResponse.Payment(p.getId(), p.getPaymentMethod(), p.getStatus(),
-                        p.getAmount(), p.getTransactionId(), p.getTransactionDate(), p.getCreatedAt(),
-                        p.getPaymentMethod() == com.bcm.entity.PaymentMethod.BANK_TRANSFER
-                                && p.getNote() != null && p.getNote().startsWith("CUSTOMER_DECLARED;")
-                                ? "CUSTOMER_DECLARED" : null)).toList();
+                        p.getAmount(), p.getTransactionId(), p.getTransactionDate(), p.getCreatedAt())).toList();
         return new BookingHistoryDetailResponse(booking.getId(), booking.getCustomer().getId(), booking.getStatus(),
                 booking.getCourtFee(), booking.getExpiresAt(), booking.getCreatedAt(), booking.getUpdatedAt(),
                 slots, transactions, booking.getDiscountAmount(), booking.getFinalAmount(),

@@ -24,12 +24,15 @@ public class PaymentCallbackTransactionService {
     private final PaymentTransactionRepository payments;
     private final BookingRepository bookings;
     private final Clock clock;
+    private final PaymentInFlightPolicy inFlightPolicy;
 
     public PaymentCallbackTransactionService(PaymentTransactionRepository payments, BookingRepository bookings,
-                                            @Qualifier("bookingExpirationClock") Clock clock) {
+                                            @Qualifier("bookingExpirationClock") Clock clock,
+                                            PaymentInFlightPolicy inFlightPolicy) {
         this.payments = payments;
         this.bookings = bookings;
         this.clock = clock;
+        this.inFlightPolicy = inFlightPolicy;
     }
 
     @Transactional(readOnly = true)
@@ -64,9 +67,13 @@ public class PaymentCallbackTransactionService {
             return same && booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.EXPIRED
                     ? Result.ALREADY_CONFIRMED : Result.CONFLICT;
         }
+        // An EXPIRED booking is final. A PENDING booking past its deadline is still settle-able while
+        // it is in the in-flight window (a payment is on its way, or a late callback just arrived):
+        // letting that receipt settle is the fix for the "charged but reservation gone" case.
         if (booking.getStatus() == BookingStatus.EXPIRED
                 || (booking.getStatus() == BookingStatus.PENDING && booking.getExpiresAt() != null
-                && !booking.getExpiresAt().isAfter(LocalDateTime.now(clock)))) {
+                && !booking.getExpiresAt().isAfter(LocalDateTime.now(clock))
+                && !inFlightPolicy.inFlight(booking, LocalDateTime.now(clock)))) {
             recordUnsettledReceipt(payment, notification);
             return Result.LATE_EXPIRED;
         }
@@ -100,6 +107,8 @@ public class PaymentCallbackTransactionService {
     }
 
     private Result validate(PaymentTransaction payment, PaymentNotification notification) {
+        if(notification.amount()==null || notification.amount().signum()<=0) return Result.INVALID_AMOUNT;
+        if(notification.providerSuccess() && notification.transactionDate()==null) return Result.INVALID_DATA;
         if (payment == null || payment.getBooking() == null || payment.getInvoice() != null
                 || payment.getPaymentMethod() != notification.method()) { return Result.NOT_FOUND; }
         if (payment.getAmount().compareTo(notification.amount()) != 0) { return Result.INVALID_AMOUNT; }

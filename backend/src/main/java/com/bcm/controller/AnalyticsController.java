@@ -29,7 +29,7 @@ public class AnalyticsController {
     private final com.bcm.service.RevenueBreakdownService revenueBreakdownService;
 
     @GetMapping("/statistics")
-    @Operation(summary="Thống kê thu, chi, lợi nhuận theo tháng/quý/năm/các năm", description="MONTH: 12 tháng; QUARTER: 4 quý; YEAR: năm được chọn; YEARS: mỗi năm trong fromYear..toYear, tối đa 50 năm. Thu từ hóa đơn PAID chưa xóa; chi từ phiếu nhập không CANCELLED, gồm phiếu chưa duyệt, theo import_date. Lợi nhuận = thu - chi.")
+    @Operation(summary="Thống kê thu và giá trị hàng đã nhận theo tháng/quý/năm/các năm", description="MONTH: 12 tháng; QUARTER: 4 quý; YEAR: năm được chọn; YEARS: mỗi năm trong fromYear..toYear, tối đa 50 năm. Thu từ hóa đơn PAID chưa xóa; Giá trị phiếu đã nhận chỉ tính RECEIVED, nhóm theo ngày trên phiếu nhập (import_date), không phải ngày duyệt/nhận thực tế. Trường profit tương thích là chênh lệch thu – nhập hàng.")
     public ApiResponse<com.bcm.dto.response.StatisticsResponse> statistics(
             @RequestParam(defaultValue="MONTH") String period,
             @RequestParam(required=false) Integer year,
@@ -40,7 +40,7 @@ public class AnalyticsController {
 
     @GetMapping("/revenue-breakdown")
     @Operation(summary = "Doanh thu theo nhân viên, khách hàng, sản phẩm và tiền sân",
-            description = "Chỉ tính hóa đơn PAID chưa xóa. QUARTER trả bốn quý; YEAR trả cả năm. Tổng sản phẩm và tiền sân được phân bổ từ tổng sau giảm giá để khớp tổng hóa đơn. Chi tiết sản phẩm kèm thu ngân, khách hàng và số lượng; tiền sân chia theo sân.")
+            description = "Chỉ tính hóa đơn PAID chưa xóa. QUARTER trả bốn quý; YEAR trả cả năm. Giảm sân và giảm sản phẩm giữ đúng nguồn; chỉ phần giảm toàn hóa đơn còn lại phân bổ theo giá trị sau giảm riêng, làm tròn khớp tổng hóa đơn. Doanh thu nhân viên từ khoản thu SUCCESS được xác nhận bởi staffs.id; tiền online/Admin không gán cho nhân viên Checkout. Chi tiết sản phẩm kèm người thêm hàng, khách hàng và số lượng; tiền sân chia theo sân.")
     public ApiResponse<com.bcm.dto.response.RevenueBreakdownResponse> revenueBreakdown(
             @RequestParam(defaultValue = "QUARTER") String period,
             @RequestParam(required = false) Integer year,
@@ -57,12 +57,13 @@ public class AnalyticsController {
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam(defaultValue="0") int page,
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to) {
-        return ApiResponse.success(analyticsService.history(period,date,page,from,to));
+            @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue="") String search,@RequestParam(defaultValue="") String method) {
+        return ApiResponse.success(analyticsService.history(period,date,page,from,to,search,method));
     }
 
     @GetMapping("/invoices/{id}")
-    @Operation(summary="Chi tiết hóa đơn doanh thu", description="Giá, số lượng và giảm giá lấy từ dữ liệu hóa đơn đã lưu; tên sân/sản phẩm lấy từ danh mục hiện tại.")
+    @Operation(summary="Chi tiết hóa đơn doanh thu", description="Giá, số lượng và giảm giá lấy từ dữ liệu hóa đơn đã lưu; Tên sản phẩm dùng snapshot; dòng cũ thiếu snapshot được đánh dấu. Trả kèm khoản thu và actor xác nhận.")
     public ApiResponse<com.bcm.dto.response.InvoiceReportResponse> invoice(@org.springframework.web.bind.annotation.PathVariable java.util.UUID id) {
         return ApiResponse.success(analyticsService.invoice(id));
     }

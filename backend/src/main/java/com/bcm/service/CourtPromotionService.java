@@ -19,7 +19,10 @@ public class CourtPromotionService {
  @Transactional public void save(UUID id,CourtPromotionRequest v) {
   String code=v.code().toUpperCase(Locale.ROOT);
   if (v.validTo()!=null && v.validTo().isBefore(v.validFrom())) throw new BadRequestException("Ngày kết thúc không hợp lệ");
-  if (v.discountType().equals("PERCENT") && v.discountValue().compareTo(new BigDecimal("100"))>0) throw new BadRequestException("Tỷ lệ không vượt 100%");
+  if (v.discountType().equals("PERCENT") && v.discountValue().compareTo(new BigDecimal("100"))>=0) throw new BadRequestException("Ưu đãi phải giữ tiền sân phải thanh toán lớn hơn 0; tỷ lệ phải dưới 100%");
+  BigDecimal effective=v.maxDiscountAmount()==null?v.discountValue():v.discountValue().min(v.maxDiscountAmount());
+  if(v.discountType().equals("AMOUNT") && (v.minInvoiceAmount()==null || effective.compareTo(v.minInvoiceAmount())>=0))
+      throw new BadRequestException("Giảm tiền cố định phải nhỏ hơn mức tiền sân tối thiểu áp dụng.");
   UUID pid;
   if(id==null) {pid=UUID.randomUUID(); if(Set.of("NEWMEMBER","KMKH10","INVOICE_TOTAL").contains(code)) throw new BadRequestException("Mã dành riêng cho hệ thống");}
   else {
@@ -48,7 +51,9 @@ public class CourtPromotionService {
   BigDecimal value=(BigDecimal)r.get("discount_value");
   BigDecimal amount="PERCENT".equals(r.get("discount_type"))?subtotal.multiply(value).divide(new BigDecimal("100"),2,RoundingMode.HALF_UP):value;
   if(r.get("max_discount_amount")!=null) amount=amount.min((BigDecimal)r.get("max_discount_amount"));
-  return amount.max(BigDecimal.ZERO).min(subtotal).setScale(2,RoundingMode.HALF_UP);
+  amount=amount.max(BigDecimal.ZERO).min(subtotal).setScale(2,RoundingMode.HALF_UP);
+  if(subtotal.subtract(amount).signum()<=0) throw new BadRequestException("Ưu đãi không hợp lệ: tiền sân sau giảm phải lớn hơn 0.");
+  return amount;
  }
  // Lock the campaign row before counting reservations, including reservations in other transactions.
  public Map<String,Object> voucher(String code,LocalDate date) {
@@ -56,7 +61,7 @@ public class CourtPromotionService {
   return rows.size()==1?rows.get(0):null;
  }
  public String limits(Map<String,Object> rule,UUID owner,UUID booking,String code,LocalDateTime now) {
-  String where=" FROM bookings b WHERE b.id<>? AND b.promotion_code=? AND ((b.status='PENDING' AND b.expires_at>? AND (NOT EXISTS (SELECT 1 FROM payment_transactions t WHERE t.booking_id=b.id) OR EXISTS (SELECT 1 FROM payment_transactions t WHERE t.booking_id=b.id AND t.status='PENDING'))) OR (b.status IN ('PAID','CHECKED_IN','COMPLETED','NO_SHOW') AND EXISTS (SELECT 1 FROM payment_transactions t WHERE t.booking_id=b.id AND t.status IN ('SUCCESS','PENDING'))))";
+  String where=" FROM bookings b WHERE b.id<>? AND b.promotion_code=? AND ((b.status='PENDING' AND b.expires_at>? AND (NOT EXISTS (SELECT 1 FROM payment_transactions t WHERE t.booking_id=b.id) OR EXISTS (SELECT 1 FROM payment_transactions t WHERE t.booking_id=b.id AND t.status='PENDING'))) OR (b.status IN ('PAID','COMPLETED') AND EXISTS (SELECT 1 FROM payment_transactions t WHERE t.booking_id=b.id AND t.status IN ('SUCCESS','PENDING'))))";
   long all=jdbc.queryForObject("SELECT count(*)"+where,Long.class,booking,code,now);
   long own=jdbc.queryForObject("SELECT count(*)"+where+" AND b.customer_id=?",Long.class,booking,code,now,owner);
   long pos=jdbc.queryForObject("SELECT count(*) FROM customer_voucher_usage u JOIN invoices i ON i.id=u.invoice_id WHERE u.discount_rule_id=? AND i.status='PAID'",Long.class,rule.get("id"));

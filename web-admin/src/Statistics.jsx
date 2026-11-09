@@ -1,7 +1,7 @@
 import React,{useEffect,useState} from 'react';
 const money=n=>new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND'}).format(n||0);
 const periods={MONTH:'Tháng',QUARTER:'Quý',YEAR:'Năm',YEARS:'Các năm'};
-const metrics=[['revenue','Tổng thu','totalRevenue'],['expense','Tổng chi','totalExpense'],['profit','Lợi nhuận','totalProfit']];
+const metrics=[['revenue','Tổng thu','totalRevenue'],['expense','Giá trị phiếu đã nhận (theo ngày phiếu nhập)','totalExpense'],['profit','Chênh lệch thu – nhập hàng','totalProfit']];
 
 export default function Statistics({api,initialYear}){
  const currentYear=initialYear||new Date().getFullYear();

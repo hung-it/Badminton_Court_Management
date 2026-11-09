@@ -4,7 +4,7 @@
 
 Database có sẵn: bảo đảm đã áp dụng các nâng cấp Booking/chi nhánh của develop, sao lưu rồi chạy `db/product-promotions-upgrade.sql` trước khi khởi động backend mới. Script chỉ thêm cột; chạy lại an toàn, không đổi hóa đơn cũ.
 
-Database mới: `migration.sql` → `booking-ux-upgrade.sql` → `branches-seed.sql` nếu dùng bộ dữ liệu chi nhánh của nhóm → `member2-upgrade.sql` → `member2-payment-method-upgrade.sql` → `product-promotions-upgrade.sql`. `scripts/start-local-db.ps1` đã chạy bản nâng cấp khuyến mãi (DB local vẫn phải được chuẩn bị theo schema develop trước); Docker Compose mount cùng thứ tự khi volume mới. Volume Docker đã có dữ liệu không tự chạy lại init script.
+Database mới: `migration.sql` → `booking-ux-upgrade.sql` → `branches-seed.sql` nếu dùng bộ dữ liệu chi nhánh của nhóm → `booking-ux-upgrade.sql` → `booking-ux-upgrade.sql` → `product-promotions-upgrade.sql`. `scripts/start-local-db.ps1` đã chạy bản nâng cấp khuyến mãi (DB local vẫn phải được chuẩn bị theo schema develop trước); Docker Compose mount cùng thứ tự khi volume mới. Volume Docker đã có dữ liệu không tự chạy lại init script.
 
 Schema dùng lại `promotions` và `discount_rules`: thêm `min_quantity` cho điều kiện số lượng. Các cột discount_amount/promotion_id/promotion_name/discount_percent trên invoice_details là snapshot của lần bán. Invoice header lưu tổng giảm trong discount_amount; product_fee vẫn là tổng tiền sản phẩm trước giảm.
 

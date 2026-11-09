@@ -48,6 +48,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Import({BookingWebTestConfiguration.class, BookingHistoryPostgresTest.SnapshotProbe.class})
 @EnabledIfEnvironmentVariable(named = "BCM_TEST_DB_URL", matches = "jdbc:postgresql:.*")
+@org.springframework.test.context.TestExecutionListeners(listeners=com.bcm.SlotFixtureIsolation.class, mergeMode=org.springframework.test.context.TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class BookingHistoryPostgresTest {
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 10, 5, 12, 0);
     @DynamicPropertySource
@@ -173,7 +174,8 @@ class BookingHistoryPostgresTest {
         UUID id = booking(customerA, BookingStatus.PENDING, NOW);
         addDetail(id, LocalDate.of(2026, 10, 5));
         UUID payment = payment(id, "VNPAY", "PENDING", NOW, null);
-        jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?", NOW, id);
+        // Far past the in-flight grace window, so the stale PENDING attempt no longer holds the court.
+        jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?", NOW.minusMinutes(6), id);
         assertThat(expiration.expireBooking(id)).isTrue();
         mvc.perform(get("/api/bookings/" + id).contextPath("/api"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("EXPIRED"))
@@ -375,7 +377,7 @@ class BookingHistoryPostgresTest {
         assertThat(ackRef).isEqualTo("#/components/schemas/VnPayIpnAcknowledgment");
         JsonNode schemas = document.path("components").path("schemas");
         assertThat(schemas.path("CreatePaymentAttemptRequest").path("properties").path("paymentMethod").path("enum"))
-                .containsExactly(mapper.getNodeFactory().textNode("VNPAY"), mapper.getNodeFactory().textNode("BANK_TRANSFER"));
+                .containsExactly(mapper.getNodeFactory().textNode("VNPAY"));
         assertThat(schemas.path("VnPayIpnAcknowledgment").path("properties").fieldNames()).toIterable()
                 .containsExactlyInAnyOrder("RspCode", "Message");
         assertThat(schemas.has("BookingHistoryResponse")).isTrue();
@@ -400,7 +402,7 @@ class BookingHistoryPostgresTest {
         assertThat(paths.path("/payments/vnpay/return").path("get").path("description").asText())
                 .contains("never reads or writes the database");
         assertThat(paths.path("/bookings/{bookingId}/payments").path("post").path("description").asText())
-                .contains("VNPAY and BANK_TRANSFER", "checkoutReady=true", "CASH returns 400 before persistence")
+                .contains("VNPAY only", "before persistence")
                 .doesNotContain("checkout blocker");
     }
 

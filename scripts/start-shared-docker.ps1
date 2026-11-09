@@ -30,11 +30,22 @@ for ($attempt = 0; $attempt -lt 30; $attempt++) {
     Start-Sleep -Seconds 2
 }
 if (!$dbReady) { throw 'PostgreSQL chưa sẵn sàng. Kiểm tra docker logs bcm-postgres; không xóa volume.' }
+# Preserve an archive before applying upgrades to an existing development volume.
+$backupFolder = Join-Path $root 'backups'
+New-Item -ItemType Directory -Path $backupFolder -Force | Out-Null
+$backupName = 'shared-before-upgrade-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.dump'
+& $docker exec bcm-postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f /tmp/bcm-before-upgrade.dump'
+Assert-DockerExit 'Database backup failed; no upgrades applied.'
+& $docker exec bcm-postgres pg_restore --list /tmp/bcm-before-upgrade.dump | Out-Null
+Assert-DockerExit 'Backup archive validation failed; no upgrades applied.'
+& $docker cp bcm-postgres:/tmp/bcm-before-upgrade.dump (Join-Path $backupFolder $backupName)
+Assert-DockerExit 'Cannot preserve backup on host; no upgrades applied.'
 # Mount init chỉ chạy cho volume mới. Volume đang có cần các migration cộng thêm, chạy lại an toàn.
-foreach ($migration in @('member2-upgrade.sql','member2-payment-method-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql')) {
+foreach ($migration in @('booking-ux-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql')) {
     & $docker cp (Join-Path $root "db/$migration") "bcm-postgres:/tmp/bcm-$migration"
     Assert-DockerExit "Không copy được $migration."
-    & $docker exec bcm-postgres psql -U bcm_admin -d badminton_court_db -v ON_ERROR_STOP=1 -f "/tmp/bcm-$migration"
+    $upgradeCommand = 'psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/bcm-' + $migration
+    & $docker exec bcm-postgres sh -c $upgradeCommand
     Assert-DockerExit "Migration $migration thất bại; chưa chuyển giao diện. Kiểm tra log và bản sao lưu DB."
 }
 & $docker @composeArgs up -d --build backend

@@ -1,3 +1,5 @@
+const {requireTestEnvironment,fakeCheckout}=require('./payment-test-fixture.cjs');
+requireTestEnvironment();
 // Real browser/API/PostgreSQL, dedicated checkout audit runtime. No provider network calls.
 const {chromium, request, expect} = require('playwright/test');
 const assert = require('node:assert/strict');
@@ -34,7 +36,7 @@ const money = value => new Intl.NumberFormat('vi-VN', {style:'currency',currency
   try {
     const context=await browser.newContext({viewport:{width:1440,height:1100}});
     await context.addInitScript(s=>{sessionStorage.setItem('bcm.accessToken',s.accessToken);sessionStorage.setItem('bcm.user',JSON.stringify(s.user));},session);
-    const page=await context.newPage(), errors=[];page.on('pageerror',error=>errors.push(error.message));
+    const page=await context.newPage(), errors=[];await fakeCheckout(page,api);page.on('pageerror',error=>errors.push(error.message));
     const open=async booking=>{await page.goto(`${baseURL}/checkout?bookingId=${booking.bookingId}`);await expect(page.locator('.checkout-grand-total')).not.toContainText('—');await expect(page.locator('.checkout-court-copy h3')).toContainText(branches.find(branch=>branch.id===a.branchId).name);};
     const adjacent=await create([[a,8],[a,7]]);await open(adjacent);
     await expect(page.locator('.checkout-booking-facts')).toContainText('07:00 – 09:00');
@@ -68,25 +70,23 @@ const money = value => new Intl.NumberFormat('vi-VN', {style:'currency',currency
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`overflow ${width}`);
     }
     console.log('PASS gaps, reverse clicks, separate court ranges, total court hours, server amount, responsive 1440/820/375/320');
-    await page.locator('input[value=BANK_TRANSFER]').check();
-    for(const [label,value] of [['Ngân hàng','Audit Bank'],['Tên chủ tài khoản','Checkout Sync'],['Số tài khoản','001234'],['Nội dung chuyển khoản','Booking audit']]) await page.getByLabel(label,{exact:true}).fill(value);
+    await page.locator('input[value=VNPAY]').check();
     await page.getByRole('button',{name:'Thanh toán',exact:true}).click();
     await expect(page).toHaveURL(/payment-result/);
-    await expect(page.locator('.payment-result-message h1')).toHaveText('Đã xác nhận đặt sân');
-    await expect(page.locator('.payment-result-total span')).toHaveText('Chuyển khoản ngân hàng');
+    await expect(page.locator('.payment-result-message h1')).toHaveText('Thanh toán thành công');
+    await expect(page.locator('.payment-result-total span')).toHaveText('VNPay');
     await expect(page.locator('body')).not.toContainText('Chuyển khoản do khách tự khai báo.');
     await expect(page.locator('body')).not.toContainText('Đã thanh toán toàn bộ');
     await expect(page.locator('.payment-result-facts')).toContainText('Sân 01: 07:00 – 09:00; Sân 02: 08:00 – 10:00');
     const confirmed=await get('/bookings/'+multi.bookingId);
-    assert.equal(confirmed.status,'PAID');assert.equal(confirmed.payments[0].paymentStatus,'PENDING');
-    assert.equal(confirmed.payments[0].confirmationMethod,'CUSTOMER_DECLARED');
-    assert.equal(confirmed.payments[0].transactionId,null);
-    const bankRetry=await api.post(`/api/bookings/${multi.bookingId}/payments`,{headers,data:{paymentMethod:'BANK_TRANSFER',bankTransfer:{bankName:'Audit Bank',accountHolder:'Checkout Sync',accountNumber:'001234',transferContent:'Booking audit'}}});
-    assert.equal(bankRetry.status(),201);
-    assert.equal((await bankRetry.json()).data.paymentAttemptId,confirmed.payments[0].paymentAttemptId);
-    await page.reload();await expect(page.locator('.payment-result-total span')).toHaveText('Chuyển khoản ngân hàng');
+    assert.equal(confirmed.status,'PAID');assert.equal(confirmed.payments[0].paymentStatus,'SUCCESS');
+    assert.equal(confirmed.payments[0].paymentMethod,'VNPAY');
+    assert.ok(confirmed.payments[0].transactionId);
+    const settledRetry=await api.post(`/api/bookings/${multi.bookingId}/payments`,{headers,data:{paymentMethod:'VNPAY'}});
+    assert.equal(settledRetry.status(),400);
+    await page.reload();await expect(page.locator('.payment-result-total span')).toHaveText('VNPay');
     assert.equal(sql(`SELECT count(*) FROM payment_transactions WHERE booking_id='${multi.bookingId}'`),'1');
-    console.log('PASS bank declaration persists reservation/PENDING/audit, idempotency and refresh; neutral UI with no paid claim');
+    console.log('PASS VNPay fixture confirms reservation/SUCCESS/audit, idempotency and refresh; verified receipt UI');
     const vn=await create([[a,12],[a,17]]);
     const vnDetail=await get('/bookings/'+vn.bookingId);
     assert.equal(Number(vnDetail.courtFee),Number(a.basePrice)*2.5);

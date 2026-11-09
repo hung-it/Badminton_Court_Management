@@ -31,5 +31,5 @@ public record BookingHistoryDetailResponse(UUID bookingId, UUID customerId, Book
                           BigDecimal amount,
                           @Schema(nullable = true, description = "Gateway ID; null before confirmation") String transactionId,
                           @Schema(nullable = true, description = "Provider payment timestamp when verified; historical records may have no timestamp")
-                          LocalDateTime transactionDate, LocalDateTime createdAt, String confirmationMethod) { }
+                          LocalDateTime transactionDate, LocalDateTime createdAt) { }
 }

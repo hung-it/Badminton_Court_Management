@@ -1,3 +1,5 @@
+const {requireTestEnvironment,settleFixture}=require('./payment-test-fixture.cjs');
+requireTestEnvironment();
 // Real browser + HTTP + PostgreSQL. Run only against the isolated checkout test runtime.
 const {chromium, request, expect}=require('playwright/test');
 const assert=require('node:assert/strict');
@@ -63,9 +65,9 @@ const base=process.env.BCM_E2E_WEB_URL||'http://127.0.0.1:5175';
   const resumeDate=date.slice(0,8)+'28';
   const resumed=await post('/bookings',{customerId,details:[{...details[0],bookingDate:resumeDate}]});
   await post(`/bookings/${resumed.bookingId}/checkout/leave`);await post(`/bookings/${resumed.bookingId}/checkout/resume`);
-  // A confirmed booking is never affected by leave/expiry, including a pending declared payment.
+  // A confirmed booking is never affected by leave/expiry, after a verified test callback.
   const paid=await post('/bookings',{customerId,details:[{...details[1],bookingDate:resumeDate}]});
-  await post(`/bookings/${paid.bookingId}/payments`,{paymentMethod:'BANK_TRANSFER',bankTransfer:{bankName:'Test Bank',accountHolder:'Hold E2E',accountNumber:'00123456',transferContent:'Court test'}});
+  await settleFixture(api,headers,paid.bookingId);
   const paidLeave=await post(`/bookings/${paid.bookingId}/checkout/leave`);assert.equal(paidLeave.status,'PAID');assert.equal(paidLeave.checkoutReleaseAt,null);
   await expect.poll(async()=> (await get('/bookings/'+next)).status,{timeout:65000,intervals:[1000]}).toBe('EXPIRED');
   assert.equal((await get('/bookings/'+next)).details.length,0);assert.equal(await held(),false);

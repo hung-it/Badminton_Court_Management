@@ -1,3 +1,5 @@
+const {requireTestEnvironment,fakeCheckout}=require('./payment-test-fixture.cjs');
+requireTestEnvironment();
 // Real normalized API and PostgreSQL; run only against the dedicated audit frontend.
 const {chromium,request,expect}=require('playwright/test');
 const assert=require('node:assert/strict'),crypto=require('node:crypto');
@@ -16,7 +18,7 @@ const web='http://127.0.0.1:5175';
  const d=new Date('2042-01-01T00:00:00Z');d.setUTCDate(d.getUTCDate()+crypto.randomInt(3000));const day=d.toISOString().slice(0,10);
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
-  const page=await browser.newPage({viewport:{width:1440,height:1100}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const page=await browser.newPage({viewport:{width:1440,height:1100}}),errors=[];await fakeCheckout(page,api);page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(s=>{sessionStorage.setItem('bcm.accessToken',s.accessToken);sessionStorage.setItem('bcm.user',JSON.stringify(s.user));},session);
   await page.goto(web+'/courts?date='+day);
   const card=page.locator(`[data-court-id="${representative.id}"]`),choice=id=>card.locator(`.customer-branch-courts input[value="${id}"]`),hour=n=>card.locator(`.customer-extra-slots input[value="${at(n).id}"]`);
@@ -37,8 +39,7 @@ const web='http://127.0.0.1:5175';
   assert.ok(booking.details.every(d=>d.courtCode===catalog.find(c=>c.id===d.courtId).courtCode));
   assert.equal(Number(booking.courtFee),booking.details.reduce((sum,d)=>sum+Number(d.price),0));
   await page.reload();await expect(page.locator('.checkout-booking-facts')).toContainText('Sân 03, Sân 04');
-  await page.locator('input[value=BANK_TRANSFER]').check();
-  for(const [key,value]of Object.entries({bankName:'Audit bank',accountHolder:'Court number E2E',accountNumber:'001234',transferContent:'Number audit'}))await page.locator('#checkout-'+key).fill(value);
+  await page.locator('input[value=VNPAY]').check();
   await page.getByRole('button',{name:'Thanh toán',exact:true}).click();await expect(page).toHaveURL(/payment-result/);
   await expect(page.locator('.payment-result-facts')).toContainText('Sân 03, Sân 04');
   await expect(page.locator('.payment-result-facts')).not.toContainText('1207043');

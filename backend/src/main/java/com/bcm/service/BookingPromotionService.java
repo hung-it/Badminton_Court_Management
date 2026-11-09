@@ -18,6 +18,7 @@ import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.Set;
@@ -26,23 +27,26 @@ import java.util.Set;
 public class BookingPromotionService {
     // A booking header confirms the reservation; only a verified full receipt earns paid history.
     private static final String VERIFIED_RECEIPT = "p.status='SUCCESS' AND p.amount=b.final_amount "
-            + "AND p.transaction_id IS NOT NULL AND p.transaction_date IS NOT NULL "
-            + "AND (p.note IS NULL OR p.note NOT LIKE 'CUSTOMER_DECLARED;%')";
+            + "AND p.transaction_id IS NOT NULL AND p.transaction_date IS NOT NULL ";
     private final BookingRepository bookings;
     private final PaymentTransactionRepository payments;
     private final CurrentCustomerService customer;
     private final JdbcTemplate jdbc;
     private final Clock clock;
     private final CourtPromotionService courtPromotions;
+    private final PosService pos;
+    private final com.bcm.security.CurrentStaffService staff;
 
     public BookingPromotionService(BookingRepository bookings, PaymentTransactionRepository payments,
-            CurrentCustomerService customer, JdbcTemplate jdbc, @Qualifier("bookingExpirationClock") Clock clock, CourtPromotionService courtPromotions) {
+            CurrentCustomerService customer, JdbcTemplate jdbc, @Qualifier("bookingExpirationClock") Clock clock, CourtPromotionService courtPromotions, PosService pos, com.bcm.security.CurrentStaffService staff) {
+        this.pos=pos; this.staff=staff;
         this.courtPromotions=courtPromotions;
         this.bookings=bookings; this.payments=payments; this.customer=customer; this.jdbc=jdbc; this.clock=clock;
     }
 
     public void automatic(Booking booking) {
-        booking.setDiscountAmount(courtPromotions.automatic(booking.getCourtFee(),LocalDate.now(clock)));
+        if(booking.getCourtFee()==null || booking.getCourtFee().signum()<=0) throw new com.bcm.exception.BadRequestException("Tiền sân phải lớn hơn 0.");
+        booking.setDiscountAmount(courtPromotions.automatic(booking.getCourtFee(),todayVietnam()));
         booking.setPromotionCode(booking.getDiscountAmount().signum()>0?"INVOICE_TOTAL":null);
         booking.setRequestedVoucher(null);
     }
@@ -75,7 +79,14 @@ public class BookingPromotionService {
 
     @Transactional
     public BigDecimal staffReceive(UUID id,String method) {
-        if(!Set.of("CASH","BANK_TRANSFER").contains(method)) throw new com.bcm.exception.BadRequestException("Thu tại quầy chỉ hỗ trợ tiền mặt hoặc chuyển khoản đã xác nhận");
+        return staffReceive(id,method,false,null);
+    }
+
+    @Transactional
+    public BigDecimal staffReceive(UUID id,String method,boolean confirmed,String reference) {
+        staff.requireUserId();
+        pos.manualMethod(method);
+        if(!confirmed) throw new com.bcm.exception.BadRequestException("Staff must confirm receipt");
         var booking=bookings.findByIdForExpiration(id).orElseThrow(()->new ResourceNotFoundException("Booking not found"));
         if(booking.getStatus()==BookingStatus.PAID) {
             long received=jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=? AND status='SUCCESS' AND note LIKE 'STAFF_RECEIVED;%'",Long.class,id);
@@ -85,8 +96,7 @@ public class BookingPromotionService {
         requireEditable(booking);
         if(payments.existsByBookingId(id)) throw new DuplicateResourceException("Booking đã có giao dịch; cần xử lý theo luồng thanh toán hiện có");
         validatePayment(booking);
-        String actor=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
-        jdbc.update("INSERT INTO payment_transactions(id,booking_id,payment_method,status,amount,transaction_id,transaction_date,note) VALUES (?,?,?,'SUCCESS',?,?,?,?)",UUID.randomUUID(),id,method,booking.getFinalAmount(),"COUNTER-"+UUID.randomUUID(),LocalDateTime.now(clock),"STAFF_RECEIVED;"+actor);
+        pos.recordReceipt(null,booking,booking.getFinalAmount(),method,reference);
         booking.setStatus(BookingStatus.PAID);
         return booking.getFinalAmount();
     }
@@ -94,6 +104,7 @@ public class BookingPromotionService {
     // Called under the existing Booking lock inside the payment transaction. Customer lock serializes
     // NEWMEMBER apply/retry on different bookings. No other Booking row is locked from here.
     public void validatePayment(Booking booking) {
+        if(booking.getFinalAmount()==null || booking.getFinalAmount().signum()<=0) throw new com.bcm.exception.BadRequestException("Tiền sân sau giảm phải lớn hơn 0.");
         if (booking.getPromotionCode()==null || "INVOICE_TOTAL".equals(booking.getPromotionCode())) return;
         var quote=calculate(booking,booking.getPromotionCode());
         requireEditable(booking);
@@ -104,11 +115,12 @@ public class BookingPromotionService {
 
     public BookingPromotionResponse calculate(Booking booking, String raw) {
         String code=raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT);
-        BigDecimal subtotal=booking.getCourtFee(), discount=courtPromotions.automatic(subtotal,LocalDate.now(clock));
+        LocalDate today=todayVietnam();
+        BigDecimal subtotal=booking.getCourtFee(), discount=courtPromotions.automatic(subtotal,today);
         String selected=discount.signum()>0 ? "INVOICE_TOTAL" : null;
         boolean valid=false; String message="";
         if (!code.isEmpty()) {
-            var rule=courtPromotions.voucher(code,LocalDate.now(clock));
+            var rule=courtPromotions.voucher(code,today);
             if (rule==null) {
                 message="Mã khuyến mãi không tồn tại hoặc không còn hiệu lực.";
             } else {
@@ -127,6 +139,10 @@ public class BookingPromotionService {
                 valid ? code : null,valid,message);
     }
 
+    private LocalDate todayVietnam() {
+        return LocalDate.ofInstant(clock.instant(), ZoneId.of("Asia/Ho_Chi_Minh"));
+    }
+
     private String eligibility(Booking booking, String code) {
         UUID owner=booking.getCustomer().getId();
         jdbc.queryForObject("SELECT id FROM customers WHERE id=? FOR UPDATE",UUID.class,owner);
@@ -137,7 +153,7 @@ public class BookingPromotionService {
             return count>=15 ? null : "Bạn chưa đủ điều kiện sử dụng mã KMKH10";
         }
         long used=jdbc.queryForObject("SELECT count(*) FROM bookings b WHERE b.customer_id=? AND b.id<>? "
-                + "AND b.status IN ('PAID','CHECKED_IN','COMPLETED','NO_SHOW') "
+                + "AND b.status IN ('PAID','COMPLETED') "
                 + "AND EXISTS (SELECT 1 FROM payment_transactions p WHERE p.booking_id=b.id AND " + VERIFIED_RECEIPT + ")",Long.class,owner,booking.getId());
         long posUsage=jdbc.queryForObject("SELECT count(*) FROM customer_voucher_usage u JOIN discount_rules d ON d.id=u.discount_rule_id "
                 + "JOIN invoices i ON i.id=u.invoice_id WHERE u.customer_id=? AND d.voucher_code='NEWMEMBER' AND i.status='PAID'",Long.class,owner);
@@ -146,7 +162,7 @@ public class BookingPromotionService {
                 + "AND b.expires_at>? AND ((b.promotion_code='NEWMEMBER' AND NOT EXISTS "
                 + "(SELECT 1 FROM payment_transactions p WHERE p.booking_id=b.id)) OR EXISTS "
                 + "(SELECT 1 FROM payment_transactions p WHERE p.booking_id=b.id AND p.status='PENDING'))) "
-                + "OR (b.status IN ('PAID','CHECKED_IN','COMPLETED','NO_SHOW') AND b.promotion_code='NEWMEMBER' "
+                + "OR (b.status IN ('PAID','COMPLETED') AND b.promotion_code='NEWMEMBER' "
                 + "AND EXISTS (SELECT 1 FROM payment_transactions p WHERE p.booking_id=b.id AND p.status='PENDING')))",Long.class,owner,booking.getId(),LocalDateTime.now(clock));
         return held==0 ? null : "NEWMEMBER đang được giữ bởi giao dịch khác. Vui lòng kiểm tra trạng thái giao dịch đó.";
     }

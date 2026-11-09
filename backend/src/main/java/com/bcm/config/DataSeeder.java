@@ -20,6 +20,7 @@ import java.util.Set;
  * Runs automatically on application startup
  */
 @Component
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="bcm.seed.enabled", havingValue="true", matchIfMissing=true)
 @RequiredArgsConstructor
 @Slf4j
 public class DataSeeder implements CommandLineRunner {

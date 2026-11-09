@@ -1,3 +1,5 @@
+const {requireTestEnvironment,settleFixture,fakeCheckout}=require('./payment-test-fixture.cjs');
+requireTestEnvironment();
 // Real HTTP/browser and PostgreSQL on the isolated child-fixes DB only.
 const {chromium,request,expect}=require('playwright/test');
 const {execFileSync}=require('node:child_process');
@@ -15,8 +17,7 @@ const sql=query=>execFileSync('docker',['exec','bcm-checkout-tests-20261025','ps
  const date=new Date('2036-01-01T00:00:00Z');date.setUTCDate(date.getUTCDate()+crypto.randomInt(1000));const day=date.toISOString().slice(0,10);
  const at=hour=>slots.find(s=>Number(s.startTime.slice(0,2))===hour);
  const create=async(court,selected,date=day)=>{const r=await api.post('/api/bookings',{headers,data:{customerId,branchId:court.branchId,details:selected.map(s=>({courtId:court.id,timeSlotId:s.id,bookingDate:date}))}});assert.equal(r.status(),201,await r.text());return(await r.json()).data;};
- const transfer={bankName:'Audit bank',accountHolder:'Child court E2E',accountNumber:'001234',transferContent:'Isolated audit'};
- const confirm=async booking=>{const r=await api.post(`/api/bookings/${booking.bookingId}/payments`,{headers,data:{paymentMethod:'BANK_TRANSFER',bankTransfer:transfer}});assert.equal(r.status(),201,await r.text());};
+ const confirm=async booking=>settleFixture(api,headers,booking.bookingId);
  const partial=await create(siblings[1],[at(15),at(16)]);await confirm(partial);
  const full=await create(siblings[2],slots);await confirm(full);
  const grid=await get('/public/availability?date='+day);
@@ -28,7 +29,7 @@ const sql=query=>execFileSync('docker',['exec','bcm-checkout-tests-20261025','ps
  const photo=courtImageSource(siblings[1],catalog);assert.equal(photo,courtImageSource(siblings[0],catalog));
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
-  const page=await browser.newPage({viewport:{width:1440,height:1100}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const page=await browser.newPage({viewport:{width:1440,height:1100}}),errors=[];await fakeCheckout(page,api);page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(s=>{sessionStorage.setItem('bcm.accessToken',s.accessToken);sessionStorage.setItem('bcm.user',JSON.stringify(s.user));},session);
   await page.goto(`${web}/courts?date=${day}&timeSlotId=${at(15).id}`);
   const card=page.locator(`[data-court-id="${siblings[0].id}"]`),court=n=>card.locator(`.customer-branch-courts input[value="${siblings[n-1].id}"]`);
@@ -47,15 +48,14 @@ const sql=query=>execFileSync('docker',['exec','bcm-checkout-tests-20261025','ps
   assert.equal(hold.details.length,3);assert.equal(Number(hold.courtFee),hold.details.reduce((sum,d)=>sum+Number(d.price),0));
   assert.ok(!hold.details.some(d=>[at(15).id,at(16).id].includes(d.timeSlotId)));
   for(const width of [1440,820,375,320]){await page.setViewportSize({width,height:1100});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);}
-  await page.locator('input[value=BANK_TRANSFER]').check();
-  for(const [key,value]of Object.entries(transfer))await page.locator('#checkout-'+key).fill(value);
+  await page.locator('input[value=VNPAY]').check();
   await page.getByRole('button',{name:'Thanh toán',exact:true}).click();await expect(page).toHaveURL(/payment-result/);
-  await expect(page.locator('.payment-result-message h1')).toHaveText('Đã xác nhận đặt sân');
-  await expect(page.locator('.payment-result-total span')).toHaveText('Chuyển khoản ngân hàng');
+  await expect(page.locator('.payment-result-message h1')).toHaveText('Thanh toán thành công');
+  await expect(page.locator('.payment-result-total span')).toHaveText('VNPay');
   await expect(page.locator('.payment-result-photo-wrap img')).toHaveAttribute('src',photo);
   assert.ok(await page.locator('.payment-result-photo-wrap img').evaluate(img=>img.complete&&img.naturalWidth>0));
   await page.reload();await expect(page.locator('.payment-result-photo-wrap img')).toHaveAttribute('src',photo);
-  const result=await get('/bookings/'+holdId);assert.equal(result.payments.length,1);assert.equal(result.payments[0].paymentStatus,'PENDING');assert.equal(result.payments[0].confirmationMethod,'CUSTOMER_DECLARED');
+  const result=await get('/bookings/'+holdId);assert.equal(result.payments.length,1);assert.equal(result.payments[0].paymentStatus,'SUCCESS');assert.equal(result.payments[0].paymentMethod,'VNPAY');
   console.log('PASS real PostgreSQL: only 15:00/16:00 occupied, 14 other slots available, full-day court disabled; explicit multi-court choice; same branch image across courts/checkout/result and refresh; original totals and PENDING audit; responsive');
   assert.deepEqual(errors,[]);
  }finally{await browser.close();}

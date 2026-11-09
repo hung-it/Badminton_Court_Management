@@ -98,7 +98,7 @@ class BookingPostgresTest {
         jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,?,'Booking fixture','0900000000')", userId, userId + "@booking.test", "test-only");
         jdbc.update("INSERT INTO customers(id,user_id,full_name,phone) VALUES (?,?,?,?)",
                 customerId, userId, "Booking test", "0900000000");
-        jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?, -301, 'Booking test', 10.05)", courtId);
+        jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?, 100000301, 'Booking test', 10.05)", courtId);
         jdbc.update("""
                 INSERT INTO time_slots(id,start_time,end_time,price_multiplier)
                 VALUES (?, '00:00', '01:00', 1.10)
@@ -280,6 +280,21 @@ class BookingPostgresTest {
         assertThatThrownBy(() -> service.createBooking(request(detail(DATE), detail(DATE.plusDays(1)))))
                 .isInstanceOf(BadRequestException.class).hasMessageContaining("NUMERIC(10,2)");
         assertCounts(0, 0);
+    }
+
+    @Test
+    void totalAtNumericBoundaryStoresAndJustAboveReturns400() {
+        jdbc.update("UPDATE time_slots SET price_multiplier = 1.00 WHERE id = ?", slotId);
+        // Boundary: exactly NUMERIC(10,2) capacity must persist.
+        jdbc.update("UPDATE courts SET base_price = 99999999.99 WHERE id = ?", courtId);
+        var ok = service.createBooking(request(detail(DATE)));
+        assertThat(ok.getCourtFee()).isEqualByComparingTo("99999999.99");
+        assertCounts(1, 1);
+        // 100,000,000.00 total previously slipped past the service check and surfaced as a DB 500.
+        jdbc.update("UPDATE courts SET base_price = 50000000.00 WHERE id = ?", courtId);
+        assertThatThrownBy(() -> service.createBooking(request(detail(DATE), detail(DATE.plusDays(1)))))
+                .isInstanceOf(BadRequestException.class).hasMessageContaining("NUMERIC(10,2)");
+        assertCounts(1, 1);
     }
 
     @Test

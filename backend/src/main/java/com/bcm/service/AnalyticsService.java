@@ -40,15 +40,22 @@ public class AnalyticsService {
     private final ProductRepository products;
     private final CustomerRepository customers;
     private final BookingDetailRepository bookingDetails;
+    private final com.bcm.repository.BookingRepository bookings;
+    private final com.bcm.repository.PaymentTransactionRepository payments;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     public InvoiceReportResponse.History history(String period, LocalDate date, int page) {
         return history(period,date,page,null,null);
     }
 
     public InvoiceReportResponse.History history(String period, LocalDate date, int page, LocalDate from, LocalDate to) {
+        return history(period,date,page,from,to,"","");
+    }
+    public InvoiceReportResponse.History history(String period,LocalDate date,int page,LocalDate from,LocalDate to,String search,String method) {
+        if(!List.of("","CASH","VNPAY").contains(method)) throw new BadRequestException("Invalid payment method");
         if(page<0) throw new BadRequestException("Trang phải từ 0 trở lên");
         var range=resolveRange(period,date,from,to);
-        var result=invoiceRepository.findPaidHistory(range.from().atStartOfDay(),range.toExclusive().atStartOfDay(),
+        var result=invoiceRepository.searchPaidHistory(range.from().atStartOfDay(),range.toExclusive().atStartOfDay(),"%"+search.trim().toLowerCase(java.util.Locale.ROOT)+"%",method,
             PageRequest.of(page,20,Sort.by(
                 Sort.Order.desc("createdAt"),Sort.Order.desc("id"))));
         return new InvoiceReportResponse.History(result.stream().map(this::summary).toList(),page,result.getTotalPages(),result.getTotalElements());
@@ -60,18 +67,25 @@ public class AnalyticsService {
         var details=invoiceDetails.findByInvoiceId(id);
         var names=products.findAllById(details.stream().map(InvoiceDetail::getProductId).distinct().toList())
             .stream().collect(Collectors.toMap(Product::getId,Product::getName));
-        var items=details.stream().map(d->new InvoiceReportResponse.Item(d.getProductId(),names.getOrDefault(d.getProductId(),"Sản phẩm"),
+        var items=details.stream().map(d->new InvoiceReportResponse.Item(d.getProductId(),d.getProductName()!=null?d.getProductName():"[Chưa lưu snapshot] "+names.getOrDefault(d.getProductId(),"Sản phẩm"),
             d.getQuantity(),d.getUnitPrice(),d.getDiscountAmount(),d.getPromotionName(),d.getUnitPrice().multiply(BigDecimal.valueOf(d.getQuantity())).subtract(d.getDiscountAmount()))).toList();
         var courts=invoice.getBookingId()==null?List.<InvoiceReportResponse.CourtLine>of():
             bookingDetails.findHistoryDetails(invoice.getBookingId()).stream().map(d->new InvoiceReportResponse.CourtLine(
                 d.getCourt().getName(),d.getBookingDate(),d.getTimeSlot().getStartTime(),d.getTimeSlot().getEndTime(),d.getPrice())).toList();
-        return new InvoiceReportResponse(summary(invoice),items,courts);
+        var receipts=payments.findInvoiceReceipts(id,invoice.getBookingId()).stream().map(p->
+            new InvoiceReportResponse.Receipt(p.getId(),p.getInvoice()==null?"COURT_PREPAYMENT":"CHECKOUT_OR_POS",
+                p.getPaymentMethod().name(),p.getSource(),p.getStatus().name(),p.getAmount(),p.getConfirmedBy(),p.getConfirmedByUser(),
+                p.getConfirmedByUser()==null?"VNPay Gateway":jdbc.queryForObject("SELECT full_name FROM users WHERE id=?",String.class,p.getConfirmedByUser()),
+                p.getTransactionDate(),p.getReference()==null?p.getTransactionId():p.getReference())).toList();
+        return new InvoiceReportResponse(summary(invoice),items,courts,receipts,invoice.getCreatedBy(),invoice.getCreatedByUser());
     }
 
     private InvoiceReportResponse.Summary summary(Invoice i) {
         String name=customers.findById(i.getCustomerId()).map(Customer::getFullName).orElse("Khách vãng lai");
         return new InvoiceReportResponse.Summary(i.getId(),i.getBookingId(),name,i.getCreatedAt(),i.getPaymentMethod(),
-            valueOrZero(i.getCourtFee()),i.getProductFee(),i.getDiscountAmount(),i.getTotalAmount());
+            valueOrZero(i.getCourtFee()),i.getProductFee(),i.getDiscountAmount(),i.getTotalAmount(),i.getStatus(),i.getBookingId()==null?null:bookings.findById(i.getBookingId()).map(b->b.getStatus().name()).orElse(null),
+            payments.findInvoiceReceipts(i.getId(),i.getBookingId()).stream().filter(p->p.getStatus()==com.bcm.entity.PaymentStatus.SUCCESS)
+                .map(p->p.getPaymentMethod().name()).distinct().toList());
     }
 
     public RevenueReportResponse getRevenue(String period, LocalDate date) {

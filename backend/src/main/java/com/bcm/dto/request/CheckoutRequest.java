@@ -1,17 +1,19 @@
 package com.bcm.dto.request;
 
-import jakarta.validation.constraints.NotBlank;
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
 @NoArgsConstructor
-@AllArgsConstructor
 public class CheckoutRequest {
 
-    @NotBlank
+    @jakarta.validation.constraints.Pattern(regexp="(?i)CASH|VNPAY")
     private String paymentMethod;
+    private boolean paymentConfirmed;
+    @jakarta.validation.constraints.Size(max=255)
+    private String reference;
+    @jakarta.validation.constraints.DecimalMin("0.00")
+    private java.math.BigDecimal expectedAmountDue;
+    public CheckoutRequest(String paymentMethod) { this.paymentMethod=paymentMethod; }
 
-    private boolean courtReceiptConfirmed;
 }

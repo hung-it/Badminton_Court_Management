@@ -30,3 +30,12 @@ env
 # Private browser preview, excluded from shared source.
 /web-admin/vite.local.mjs
 /web-admin/src/sampleData.local.js
+
+/db/member2-upgrade.sql
+
+/db/member2-payment-method-upgrade.sql
+.backups/
+
+# backups/ kept out of git except the audit dump
+backups/
+!backups/bcm-remove-transfer-2026-11-05T09-39-40-425Z.dump

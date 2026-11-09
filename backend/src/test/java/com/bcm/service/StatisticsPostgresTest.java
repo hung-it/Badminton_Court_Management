@@ -39,8 +39,8 @@ class StatisticsPostgresTest {
         var after=statistics.report("QUARTER",2087,null,null);
         assertThat(after.rows()).hasSize(4);
         assertThat(after.rows().get(0).revenue().subtract(before.rows().get(0).revenue())).isEqualByComparingTo("115000");
-        assertThat(after.rows().get(0).expense().subtract(before.rows().get(0).expense())).isEqualByComparingTo("120000");
-        assertThat(after.rows().get(0).profit().subtract(before.rows().get(0).profit())).isEqualByComparingTo("-5000");
+        assertThat(after.rows().get(0).expense().subtract(before.rows().get(0).expense())).isEqualByComparingTo("60000");
+        assertThat(after.rows().get(0).profit().subtract(before.rows().get(0).profit())).isEqualByComparingTo("55000");
         assertThat(after.totalRevenue().subtract(before.totalRevenue())).isEqualByComparingTo("230000");
         assertThat(after.totalRevenue()).isEqualByComparingTo(analytics.getRevenue("MONTH",null,LocalDate.of(2087,1,1),LocalDate.of(2087,12,31)).getTotalAmount());
         assertThat(statistics.report("MONTH",2087,null,null).rows()).hasSize(12);

@@ -52,9 +52,6 @@ export default function CustomerCheckout() {
   const [error, setError] = useState('');
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState('VNPAY');
-  const [bankTransfer, setBankTransfer] = useState({bankName: '', accountHolder: '', accountNumber: '', transferContent: ''});
-  const [bankTransferErrors, setBankTransferErrors] = useState({});
   const [bookingCount, setBookingCount] = useState(0);
   const [bookingLoading, setBookingLoading] = useState(true);
   const [bookingError, setBookingError] = useState(null);
@@ -392,25 +389,8 @@ export default function CustomerCheckout() {
   async function continueToPayment() {
     setSubmitError('');
     if (!checkoutReady || expired || remaining === null || remaining === 0 || !draft?.bookingId || editing || contactEditing || !contactReady || bookingSyncRequired || mutationStarted.current) return;
-    if (paymentMethod === 'BANK_TRANSFER') {
-      const errors = {};
-      if (!bankTransfer.bankName.trim()) errors.bankName = 'Vui lòng nhập tên ngân hàng.';
-      if (!bankTransfer.accountHolder.trim()) errors.accountHolder = 'Vui lòng nhập tên chủ tài khoản.';
-      if (!bankTransfer.accountNumber) errors.accountNumber = 'Vui lòng nhập số tài khoản.';
-      else if (!/^\d+$/.test(bankTransfer.accountNumber)) errors.accountNumber = 'Số tài khoản chỉ được chứa chữ số.';
-      if (!bankTransfer.transferContent.trim()) errors.transferContent = 'Vui lòng nhập nội dung chuyển khoản.';
-      setBankTransferErrors(errors);
-      if (Object.keys(errors).length) {
-        document.getElementById(`checkout-${Object.keys(errors)[0]}`)?.focus();
-        return;
-      }
-    }
     if (!session) {
       setSubmitError('Vui lòng đăng nhập để tiếp tục.');
-      return;
-    }
-    if (!['VNPAY', 'BANK_TRANSFER'].includes(paymentMethod)) {
-      setSubmitError('Không hỗ trợ thanh toán tiền mặt cho đặt sân.');
       return;
     }
     if (!price || !court || !slot || !draft) {
@@ -440,15 +420,11 @@ export default function CustomerCheckout() {
         throw new Error('Thông tin người đặt đã được cập nhật. Vui lòng kiểm tra lại trước khi thanh toán.');
       }
       const payment = await api(`/bookings/${encodeURIComponent(bookingId)}/payments`, session.accessToken, {
-        method: 'POST', body: JSON.stringify({paymentMethod, ...(paymentMethod === 'BANK_TRANSFER' ? {bankTransfer} : {})}),
+        method: 'POST', body: JSON.stringify({paymentMethod: 'VNPAY'}),
       });
       const paymentDraft = {...draft, bookingId, paymentAttemptId: payment.paymentAttemptId};
       sessionStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify(paymentDraft));
       setDraft(paymentDraft);
-      if (payment.paymentMethod === 'BANK_TRANSFER' && payment.bookingStatus === 'PAID' && payment.confirmationMethod === 'CUSTOMER_DECLARED') {
-        window.location.assign(`/payment-result?bookingId=${encodeURIComponent(bookingId)}&paymentAttemptId=${encodeURIComponent(payment.paymentAttemptId)}`);
-        return;
-      }
       if (payment?.gatewayPreparation?.checkoutReady && payment.gatewayPreparation.checkoutUrl) {
         window.location.assign(payment.gatewayPreparation.checkoutUrl);
         return;
@@ -583,31 +559,7 @@ export default function CustomerCheckout() {
             {contactError && <div role="alert" className="checkout-submit-error">{contactError}{!contactReady && <button type="button" onClick={() => setContactReload(value => value + 1)}>Thử lại</button>}</div>}
           </section>
 
-          {paymentMethod === 'BANK_TRANSFER' && <section className="checkout-card checkout-bank-transfer-card" aria-labelledby="checkout-bank-transfer-heading">
-            <h2 id="checkout-bank-transfer-heading">Thông tin chuyển khoản</h2>
-            <div className="checkout-bank-transfer-fields">
-              {[
-                {name: 'bankName', label: 'Ngân hàng', placeholder: 'Nhập tên ngân hàng'},
-                {name: 'accountHolder', label: 'Tên chủ tài khoản', placeholder: 'Nhập tên chủ tài khoản'},
-                {name: 'accountNumber', label: 'Số tài khoản', placeholder: 'Nhập số tài khoản'},
-                {name: 'transferContent', label: 'Nội dung chuyển khoản', placeholder: 'Nhập nội dung chuyển khoản'},
-              ].map(({name, label, placeholder}) => <div className={`checkout-bank-transfer-field checkout-bank-transfer-${name}`} key={name}>
-                <label htmlFor={`checkout-${name}`}>{label}</label>
-                <input id={`checkout-${name}`} name={name} type="text" placeholder={placeholder} required disabled={submitting}
-                  maxLength={name === 'accountNumber' ? 34 : name === 'bankName' ? 100 : name === 'accountHolder' ? 150 : 255}
-                  inputMode={name === 'accountNumber' ? 'numeric' : undefined}
-                  pattern={name === 'accountNumber' ? '[0-9]+' : undefined}
-                  value={bankTransfer[name]} aria-invalid={Boolean(bankTransferErrors[name])}
-                  aria-describedby={bankTransferErrors[name] ? `checkout-${name}-error` : undefined}
-                  onChange={event => {
-                    const value = name === 'accountNumber' ? event.target.value.replace(/\D/g, '') : event.target.value;
-                    setBankTransfer(previous => ({...previous, [name]: value}));
-                    setBankTransferErrors(previous => ({...previous, [name]: ''}));
-                  }}/>
-                {bankTransferErrors[name] && <span className="checkout-bank-transfer-error" id={`checkout-${name}-error`} role="alert">{bankTransferErrors[name]}</span>}
-              </div>)}
-            </div>
-          </section>}
+
 
         </div>
 
@@ -640,11 +592,9 @@ export default function CustomerCheckout() {
 
               <fieldset className="checkout-methods" disabled={loading || Boolean(error) || submitting}>
                 <legend>Phương thức thanh toán</legend>
-                <label className={`checkout-method ${paymentMethod === 'VNPAY' ? 'selected' : ''}`}>
-                  <span><strong>VNPAY</strong><small>Thanh toán qua cổng VNPay Sandbox</small></span><input type="radio" name="paymentMethod" value="VNPAY" checked={paymentMethod === 'VNPAY'} onChange={() => setPaymentMethod('VNPAY')}/>
+                <label className="checkout-method selected">
+                  <span><strong>VNPAY</strong><small>Thanh toán qua cổng VNPay Sandbox</small></span><input type="radio" name="paymentMethod" value="VNPAY" checked readOnly/>
                 </label>
-                <label className={`checkout-method ${paymentMethod === 'BANK_TRANSFER' ? 'selected' : ''}`}><span><strong>Chuyển khoản ngân hàng</strong><small>Xác nhận đặt sân theo khai báo chuyển khoản của bạn</small></span><input type="radio" name="paymentMethod" value="BANK_TRANSFER" checked={paymentMethod === 'BANK_TRANSFER'} onChange={() => setPaymentMethod('BANK_TRANSFER')}/></label>
-                <label className="checkout-method unavailable"><span><strong>Tiền mặt</strong><small>Không áp dụng cho đặt sân; chỉ hỗ trợ mua sản phẩm tại quầy</small></span><input type="radio" name="paymentMethod" value="CASH" disabled aria-label="Tiền mặt không áp dụng cho đặt sân"/></label>
               </fieldset>
 
               <div className="checkout-payment-action"><p>Bằng việc tiếp tục, bạn đồng ý với điều khoản sử dụng và chính sách hủy của sân.</p>{submitError && <div className="checkout-submit-error" role="alert">{submitError}</div>}<button type="button" disabled={!checkoutReady || loading || Boolean(error) || !price || submitting || expired || !draft?.bookingId || remaining === null || editing || editSaving || contactEditing || contactSaving || !contactReady || bookingSyncRequired || promotionBusy || !promotion} onClick={continueToPayment}>{submitting ? 'Đang khởi tạo…' : 'Thanh toán'} <CheckoutIcon name="arrow-right"/></button></div>

@@ -64,7 +64,12 @@ public class MasterDataService {
     }
 
     public Court saveCourt(UUID id, CourtRequest r) {
-        Court c = id == null ? new Court() : court(id);
+        Court c = id == null ? new Court() : courts.findAllForBookingWithLock(List.of(id)).stream()
+            .filter(v->v.getDeletedAt()==null).findFirst().orElseThrow(()->new ResourceNotFoundException("Không tìm thấy sân"));
+        if(id!=null && r.status()!=CourtStatus.AVAILABLE && c.getStatus()!=r.status()) {
+            boolean affected=Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM booking_details d JOIN bookings b ON b.id=d.booking_id JOIN time_slots t ON t.id=d.time_slot_id WHERE d.court_id=? AND b.status IN ('PENDING','PAID') AND d.booking_date+t.end_time>=?)",Boolean.class,id,LocalDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"))));
+            if(affected) throw new BadRequestException("Sân còn lịch PENDING/PAID hiện tại hoặc tương lai, không thể bảo trì/đóng cửa.");
+        }
         if (courts.existsByCourtCodeAndIdNot(r.courtNumber(), id == null ? new UUID(0, 0) : id))
             throw new DuplicateResourceException("Số sân đã được sử dụng");
         c.setCourtCode(r.courtNumber());
@@ -102,7 +107,7 @@ public class MasterDataService {
                 jdbc.queryForObject(
                         "select exists(select 1 from booking_details d join bookings b on"
                             + " b.id=d.booking_id where d.court_id=? and b.status in"
-                            + " ('PENDING','PAID','CHECKED_IN'))",
+                            + " ('PENDING','PAID'))",
                         Boolean.class,
                         id));
     }

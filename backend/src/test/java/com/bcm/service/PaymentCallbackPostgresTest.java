@@ -138,10 +138,12 @@ class PaymentCallbackPostgresTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"VNPAY,0", "VNPAY,-1"})
+    @CsvSource({"VNPAY,360", "VNPAY,361"})
     void deadlineEqualityAndPastCannotSettle(PaymentMethod method, int seconds) throws Exception {
+        // Stale = far past the 5-minute in-flight window, so the lingering PENDING attempt no longer
+        // holds the booking; an even later verified receipt cannot settle it.
         UUID id = attempt(method);
-        jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?", NOW.plusSeconds(seconds), booking);
+        jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?", NOW.minusSeconds(seconds), booking);
         var before = payment(id); var beforeHeader = header();
         send(method, id, "99");
         assertThat(payment(id).get("note").toString()).contains("RECONCILIATION_REQUIRED", "14226112");
@@ -153,12 +155,27 @@ class PaymentCallbackPostgresTest {
     @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void expiredBookingRemainsExpiredAndDetailsAreNotRecreated(PaymentMethod method) throws Exception {
         UUID id = attempt(method);
-        jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?", NOW.minusSeconds(1), booking);
+        // Far past the in-flight window: the lingering PENDING attempt is stale, so the booking can expire.
+        jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?", NOW.minusMinutes(6), booking);
         assertThat(expiration.expireBooking(booking)).isTrue();
         send(method, id, "99");
         assertThat(header()).containsEntry("status", "EXPIRED");
         assertThat(payment(id)).containsEntry("status", "PENDING");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_details WHERE booking_id=?", Integer.class, booking)).isZero();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentMethod.class, names = "VNPAY")
+    void lateReceiptWithinInFlightWindowHoldsSlotAndSettles(PaymentMethod method) throws Exception {
+        UUID id = attempt(method);
+        // Deadline passed a minute ago but still inside the 5-minute in-flight window: the expiry job
+        // must hold the slot, and a verified receipt that just arrived must settle the booking, so a
+        // paying customer is never left holding a rejected receipt.
+        jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?", NOW.minusMinutes(1), booking);
+        assertThat(expiration.expireBooking(booking)).isFalse();
+        send(method, id, "00");
+        assertThat(payment(id)).containsEntry("status", "SUCCESS");
+        assertThat(header()).containsEntry("status", "PAID");
     }
 
     @ParameterizedTest

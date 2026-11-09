@@ -55,4 +55,12 @@ public class PaymentTransaction {
 
     @Column(name = "note", columnDefinition = "text")
     private String note;
+
+    // GATEWAY is written only by the existing verified online lifecycle.
+    @Column(name = "source", nullable = false, length = 20)
+    private String source = "GATEWAY";
+    private UUID confirmedBy;
+    private UUID confirmedByUser;
+    @Column(length = 255)
+    private String reference;
 }

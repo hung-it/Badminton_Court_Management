@@ -84,10 +84,9 @@ class BookingMappingPostgresTest {
         jdbc.update("""
                 INSERT INTO courts (id, court_code, name, type, status, base_price)
                 VALUES (?, ?, ?, ?, ?, ?)
-                """, courtId, -1, "Mapping court", "STANDARD_MAT", "AVAILABLE", new BigDecimal("123456.78"));
-        jdbc.update("INSERT INTO time_slots (id, start_time, end_time, price_multiplier) VALUES (?, ?, ?, ?)",
-                timeSlotId, java.sql.Time.valueOf("10:00:00"), java.sql.Time.valueOf("11:00:00"),
-                new BigDecimal("1.25"));
+                """, courtId, 100000001, "Mapping court", "STANDARD_MAT", "AVAILABLE", new BigDecimal("123456.78"));
+        timeSlotId = jdbc.queryForObject("SELECT id FROM time_slots WHERE start_time='10:00:00' AND end_time='11:00:00' AND deleted_at IS NULL", UUID.class);
+        jdbc.update("UPDATE time_slots SET price_multiplier=1.25 WHERE id=?", timeSlotId);
     }
 
     @Test

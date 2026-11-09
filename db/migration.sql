@@ -104,7 +104,7 @@ CREATE TABLE time_slots (
 CREATE TABLE bookings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
-    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PAID', 'CHECKED_IN', 'COMPLETED', 'NO_SHOW', 'EXPIRED')),
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PAID', 'COMPLETED', 'EXPIRED')),
     court_fee NUMERIC(10, 2) NOT NULL,
     expires_at TIMESTAMP,
     created_by UUID REFERENCES staffs(id),
@@ -192,7 +192,7 @@ CREATE TABLE invoices (
     booking_id UUID REFERENCES bookings(id) ON DELETE RESTRICT,
     customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
     promotion_id UUID REFERENCES promotions(id) ON DELETE SET NULL,
-    payment_method VARCHAR(50) NOT NULL CHECK (payment_method IN ('CASH', 'BANK_TRANSFER', 'VNPAY')),
+    payment_method VARCHAR(50) NOT NULL CHECK (payment_method IN ('CASH', 'VNPAY')),
     status VARCHAR(20) NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PAID', 'REFUNDED', 'CANCELLED')),
     court_fee NUMERIC(10, 2) DEFAULT 0,
     product_fee NUMERIC(10, 2) NOT NULL DEFAULT 0,
@@ -232,7 +232,7 @@ CREATE TABLE payment_transactions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     booking_id UUID REFERENCES bookings(id) ON DELETE RESTRICT,
     invoice_id UUID REFERENCES invoices(id) ON DELETE RESTRICT,
-    payment_method VARCHAR(50) NOT NULL CHECK (payment_method IN ('CASH', 'BANK_TRANSFER', 'VNPAY')),
+    payment_method VARCHAR(50) NOT NULL CHECK (payment_method IN ('CASH', 'VNPAY')),
     transaction_id VARCHAR(255),
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'REFUNDED')),
     amount NUMERIC(10, 2) NOT NULL,
@@ -290,7 +290,7 @@ CREATE TABLE import_order_details (
 -- Booking & Court Management
 CREATE INDEX idx_bookings_customer_created ON bookings(customer_id, created_at DESC);
 CREATE INDEX idx_booking_details_date_court ON booking_details(booking_date, court_id);
-CREATE INDEX idx_bookings_status ON bookings(status) WHERE status IN ('PENDING', 'PAID', 'CHECKED_IN');
+CREATE INDEX idx_bookings_status ON bookings(status) WHERE status IN ('PENDING', 'PAID');
 CREATE INDEX idx_bookings_expires ON bookings(expires_at) WHERE status = 'PENDING' AND expires_at IS NOT NULL;
 CREATE UNIQUE INDEX uq_booking_slot ON booking_details(booking_date, court_id, time_slot_id);
 

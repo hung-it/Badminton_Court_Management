@@ -196,7 +196,7 @@
 | Giá `180.000đ` = `100.000đ × 1.8`? | `price = basePrice × priceMultiplier` | ✅ (mockup dùng 180k base) |
 | `Đặt sân ngay` → VNPay redirect | `POST /bookings/{id}/payments` → `checkoutUrl` | ✅ |
 | Badge trạng thái booking: `Sắp tới / Hoàn thành / Đã hủy` | `BookingStatus`: PENDING/PAID/CHECKED_IN/COMPLETED/NO_SHOW/EXPIRED | ⚠️ map sang: Sắp tới = PENDING+PAID, Hoàn thành = COMPLETED, Đã hủy = EXPIRED+NO_SHOW |
-| Phương thức thanh toán | `CASH / BANK_TRANSFER / VNPAY` (checkout) — customer chỉ dùng VNPAY | ⚠️ |
+| Phương thức thanh toán | `CASH / VNPAY` (checkout) — customer chỉ dùng VNPAY | ⚠️ |
 
 ---
 

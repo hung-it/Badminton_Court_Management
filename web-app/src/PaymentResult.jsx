@@ -121,10 +121,10 @@ export default function PaymentResult() {
       let foundPayment = null;
       for (let index = 0; index < attempts; index += 1) {
         foundBooking = await findBooking(session, bookingId, attemptId);
-        foundPayment = foundBooking?.payments?.find(item => normalizedId(item.paymentAttemptId) === normalizedId(attemptId)) || (!attemptId ? foundBooking?.payments?.find(item => item.paymentStatus === 'SUCCESS') || foundBooking?.payments?.find(item => item.confirmationMethod === 'CUSTOMER_DECLARED') : null) || null;
+        foundPayment = foundBooking?.payments?.find(item => normalizedId(item.paymentAttemptId) === normalizedId(attemptId)) || (!attemptId ? foundBooking?.payments?.find(item => item.paymentStatus === 'SUCCESS') : null) || null;
         if (!providerResult && !foundPayment && !bookingId) break;
         if (foundBooking?.status === 'EXPIRED' || foundPayment?.paymentStatus === 'SUCCESS'
-          || ['FAILED', 'REFUNDED'].includes(foundPayment?.paymentStatus) || foundPayment?.paymentMethod === 'BANK_TRANSFER') break;
+          || ['FAILED', 'REFUNDED'].includes(foundPayment?.paymentStatus)) break;
         if (index + 1 < attempts) await new Promise(resolve => window.setTimeout(resolve, 1200));
         if (!active) return;
       }
@@ -144,7 +144,7 @@ export default function PaymentResult() {
       if (foundBooking.status === 'EXPIRED') {
         setState('expired');
         setNotice('Thời gian giữ sân đã hết hạn. Trạng thái thanh toán cần được bộ phận hỗ trợ kiểm tra.');
-      } else if (['PAID', 'CHECKED_IN', 'COMPLETED', 'NO_SHOW'].includes(foundBooking.status) && (foundPayment.paymentStatus === 'SUCCESS' || (foundPayment.paymentStatus === 'PENDING' && foundPayment.confirmationMethod === 'CUSTOMER_DECLARED'))) {
+      } else if (['PAID', 'COMPLETED'].includes(foundBooking.status) && foundPayment.paymentStatus === 'SUCCESS') {
         setState('success');
         setNotice(foundPayment.paymentStatus === 'SUCCESS' ? 'Thanh toán thành công' : 'Thanh toán chờ xác nhận');
       } else if (foundPayment.paymentStatus === 'REFUNDED') {
@@ -153,9 +153,6 @@ export default function PaymentResult() {
       } else if (foundPayment.paymentStatus === 'FAILED') {
         setState('failed');
         setNotice('Cổng thanh toán báo giao dịch chưa thành công. Booking chưa được xác nhận đã thanh toán.');
-      } else if (foundPayment.paymentMethod === 'BANK_TRANSFER' && foundPayment.paymentStatus === 'PENDING') {
-        setState('bank-pending');
-        setNotice('Thông tin đặt sân của bạn đã được lưu. Thanh toán đang chờ xác nhận. Yêu cầu chưa đối soát sẽ hết hạn theo thời gian giữ sân; vui lòng liên hệ hỗ trợ nếu đã chuyển tiền.');
       } else {
         setState('pending');
         setNotice('Giao dịch đang được xác minh. Đừng thanh toán lại; hãy kiểm tra lịch đặt sau ít phút.');
@@ -205,8 +202,7 @@ export default function PaymentResult() {
   const courtLabel = [...uniqueCourts].sort(compareCourtNumbers).map(labelCourt).join(', ') || 'Không có chi tiết sân';
   const slotLabel = bookingTimeLabel(details) || 'Không có dữ liệu';
   const isSuccess = state === 'success';
-  const declared = payment?.confirmationMethod === 'CUSTOMER_DECLARED' && payment?.paymentStatus !== 'SUCCESS';
-  const pageTitle = isSuccess ? (declared ? 'Đã xác nhận đặt sân' : 'Thanh toán thành công') : state === 'bank-pending' ? 'Đã ghi nhận yêu cầu chuyển khoản' : state === 'refunded' ? 'Giao dịch đã được hoàn tiền' : state === 'checking' || state === 'pending' ? 'Đang xác minh kết quả thanh toán' : state === 'failed' ? 'Thanh toán không thành công' : state === 'expired' ? 'Đơn đặt sân đã hết thời gian thanh toán' : 'Chưa xác minh được thanh toán';
+  const pageTitle = isSuccess ? 'Thanh toán thành công' : state === 'refunded' ? 'Giao dịch đã được hoàn tiền' : state === 'checking' || state === 'pending' ? 'Đang xác minh kết quả thanh toán' : state === 'failed' ? 'Thanh toán không thành công' : state === 'expired' ? 'Đơn đặt sân đã hết thời gian thanh toán' : 'Chưa xác minh được thanh toán';
 
   return <div className="payment-result-page">
     <GuideHeader session={session} bookingCount={bookingCount} bookingError={bookingCountError} bookingLoading={bookingCountLoading} onLogout={logout} activePage="checkout"/>
@@ -240,7 +236,7 @@ export default function PaymentResult() {
                 <h2>{firstDetail?.branchName || uniqueCourts.map(detail => detail.courtName).filter(Boolean).filter((name, index, all) => all.indexOf(name) === index).join(' · ') || 'Sân cầu lông'}</h2>
                 <p>{[...new Set(uniqueCourts.map(detail => detail.address).filter(Boolean))].join(' · ') || 'Chưa có địa chỉ sân'}</p>
                 <p>{uniqueCourts.map(detail => `${labelCourt(detail)} · ${surfaceLabel(detail.type)}`).join('; ')}</p>
-                <strong>{isSuccess ? declared ? 'Đã xác nhận đặt sân' : 'Đặt sân thành công' : 'Chưa xác nhận thanh toán'}</strong>
+                <strong>{isSuccess ? 'Đặt sân thành công' : 'Chưa xác nhận thanh toán'}</strong>
               </div>
             </div>
             <div className="payment-result-divider"/>
@@ -252,7 +248,7 @@ export default function PaymentResult() {
             </div>
           </div>
           <div className="payment-result-total">
-            <div><strong>Tổng tiền đặt sân</strong><span>{payment.paymentMethod === 'BANK_TRANSFER' ? 'Chuyển khoản ngân hàng' : 'VNPay'}</span><small>Mã đặt sân: {booking.bookingId}</small>{payment.transactionDate && <small>Thời điểm giao dịch: {payment.transactionDate}</small>}</div>
+            <div><strong>Tổng tiền đặt sân</strong><span>{payment.paymentMethod === 'CASH' ? 'Tiền mặt' : 'VNPay'}</span><small>Mã đặt sân: {booking.bookingId}</small>{payment.transactionDate && <small>Thời điểm giao dịch: {payment.transactionDate}</small>}</div>
             <b>{formatMoney(payment.amount)}</b>
           </div>
         </section>
