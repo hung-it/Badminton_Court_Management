@@ -283,6 +283,21 @@ class BookingPostgresTest {
     }
 
     @Test
+    void totalAtNumericBoundaryStoresAndJustAboveReturns400() {
+        jdbc.update("UPDATE time_slots SET price_multiplier = 1.00 WHERE id = ?", slotId);
+        // Boundary: exactly NUMERIC(10,2) capacity must persist.
+        jdbc.update("UPDATE courts SET base_price = 99999999.99 WHERE id = ?", courtId);
+        var ok = service.createBooking(request(detail(DATE)));
+        assertThat(ok.getCourtFee()).isEqualByComparingTo("99999999.99");
+        assertCounts(1, 1);
+        // 100,000,000.00 total previously slipped past the service check and surfaced as a DB 500.
+        jdbc.update("UPDATE courts SET base_price = 50000000.00 WHERE id = ?", courtId);
+        assertThatThrownBy(() -> service.createBooking(request(detail(DATE), detail(DATE.plusDays(1)))))
+                .isInstanceOf(BadRequestException.class).hasMessageContaining("NUMERIC(10,2)");
+        assertCounts(1, 1);
+    }
+
+    @Test
     void publicApiIgnoresClientPricesStatusExpiryAndReturnsDto() throws Exception {
         ObjectNode input = mapper.valueToTree(request(detail(DATE)));
         input.put("courtFee", 0).put("status", "PAID").put("expiresAt", "2099-01-01T00:00:00");

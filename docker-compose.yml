@@ -70,6 +70,9 @@ services:
         condition: service_healthy
 
     environment:
+      # Pin JVM local zone to the business zone so any code still using the
+      # default zone (logging, ad-hoc LocalDateTime.now()) matches the app clock.
+      TZ: Asia/Ho_Chi_Minh
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/badminton_court_db
       SPRING_DATASOURCE_USERNAME: bcm_admin
       SPRING_DATASOURCE_PASSWORD: "12345"

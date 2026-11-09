@@ -323,7 +323,8 @@ class PaymentCallbackConcurrencyPostgresTest {
     @EnumSource(value = PaymentMethod.class, names = "VNPAY")
     void expirationLockWinsAndCallbackCannotReviveOrRecreateSlots(PaymentMethod method) throws Exception {
         var payload = payload(0, method, "14226112"); var before = snapshot(0);
-        instant.set(NOW.plusMinutes(5).atZone(clock.getZone()).toInstant());
+        // Past the in-flight window the lingering PENDING attempt is stale, so expiration may release the slot.
+        instant.set(NOW.plusMinutes(11).atZone(clock.getZone()).toInstant());
         var workers = Executors.newFixedThreadPool(2); expirationGate = new Gate(bookings[0]);
         try {
             var expired = workers.submit(() -> expiration.expireBooking(bookings[0])); expirationGate.awaitHeld();
@@ -350,7 +351,8 @@ class PaymentCallbackConcurrencyPostgresTest {
             lockBooking(holder, 0);
             try {
                 var paid = workers.submit(() -> callback(payload)); awaitWaiters("from bookings", 1, 0);
-                assertThat(paid.isDone()).isFalse(); instant.set(NOW.plusMinutes(5).atZone(clock.getZone()).toInstant());
+                assertThat(paid.isDone()).isFalse(); // Past the in-flight window the receipt is stale and cannot settle.
+                instant.set(NOW.plusMinutes(11).atZone(clock.getZone()).toInstant());
                 holder.commit(); assertHandled(paid.get(20, TimeUnit.SECONDS), method, "99");
                 assertThat(callbackOutcomes).containsExactly(LATE_EXPIRED);
                 var after = snapshot(0);

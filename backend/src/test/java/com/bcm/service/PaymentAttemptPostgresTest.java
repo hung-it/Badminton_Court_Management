@@ -278,7 +278,8 @@ class PaymentAttemptPostgresTest {
     void expirationStillExpiresBookingAndPreservesCreatedAttempt() throws Exception {
         assertThat(perform(PaymentMethod.VNPAY)).isEqualTo(201);
         var before = jdbc.queryForMap("SELECT * FROM payment_transactions WHERE booking_id = ?", bookingId);
-        setTime(NOW.plusMinutes(5));
+        // Past the 5-minute in-flight window the created PENDING attempt is stale, so the booking expires.
+        setTime(NOW.plusMinutes(11));
         assertThat(expiration.expireBooking(bookingId)).isTrue();
         assertThat(perform(PaymentMethod.VNPAY)).isEqualTo(400);
         assertThat(jdbc.queryForMap("SELECT * FROM payment_transactions WHERE booking_id = ?", bookingId)).isEqualTo(before);

@@ -18,14 +18,17 @@ public class BookingExpirationService {
     private final BookingDetailRepository details;
     private final Clock clock;
     private final com.bcm.repository.PaymentTransactionRepository payments;
+    private final PaymentInFlightPolicy inFlightPolicy;
 
     public BookingExpirationService(BookingRepository bookings, BookingDetailRepository details,
                                     @Qualifier("bookingExpirationClock") Clock clock,
-                                    com.bcm.repository.PaymentTransactionRepository payments) {
+                                    com.bcm.repository.PaymentTransactionRepository payments,
+                                    PaymentInFlightPolicy inFlightPolicy) {
         this.bookings = bookings;
         this.details = details;
         this.clock = clock;
         this.payments = payments;
+        this.inFlightPolicy = inFlightPolicy;
     }
 
     @Transactional(readOnly = true)
@@ -46,6 +49,10 @@ public class BookingExpirationService {
         if (payments.existsByBookingIdAndStatus(bookingId, com.bcm.entity.PaymentStatus.SUCCESS)) return false;
         if (!originalDue && (!checkoutDue || payments.existsByBookingIdAndStatus(bookingId, com.bcm.entity.PaymentStatus.PENDING)
                 || payments.existsByBookingIdAndStatus(bookingId, com.bcm.entity.PaymentStatus.SUCCESS))) return false;
+        // A payment in flight past the original deadline must not be dropped: within the in-flight
+        // window keep the slot held so a late provider callback can still settle it (money kept = a
+        // reservation). Once the window passes, a stale attempt no longer holds the court.
+        if (originalDue && inFlightPolicy.inFlight(booking, now)) return false;
         bookings.updateExpirationStatus(bookingId, BookingStatus.EXPIRED);
         details.deleteAllForExpiredBooking(bookingId);
         return true;

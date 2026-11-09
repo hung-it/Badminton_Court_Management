@@ -204,7 +204,8 @@ class BookingPaymentLifecyclePostgresTest {
             assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue(); start.countDown();
             assertThat(payment.get(20, TimeUnit.SECONDS)).isEqualTo(201);
             assertThat(expiry.get(20, TimeUnit.SECONDS)).isFalse();
-            org.mockito.Mockito.when(clock.instant()).thenReturn(NOW.plusSeconds(601));
+            // Past the in-flight grace window the lingering PENDING attempt is stale, so the slot releases.
+            org.mockito.Mockito.when(clock.instant()).thenReturn(NOW.plusSeconds(901));
             assertThat(expiration.expireBooking(booking)).isTrue();
             assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_details WHERE booking_id=?", Integer.class, booking)).isZero();
             assertThatThrownBy(() -> checkout.checkout(booking, "BANK_TRANSFER"))

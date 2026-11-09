@@ -6,16 +6,17 @@ Tài liệu tổng kết review toàn bộ thiết kế database sau khi nâng c
 
 | Aspect | Status | Notes |
 |--------|--------|-------|
-| **Tổng số bảng** | 18 bảng | Tăng từ 15 → 18 (thêm promotions, discount_rules, customer_voucher_usage) |
-| **Anti-double booking** | ✅ Hoàn chỉnh | DB Constraint + Pessimistic Lock |
-| **Anti-negative stock** | ✅ Hoàn chỉnh | Optimistic Locking với @Version |
-| **Payment flow** | ✅ Rõ ràng | Constraint: 1 transaction = 1 target (booking XOR invoice) |
-| **Promotion system** | ✅ Enterprise-grade | 3 loại rules: PRODUCT/INVOICE_TOTAL/VOUCHER |
-| **Invoice creation** | ✅ Xác định | Tạo lúc CHECKED_IN (DRAFT) |
-| **Booking cancellation** | ✅ Loại bỏ | Không có CANCELLED status |
-| **Indexes** | ✅ Đầy đủ | 30+ indexes cho performance |
+| **Tổng số bảng** | 18 bảng | Chuẩn hóa theo migration (auth, master, booking, POS, kho, KM, payment) |
+| **Anti-double booking** | ✅ Hoàn chỉnh | DB Constraint `uq_booking_slot` + Pessimistic Lock trên `Court` |
+| **Anti-negative stock** | ✅ Hoàn chỉnh | Optimistic Locking với `@Version` trên `Product` |
+| **Payment flow** | ✅ Rõ ràng | Constraint `chk_payment_target`: 1 transaction = 1 target (booking XOR invoice) |
+| **Payment methods** | ✅ Tối giản | `CASH` và `VNPAY` (đã dọn dẹp chuyển khoản thủ công để bảo đảm an toàn đối soát) |
+| **Promotion system** | ✅ 3 Loại Rules | PRODUCT, INVOICE_TOTAL, VOUCHER (tự động hoặc theo mã) |
+| **Invoice creation** | ✅ Xác định | Tạo lúc Kết toán Trả sân (`PAID`); POS tạo `DRAFT` tạm và được gộp khi Checkout |
+| **Booking lifecycle** | ✅ Chuẩn hóa | 4 trạng thái: `PENDING → PAID → COMPLETED` (hoặc `EXPIRED`) |
+| **Indexes** | ✅ Đầy đủ | 30+ indexes cho query hiệu năng cao |
 | **Constraints** | ✅ Đầy đủ | CHECK, UNIQUE, FK với ON DELETE behaviors |
-| **Soft delete** | ✅ Nhất quán | deleted_at trên tất cả master tables |
+| **Soft delete** | ✅ Nhất quán | `deleted_at` trên tất cả master tables |
 
 ---
 
@@ -29,7 +30,7 @@ Tài liệu tổng kết review toàn bộ thiết kế database sau khi nâng c
 ### Nhóm 2: Court Management (3 bảng)
 4. **courts** - Sân cầu lông (base_price)
 5. **time_slots** - Khung giờ template (start_time, end_time, price_multiplier)
-6. **bookings** - Đơn đặt sân (PENDING → PAID → CHECKED_IN → COMPLETED/NO_SHOW)
+3. **bookings** - Đơn đặt sân (`PENDING → PAID → COMPLETED` hoặc `EXPIRED`)
 7. **booking_details** - Chi tiết đặt sân (UNIQUE: date + court + timeslot)
 
 ### Nhóm 3: POS & Inventory (6 bảng)
@@ -53,26 +54,27 @@ Tài liệu tổng kết review toàn bộ thiết kế database sau khi nâng c
 
 ## 🎯 Các Quyết Định Thiết Kế Quan Trọng
 
-### 1. ✅ Bỏ `CANCELLED` Status
+### 1. ✅ Chuẩn Hóa Vòng Đời Booking: 4 Trạng Thái (Bỏ `CANCELLED`, `CHECKED_IN`, `NO_SHOW`)
 
-**Trước:**
+**Thiết kế cũ:**
 ```sql
 bookings.status IN ('PENDING', 'PAID', 'CHECKED_IN', 'COMPLETED', 'NO_SHOW', 'CANCELLED')
 ```
 
-**Sau:**
+**Thực tế triển khai chuẩn hóa (`db/migration.sql`):**
 ```sql
-bookings.status IN ('PENDING', 'PAID', 'CHECKED_IN', 'COMPLETED', 'NO_SHOW')
+bookings.status IN ('PENDING', 'PAID', 'COMPLETED', 'EXPIRED')
 ```
 
-**Lý do:**
-- Khách không được phép hủy sau khi đã thanh toán (business rule)
-- CANCELLED gây confusion về refund policy
-- Nếu cần cancel → Admin force update status sang NO_SHOW
+**Lý do & Quy tắc nghiệp vụ:**
+- Khách không được phép hủy sau khi đã thanh toán (chính sách No Cancellation / No Refund bảo vệ chủ sân).
+- Loại bỏ trạng thái `CHECKED_IN` để tinh gọn hóa luồng quầy: nhân viên không cần bước bấm nhận sân rườm rà; khách đến chơi có thể mua hàng POS gộp trực tiếp vào mã booking và chỉ cần một bước duy nhất là **Kết toán trả sân** (`COMPLETED`).
+- Loại bỏ `NO_SHOW`: đơn đặt sân đã thanh toán (`PAID`) nếu khách không đến sẽ giữ nguyên trạng thái `PAID` và lưu biên lai tiền sân đầy đủ.
+- Trạng thái `EXPIRED`: dành cho các đơn `PENDING` quá hạn giữ chỗ 10 phút mà khách chưa thanh toán; hệ thống tự động giải phóng slot để người khác đặt.
 
 ---
 
-### 2. ✅ Payment Transaction - XOR Constraint
+### 2. ✅ Payment Transaction - XOR Constraint & Phương thức thanh toán
 
 **Constraint:**
 ```sql
@@ -82,37 +84,41 @@ CHECK (
     (booking_id IS NOT NULL AND invoice_id IS NULL) OR
     (booking_id IS NULL AND invoice_id IS NOT NULL)
 );
+
+ALTER TABLE payment_transactions
+ADD CONSTRAINT chk_payment_method
+CHECK (payment_method IN ('CASH', 'VNPAY'));
 ```
 
 **Lý do:**
-- Mỗi transaction chỉ thanh toán cho 1 target (booking HOẶC invoice)
-- Tránh ambiguity khi query báo cáo
-- Dễ phân tách: Tiền sân (booking) vs Tiền hàng (invoice)
+- Mỗi transaction chỉ thanh toán cho 1 target (booking HOẶC invoice).
+- Tránh trùng lặp hoặc nhập nhằng số liệu khi hạch toán báo cáo.
+- **Tối giản phương thức:** Đã dọn dẹp chuyển khoản thủ công (`BANK_TRANSFER`), chỉ hỗ trợ `VNPAY` (cho khách đặt online) và `CASH` + `VNPAY` (cho nhân viên xác nhận tại quầy).
 
 **Use Cases:**
-- `booking_id != NULL, invoice_id = NULL` → Thanh toán tiền sân online
-- `booking_id = NULL, invoice_id != NULL` → Thanh toán tiền hàng tại quầy
+- `booking_id != NULL, invoice_id = NULL` → Thanh toán tiền cọc/tiền sân online (VNPAY) hoặc thu tiền sân tại quầy (CASH/VNPAY).
+- `booking_id = NULL, invoice_id != NULL` → Thanh toán tiền hàng POS lẻ hoặc thanh toán phần chênh lệch khi Kết toán Trả sân tại quầy.
 
 ---
 
-### 3. ✅ Invoice Creation Timing: CHECKED_IN
+### 3. ✅ Thời Điểm Tạo Hóa Đơn (Invoice Creation Timing)
 
 **Quyết định:**
-- Invoice được tạo tự động khi booking chuyển sang **CHECKED_IN** (status DRAFT)
-- Khách vãng lai: Invoice tạo khi bắt đầu mua hàng
+- **Khách vãng lai (Walk-in):** Hóa đơn được tạo ngay khi mua hàng tại quầy POS với trạng thái `PAID`, kèm biên lai thu tiền mặt hoặc VNPay.
+- **Khách thuê sân:**
+  1. Khi mua nước/cầu tại quầy trong ca chơi: Hệ thống tạo các hóa đơn tạm **`DRAFT`** gắn với `booking_id`. Tồn kho sản phẩm `GOODS` được trừ ngay (kiểm soát Optimistic Locking).
+  2. Khi **Trả sân (Checkout):** Hệ thống gộp:
+     $$\text{Tổng Bill} = \text{Tiền sân sau giảm} + \text{Tiền hàng POS} - \text{Giảm giá hàng}$$
+     Khách chỉ cần thanh toán phần chênh lệch (`amountDue = totalAmount - paidCourt`).
+  3. Hệ thống xuất **1 Hóa đơn hoàn tất duy nhất (`status = PAID`)**, đồng thời chuyển các hóa đơn tạm DRAFT sang `CANCELLED` (đã được dồn vào hóa đơn tổng) và cập nhật `booking.status = COMPLETED`.
 
-**Timeline:**
+**Timeline Luồng Đặt Sân & Trả Sân:**
 ```
-15:30  →  15:35  →  17:50        →  18:30
-Tạo      Thanh    CHECK-IN       Mua hàng
-booking  toán     (Tạo invoice   (Cập nhật
-         online   DRAFT)         invoice)
+15:30          →  15:35         →  18:00–20:00   →  18:30        →  20:05
+Đặt sân           Thanh toán       Khách chơi       Mua nước POS    Trả sân (Checkout)
+(status PENDING,  online VNPay     trên sân         (Tạo invoice    (Gộp bill, xuất 1
+giữ slot 10p)     (status PAID)                     DRAFT)          hóa đơn PAID, booking COMPLETED)
 ```
-
-**Lý do:**
-- Check-in = khách đã đến sân = bắt đầu phát sinh chi phí
-- DRAFT invoice cho phép thu ngân thêm sản phẩm linh hoạt
-- Khi chuyển sang PAID → Invoice finalized, không sửa được nữa
 
 ---
 
@@ -324,8 +330,8 @@ public void sellProduct(UUID productId, int quantity) {
 - [x] Partial indexes (WHERE is_active, deleted_at IS NULL)
 
 ### Business Logic
-- [x] Booking status flow (no CANCELLED)
-- [x] Invoice creation timing (CHECKED_IN)
+- [x] Booking status flow (PENDING → PAID → COMPLETED / EXPIRED)
+- [x] Invoice creation timing (Finalized at Checkout)
 - [x] Payment transaction target (XOR)
 - [x] Promotion system (3 layers)
 - [x] Locking strategies (Pessimistic vs Optimistic)
