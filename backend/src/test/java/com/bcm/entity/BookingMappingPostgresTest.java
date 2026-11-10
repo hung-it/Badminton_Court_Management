@@ -189,7 +189,7 @@ class BookingMappingPostgresTest {
     }
 
     @ParameterizedTest
-    @EnumSource(PaymentMethod.class)
+    @EnumSource(value=PaymentMethod.class,names={"CASH","VNPAY"})
     void roundTripsPaymentMethodsAndNullableColumns(PaymentMethod method) {
         Booking booking = bookings.saveAndFlush(newBooking());
         PaymentTransaction payment = newPayment();

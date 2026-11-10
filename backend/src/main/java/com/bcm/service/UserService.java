@@ -18,6 +18,23 @@ import java.util.UUID;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
+
+    @Transactional
+    public void changePassword(String userId, com.bcm.dto.request.ChangePasswordRequest request) {
+        if(request.currentPassword()==null || request.newPassword()==null
+                || request.newPassword().isBlank() || request.newPassword().length()<8
+                || request.currentPassword().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>72
+                || request.newPassword().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>72)
+            throw new com.bcm.exception.BadRequestException("Mật khẩu mới phải có ít nhất 8 ký tự và không quá 72 byte UTF-8.");
+        User user=userRepository.findActiveForUpdate(UUID.fromString(userId))
+                .orElseThrow(()->new ResourceNotFoundException("Không tìm thấy tài khoản đang hoạt động"));
+        if(!passwordEncoder.matches(request.currentPassword(),user.getPasswordHash()))
+            throw new com.bcm.exception.BadRequestException("Mật khẩu hiện tại không đúng.");
+        if(passwordEncoder.matches(request.newPassword(),user.getPasswordHash()))
+            throw new com.bcm.exception.BadRequestException("Mật khẩu mới phải khác mật khẩu hiện tại.");
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+    }
 
     /**
      * Find user by ID

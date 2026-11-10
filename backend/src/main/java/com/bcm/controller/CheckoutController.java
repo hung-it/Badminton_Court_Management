@@ -39,7 +39,7 @@ public class CheckoutController {
     }
 
     @PostMapping("/{bookingIdentifier}")
-    @io.swagger.v3.oas.annotations.Operation(summary="Checkout booking", description="Staff-confirmed manual CASH or VNPAY only; paymentConfirmed and expectedAmountDue required. Booking ID makes retries idempotent. Requires a verified court receipt; PAID invoice and COMPLETED booking commit atomically.")
+    @io.swagger.v3.oas.annotations.Operation(summary="Checkout booking", description="Allowed from the earliest booked slot start (Vietnam time), including early departure; original booked court fee is retained. Staff-confirmed manual CASH or VNPAY for any remaining amount; paymentConfirmed and expectedAmountDue required when collecting. Booking ID makes retries idempotent. Requires a verified court receipt; PAID invoice and COMPLETED booking commit atomically with the same booking row lock used by automatic checkout.")
     public ResponseEntity<ApiResponse<CheckoutResponse>> checkout(
             @PathVariable String bookingIdentifier,
             @Valid @RequestBody CheckoutRequest request) {

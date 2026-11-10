@@ -13,6 +13,7 @@ import CustomerGuide from './CustomerGuide';
 import CustomerContact from './CustomerContact';
 import CustomerBookingHistory from './CustomerBookingHistory';
 import PaymentResult from './PaymentResult';
+import ProfilePage from './pages/ProfilePage';
 
 function BookingRedirect() {
   const location = useLocation();
@@ -60,7 +61,7 @@ export default function App() {
             <Route path="/guide" element={<CustomerGuide />} />
             <Route path="/contact" element={<CustomerContact />} />
             <Route path="/my-bookings" element={<CustomerBookingHistory />} />
-            <Route path="/profile" element={<Layout><PlaceholderPage title="Hồ sơ cá nhân" /></Layout>} />
+            <Route path="/profile" element={<Layout><ProfilePage /></Layout>} />
             <Route path="*" element={<Layout><PlaceholderPage title="Không tìm thấy trang" /></Layout>} />
           </Routes>
       </AuthProvider>

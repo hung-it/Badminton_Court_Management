@@ -75,7 +75,7 @@ public class AnalyticsService {
         var receipts=payments.findInvoiceReceipts(id,invoice.getBookingId()).stream().map(p->
             new InvoiceReportResponse.Receipt(p.getId(),p.getInvoice()==null?"COURT_PREPAYMENT":"CHECKOUT_OR_POS",
                 p.getPaymentMethod().name(),p.getSource(),p.getStatus().name(),p.getAmount(),p.getConfirmedBy(),p.getConfirmedByUser(),
-                p.getConfirmedByUser()==null?"VNPay Gateway":jdbc.queryForObject("SELECT full_name FROM users WHERE id=?",String.class,p.getConfirmedByUser()),
+                "LEGACY".equals(p.getSource())?"Lịch sử · chưa lưu người xác nhận":p.getConfirmedByUser()==null?"VNPay Gateway":jdbc.queryForObject("SELECT full_name FROM users WHERE id=?",String.class,p.getConfirmedByUser()),
                 p.getTransactionDate(),p.getReference()==null?p.getTransactionId():p.getReference())).toList();
         return new InvoiceReportResponse(summary(invoice),items,courts,receipts,invoice.getCreatedBy(),invoice.getCreatedByUser());
     }

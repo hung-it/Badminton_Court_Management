@@ -18,6 +18,20 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
+    @Query(value="""
+        select b.id from bookings b
+        join booking_details d on d.booking_id=b.id join time_slots t on t.id=d.time_slot_id
+        where b.status='PAID'
+          and not exists(select 1 from invoices i where i.booking_id=b.id and i.status in ('DRAFT','PAID'))
+          and (b.final_amount=0 or (
+            (select count(*) from payment_transactions p where p.booking_id=b.id and p.status='SUCCESS')=1
+            and exists(select 1 from payment_transactions p where p.booking_id=b.id and p.status='SUCCESS'
+              and p.amount=b.final_amount and p.transaction_id is not null and p.transaction_date is not null
+              and ((p.source='GATEWAY' and p.payment_method='VNPAY') or (p.source='MANUAL' and p.confirmed_by_user is not null)))))
+        group by b.id having max(d.booking_date + t.end_time)<=:cutoff
+        order by max(d.booking_date + t.end_time),b.id limit 100
+        """,nativeQuery=true)
+    List<UUID> findAutoCheckoutCandidates(@Param("cutoff") LocalDateTime cutoff);
     @Query(value = """
             select new com.bcm.dto.response.BookingSummaryResponse(
                 b.id, b.customer.id, b.status, b.courtFee, b.expiresAt, b.createdAt, b.updatedAt)

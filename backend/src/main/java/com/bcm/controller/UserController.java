@@ -26,6 +26,15 @@ public class UserController {
 
     private final UserService userService;
 
+    @PostMapping("/me/password")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary="Tự đổi mật khẩu", description="Dùng tài khoản trong JWT, yêu cầu mật khẩu hiện tại. Mật khẩu mới 8–72 ký tự và tối đa 72 byte UTF-8. Không đổi tài khoản khác; không trả hash. JWT hiện có vẫn có hiệu lực đến hạn theo cơ chế hiện tại.")
+    public ApiResponse<Void> changePassword(@AuthenticationPrincipal UserPrincipal principal,
+            @jakarta.validation.Valid @RequestBody com.bcm.dto.request.ChangePasswordRequest request) {
+        userService.changePassword(principal.getId(),request);
+        return ApiResponse.success("Đổi mật khẩu thành công",null);
+    }
+
     /**
      * Get current authenticated user's profile
      */
