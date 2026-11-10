@@ -248,7 +248,7 @@ export default function PaymentResult() {
             </div>
           </div>
           <div className="payment-result-total">
-            <div><strong>Tổng tiền đặt sân</strong><span>{payment.paymentMethod === 'CASH' ? 'Tiền mặt' : 'VNPay'}</span><small>Mã đặt sân: {booking.bookingId}</small>{payment.transactionDate && <small>Thời điểm giao dịch: {payment.transactionDate}</small>}</div>
+            <div><strong>Tổng tiền đặt sân</strong><span>{payment.paymentMethod === 'BANK_TRANSFER' ? 'Chuyển khoản (lịch sử)' : payment.paymentMethod === 'CASH' ? 'Tiền mặt' : 'VNPay'}</span><small>Mã đặt sân: {booking.bookingId}</small>{payment.transactionDate && <small>Thời điểm giao dịch: {payment.transactionDate}</small>}</div>
             <b>{formatMoney(payment.amount)}</b>
           </div>
         </section>

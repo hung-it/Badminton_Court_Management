@@ -175,6 +175,7 @@ BEGIN;
 SET LOCAL lock_timeout = '5s';
 DO $methods$
 DECLARE t text; n text; definition text;
+ legacy_enabled boolean := to_regprocedure('bcm_guard_legacy_bank_transfer()') IS NOT NULL;
  booking_ids uuid[] := ARRAY[
  '5378d15f-c4d5-4749-a567-2209de11848a','649d7874-76d7-4819-ae5f-252605fa6d47',
  '868ae90d-f7f9-484a-ae2d-4f498b96439a','ad54a6cc-d66a-4a95-a416-295f2342a077',
@@ -217,18 +218,21 @@ BEGIN
   DELETE FROM booking_details WHERE booking_id=ANY(booking_ids);
   DELETE FROM bookings WHERE id=ANY(booking_ids);
  END IF;
- IF EXISTS(SELECT 1 FROM invoices WHERE payment_method NOT IN ('CASH','VNPAY','MIXED')) OR EXISTS(SELECT 1 FROM payment_transactions WHERE payment_method NOT IN ('CASH','VNPAY')) THEN
+ IF EXISTS(SELECT 1 FROM invoices WHERE payment_method NOT IN ('CASH','VNPAY','MIXED') AND NOT(legacy_enabled AND payment_method='BANK_TRANSFER')) OR EXISTS(SELECT 1 FROM payment_transactions WHERE payment_method NOT IN ('CASH','VNPAY') AND NOT(legacy_enabled AND payment_method='BANK_TRANSFER')) THEN
   RAISE EXCEPTION 'Unsupported historical payments require a reviewed data migration; no automatic conversion is permitted';
  END IF;
  FOREACH t IN ARRAY ARRAY['invoices','payment_transactions'] LOOP
   n=t||'_payment_method_check';
   SELECT pg_get_constraintdef(oid) INTO definition FROM pg_constraint WHERE conrelid=t::regclass AND conname=n;
-  IF definition IS NOT NULL AND (position('MOMO' in definition)>0 OR position('BANK_TRANSFER' in definition)>0) THEN
+  IF definition IS NOT NULL AND (position('MOMO' in definition)>0 OR (position('BANK_TRANSFER' in definition)>0 AND NOT legacy_enabled)) THEN
    EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I',t,n); definition=NULL;
   ELSIF definition IS NOT NULL AND NOT (position('CASH' in definition)>0 AND position('VNPAY' in definition)>0) THEN
    RAISE EXCEPTION 'Unrecognized payment constraint on %, manual review required',t;
   END IF;
-  IF definition IS NULL THEN EXECUTE format('ALTER TABLE %I ADD CONSTRAINT %I CHECK(payment_method IN (''CASH'',''VNPAY''))',t,n); END IF;
+  IF definition IS NULL THEN
+   IF legacy_enabled THEN EXECUTE format('ALTER TABLE %I ADD CONSTRAINT %I CHECK(payment_method IN (''CASH'',''VNPAY'',''BANK_TRANSFER''))',t,n);
+   ELSE EXECUTE format('ALTER TABLE %I ADD CONSTRAINT %I CHECK(payment_method IN (''CASH'',''VNPAY''))',t,n); END IF;
+  END IF;
  END LOOP;
 END $methods$;
 COMMIT;
@@ -241,8 +245,8 @@ SET LOCAL lock_timeout = '5s';
 LOCK TABLE invoices,payment_transactions IN SHARE ROW EXCLUSIVE MODE;
 DO $$ DECLARE blocked text; BEGIN
  SELECT string_agg(id::text, ', ') INTO blocked FROM (
- SELECT id FROM invoices WHERE payment_method NOT IN ('CASH','VNPAY','MIXED') OR (status='DRAFT' AND payment_method IS NOT NULL)
- UNION ALL SELECT id FROM payment_transactions WHERE payment_method NOT IN ('CASH','VNPAY')) x;
+ SELECT id FROM invoices WHERE (payment_method NOT IN ('CASH','VNPAY','MIXED') AND NOT(payment_method='BANK_TRANSFER' AND to_regprocedure('bcm_guard_legacy_bank_transfer()') IS NOT NULL)) OR (status='DRAFT' AND payment_method IS NOT NULL)
+ UNION ALL SELECT id FROM payment_transactions WHERE payment_method NOT IN ('CASH','VNPAY') AND NOT(payment_method='BANK_TRANSFER' AND to_regprocedure('bcm_guard_legacy_bank_transfer()') IS NOT NULL)) x;
  IF blocked IS NOT NULL THEN RAISE EXCEPTION 'Payment migration blocked by historical records requiring review: %', blocked; END IF;
 END $$;
 ALTER TABLE invoices ALTER COLUMN payment_method DROP NOT NULL;
@@ -275,15 +279,16 @@ DO $$ DECLARE blocked text; BEGIN
 END $$;
 ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_payment_method_check;
 UPDATE invoices SET payment_method=NULL WHERE payment_method='MIXED';
-ALTER TABLE invoices ADD CONSTRAINT invoices_payment_method_check CHECK (
- (status='DRAFT' AND payment_method IS NULL) OR
- (status='PAID' AND (payment_method IS NULL OR payment_method IN ('CASH','VNPAY'))) OR
- (status IN ('CANCELLED','REFUNDED') AND (payment_method IS NULL OR payment_method IN ('CASH','VNPAY'))));
-ALTER TABLE payment_transactions DROP CONSTRAINT IF EXISTS payment_transactions_payment_method_check;
-ALTER TABLE payment_transactions ADD CONSTRAINT payment_transactions_payment_method_check CHECK(payment_method IN ('CASH','VNPAY'));
+DO $$ DECLARE allowed text; BEGIN
+ allowed:=CASE WHEN to_regprocedure('bcm_guard_legacy_bank_transfer()') IS NOT NULL THEN '''CASH'',''VNPAY'',''BANK_TRANSFER''' ELSE '''CASH'',''VNPAY''' END;
+ EXECUTE 'ALTER TABLE invoices ADD CONSTRAINT invoices_payment_method_check CHECK ((status=''DRAFT'' AND payment_method IS NULL) OR (status IN (''PAID'',''CANCELLED'',''REFUNDED'') AND (payment_method IS NULL OR payment_method IN ('||allowed||'))))';
+ ALTER TABLE payment_transactions DROP CONSTRAINT IF EXISTS payment_transactions_payment_method_check;
+ EXECUTE 'ALTER TABLE payment_transactions ADD CONSTRAINT payment_transactions_payment_method_check CHECK(payment_method IN ('||allowed||'))';
+END $$;
 DO $$ BEGIN
  IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='payment_transactions'::regclass AND conname='chk_receipt_source') THEN
  ALTER TABLE payment_transactions ADD CONSTRAINT chk_receipt_source CHECK (
+ (source='LEGACY' AND payment_method='BANK_TRANSFER' AND to_regprocedure('bcm_guard_legacy_bank_transfer()') IS NOT NULL) OR
  (source='GATEWAY' AND payment_method='VNPAY' AND confirmed_by IS NULL AND confirmed_by_user IS NULL) OR
  (source='MANUAL' AND confirmed_by_user IS NOT NULL AND transaction_date IS NOT NULL AND status='SUCCESS' AND amount>0));
  END IF;

@@ -4,6 +4,8 @@ import CourtBrowser from './CourtBrowser.jsx';
 import TimeSlotFilters from './TimeSlotFilters.jsx';
 import RevenueInvoices from './RevenueInvoices.jsx';
 import Accounts from './Accounts.jsx';
+import CounterReceipt from './CounterReceipt.jsx';
+import ChangePassword from './ChangePassword.jsx';
 import Statistics from './Statistics.jsx';
 import RevenueBreakdown from './RevenueBreakdown.jsx';
 import PeriodFilter,{inPeriod} from './PeriodFilter.jsx';
@@ -55,6 +57,7 @@ export default function App(){
  const [checkoutPaymentMethod,setCheckoutPaymentMethod]=useState('CASH');
  const [checkoutSlip,setCheckoutSlip]=useState(null);
  const [checkoutOpen,setCheckoutOpen]=useState(false);
+ const [receiptBooking,setReceiptBooking]=useState(null),[passwordOpen,setPasswordOpen]=useState(false);
  const [checkoutHistory,setCheckoutHistory]=useState([]);
   const [activeBookings,setActiveBookings]=useState([]);
   const [activeBusy,setActiveBusy]=useState(false);
@@ -81,7 +84,7 @@ export default function App(){
   catch(e){setError(e.message);}finally{setSaving(false);}
  }
 
- function logout(){sessionStorage.removeItem('bcm-session');setSession(null);setData({courts:[],'time-slots':[],categories:[],products:[],'product-promotions':[]});setModal(null);setDeleteTarget(null);}
+ function logout(){setReceiptBooking(null);setPasswordOpen(false);sessionStorage.removeItem('bcm-session');setSession(null);setData({courts:[],'time-slots':[],categories:[],products:[],'product-promotions':[]});setModal(null);setDeleteTarget(null);}
  async function api(path,method='GET',body,token=session?.accessToken){
   const res=await fetch('/api'+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{})});
   let json;try{json=await res.json()}catch{throw new Error('Không thể đọc phản hồi máy chủ. Kiểm tra backend.');}
@@ -253,7 +256,7 @@ useEffect(()=>{
 
 <button className="primary wide" disabled={saving}>{saving?'Đang đăng nhập…':'Đăng nhập →'}</button></form></section></div>;
 
- return <div className="app-shell"><aside className="sidebar"><div className="brand">BCM<span>COURT MANAGEMENT</span></div><span className="nav-caption">QUẢN LÝ DỮ LIỆU</span><nav>{dataNavTabs.filter(([key])=>session.user?.roles?.includes('ADMIN')||key==='product-promotions').map(([key,label])=><button key={key} className={tab===key?'nav active':'nav'} onClick={()=>setTab(key)}>{label}</button>)}</nav><span className="tab-section-label">VẬN HÀNH & POS</span><nav>{opTabs.filter(([key])=>session.user?.roles?.includes('ADMIN')||['pos','checkout'].includes(key)).map(([key,label])=><button key={key} className={tab===key?'nav active':'nav'} onClick={()=>setTab(key)}>{label}</button>)}</nav><div className="sidebar-bottom"><div className="avatar">A</div><div><strong>{session.user?.fullName||'Quản trị viên'}</strong><small>{session.user?.roles?.includes('ADMIN')?'Administrator':'Nhân viên'}</small></div><button aria-label="Đăng xuất" title="Đăng xuất" onClick={logout}>↗</button></div></aside><main><header className="topbar"><span>{tab==='accounts'?'Quản lý dữ liệu':'Vận hành'} / <strong>{title}</strong></span><span className="live"><i/> Web Admin</span><button className="mobile-logout secondary" onClick={logout}>Đăng xuất</button></header><div className="workspace">
+ return <div className="app-shell"><aside className="sidebar"><div className="brand">BCM<span>COURT MANAGEMENT</span></div><span className="nav-caption">QUẢN LÝ DỮ LIỆU</span><nav>{dataNavTabs.filter(([key])=>session.user?.roles?.includes('ADMIN')||key==='product-promotions').map(([key,label])=><button key={key} className={tab===key?'nav active':'nav'} onClick={()=>setTab(key)}>{label}</button>)}</nav><span className="tab-section-label">VẬN HÀNH & POS</span><nav>{opTabs.filter(([key])=>session.user?.roles?.includes('ADMIN')||['pos','checkout'].includes(key)).map(([key,label])=><button key={key} className={tab===key?'nav active':'nav'} onClick={()=>setTab(key)}>{label}</button>)}</nav><div className="sidebar-bottom"><div className="avatar">A</div><div><strong>{session.user?.fullName||'Quản trị viên'}</strong><small>{session.user?.roles?.includes('ADMIN')?'Administrator':'Nhân viên'}</small></div><button aria-label="Đăng xuất" title="Đăng xuất" onClick={logout}>↗</button></div></aside><main><header className="topbar"><span>{tab==='accounts'?'Quản lý dữ liệu':'Vận hành'} / <strong>{title}</strong></span><span className="live"><i/> Web Admin</span><button className="secondary" onClick={()=>setPasswordOpen(true)}>Đổi mật khẩu</button><button className="mobile-logout secondary" onClick={logout}>Đăng xuất</button></header><div className="workspace">
 
  {error&&!modal&&!deleteTarget&&<div role="alert" className="alert error">{error} <button onClick={load}>Thử lại</button></div>}
 
@@ -376,7 +379,7 @@ useEffect(()=>{
                   <td>{b.customerName||'—'} ({b.customerPhone||'—'})</td>
                   <td>{b.courtDetails?.match(/\(([^)]+)\)/)?.[1] ?? '—'}</td>
                   <td>{money(b.courtFee ?? b.court_fee ?? b.totalAmount ?? b.amountDue ?? 0)}</td>
-                  <td>{b.status==='PENDING'?<span className="muted">Chưa thanh toán tiền sân · Hoàn tất VNPay hoặc xác nhận thu tiền sân tại quầy.</span>:<button className="primary" disabled={saving} onClick={()=>createCheckoutSlip(b.bookingId)}>Kết toán</button>}</td>
+                  <td>{b.status==='PENDING'?<button className="primary" disabled={saving} onClick={()=>setReceiptBooking(b)}>Thu tiền tại quầy</button>:<button className="primary" disabled={saving} onClick={()=>createCheckoutSlip(b.bookingId)}>Kết toán</button>}</td>
                 </tr>
               ))}
             </tbody>
@@ -386,7 +389,9 @@ useEffect(()=>{
     </section>
   </>
 )}
-{/* CHECKOUT PANEL */}
+{receiptBooking&&<CounterReceipt booking={receiptBooking} api={api} onClose={()=>{setReceiptBooking(null);loadOperationalData();}} onReceived={()=>{setReceiptBooking(null);setNotice('Đã xác nhận thu tiền sân.');loadOperationalData();}}/>}
+ {passwordOpen&&<ChangePassword api={api} onClose={()=>setPasswordOpen(false)}/>}
+ {/* CHECKOUT PANEL */}
  {tab==='checkout'&&checkoutOpen&&<div className="overlay"><section className="dialog checkout-dialog" role="dialog" aria-modal="true" aria-labelledby="checkout-dialog-title">
   <div className="dialog-head"><h2 id="checkout-dialog-title">Bill & Kết toán trả sân</h2><button aria-label="Đóng bill" disabled={saving} onClick={()=>{setCheckoutOpen(false);setError('');}}>✕</button></div>
   {error&&<div className="alert error" role="alert">{error}</div>}

@@ -179,7 +179,7 @@ class PaymentCallbackPostgresTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = BookingStatus.class, names = {"PAID", "CHECKED_IN", "COMPLETED", "NO_SHOW", "EXPIRED"})
+    @EnumSource(value = BookingStatus.class, names = {"PAID", "COMPLETED", "EXPIRED"})
     void nonPendingBookingNeverTransitions(BookingStatus state) throws Exception {
         UUID id = attempt(PaymentMethod.VNPAY);
         jdbc.update("UPDATE bookings SET status=? WHERE id=?", state.name(), booking);

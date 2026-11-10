@@ -41,10 +41,12 @@ public class PosController {
 
     public record CounterReceiptRequest(
         @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Pattern(regexp="CASH|VNPAY") String paymentMethod,
-        boolean paymentConfirmed, @jakarta.validation.constraints.Size(max=255) String reference) {}
+        boolean paymentConfirmed, @jakarta.validation.constraints.Size(max=255) String reference,
+        @jakarta.validation.constraints.DecimalMin("0.00") java.math.BigDecimal expectedAmount) {}
     @PostMapping("/bookings/{id}/receive")
+    @io.swagger.v3.oas.annotations.Operation(summary="Thu tiền sân tại quầy", description="ADMIN/STAFF xác nhận thực nhận tiền cho booking PENDING chưa hết hạn, chưa có giao dịch thanh toán. CASH hoặc VNPAY thủ công, paymentConfirmed=true; số tiền lấy từ booking.finalAmount. expectedAmount tùy chọn để đối chiếu số tiền nhân viên đã thấy trong cùng khóa booking; khác trả 409 và không ghi biên nhận. Web Admin luôn gửi expectedAmount. Retry không tạo biên nhận thứ hai. Đơn đã có lần thanh toán online phải xử lý theo luồng giao dịch đó.")
     public ApiResponse<?> receive(@org.springframework.web.bind.annotation.PathVariable java.util.UUID id,@Valid @RequestBody CounterReceiptRequest request) {
-        return ApiResponse.success(bookingPromotions.staffReceive(id,request.paymentMethod(),request.paymentConfirmed(),request.reference()));
+        return ApiResponse.success(bookingPromotions.staffReceive(id,request.paymentMethod(),request.paymentConfirmed(),request.reference(),request.expectedAmount()));
     }
 
     @GetMapping("/products")
