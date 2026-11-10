@@ -1,5 +1,14 @@
 # PostgreSQL setup and upgrades
 
+## Docker demo bootstrap
+
+Compose hiện tự tạo named volume nếu chưa có, giữ volume cũ nếu đã có. DB mới chạy
+thêm `demo-seed.sql` sau năm script schema/catalog chuẩn. Các sản phẩm catalog mới
+bắt đầu tồn 0; tồn demo được tạo từ phiếu nhập rồi trừ theo hóa đơn. Không thay đổi
+tồn của sản phẩm đã có khi chạy lại catalog seed. Xem [hướng dẫn demo](../docs/DEMO-DATA.md).
+Các ghi chú lịch sử về external volume và không tự nạp hóa đơn bên dưới mô tả cấu hình
+trước thay đổi này; `revenue-breakdown-sample.sql` vẫn không được tự chạy.
+
 ## Current payment contract — 2026-11-05
 
 Database and Java enum accept only **CASH / VNPAY**. CUSTOMER booking payments accept only VNPAY; POS/Checkout accept CASH or VNPAY. Unsupported raw payment-method requests return 400. There is no manual self-declared receipt flow, alias, bank form or reconciliation checkbox.

@@ -2,6 +2,13 @@
 
 **Full-stack web application for managing badminton court bookings, payments, and operations**
 
+## Chạy demo đầy đủ bằng Docker
+
+Máy mới chỉ cần Docker: chạy `docker compose up -d --build`. Web Admin ở
+http://localhost:5173, Web User ở http://localhost:5174. Volume mới tự nạp đầy đủ
+tài khoản, catalog, nhập kho, booking và hóa đơn demo. Xem
+[tài khoản, dữ liệu và cách giữ DB hiện có](docs/DEMO-DATA.md).
+
 [![Java](https://img.shields.io/badge/Java-17-orange.svg)](https://openjdk.org/projects/jdk/17/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.0-brightgreen.svg)](https://spring.io/projects/spring-boot)
 [![React](https://img.shields.io/badge/React-18-blue.svg)](https://reactjs.org/)

@@ -49,9 +49,17 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ./db/demo-seed.sql
+        target: /docker-entrypoint-initdb.d/08-demo-seed.sql
+        read_only: true
+        bind:
+          create_host_path: false
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bcm_admin -d badminton_court_db"]
+      # The temporary init server accepts Unix sockets before seed completion.
+      # TCP is available only after all init scripts finish successfully.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U bcm_admin -d badminton_court_db"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -90,7 +98,30 @@ services:
       - "8080:8080"
 
 
+  web-admin:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      args:
+        WEB_DIR: web-admin
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  web-user:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      args:
+        WEB_DIR: web-app
+    ports:
+      - "5174:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
 volumes:
   postgres_data:
-    external: true
     name: badminton_court_management_postgres_data
