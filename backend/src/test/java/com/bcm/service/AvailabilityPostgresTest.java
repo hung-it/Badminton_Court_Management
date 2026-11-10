@@ -51,7 +51,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @EnabledIfEnvironmentVariable(named = "BCM_TEST_DB_URL", matches = "jdbc:postgresql:.*")
 class AvailabilityPostgresTest {
 
-    private static final LocalDate DATE = LocalDate.of(2020, 2, 29);
+    private static final LocalDate DATE = LocalDate.now().plusDays(2);
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -86,17 +86,20 @@ class AvailabilityPostgresTest {
 
     @BeforeEach
     void fixtures() {
+        // This test transaction rolls back. Exclude bootstrap catalog rows from assertions
+        // about this scenario's exact eligible court count; retain all original data.
+        jdbc.update("UPDATE courts SET status='CLOSED' WHERE status='AVAILABLE'");
         UUID userId = UUID.randomUUID();
         customerId = UUID.randomUUID();
         jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,?,'Booking fixture','0900000000')",
                 userId, userId + "@availability.test", "test-only");
         jdbc.update("INSERT INTO customers (id, user_id, full_name, phone) VALUES (?, ?, ?, ?)",
                 customerId, userId, "Availability customer", "0900000000");
-        courtId = insertCourt(-20, "AVAILABLE", null);
-        otherCourtId = insertCourt(-19, "AVAILABLE", null);
-        maintenanceCourtId = insertCourt(-18, "MAINTENANCE", null);
-        closedCourtId = insertCourt(-17, "CLOSED", null);
-        deletedCourtId = insertCourt(-16, "AVAILABLE", LocalDateTime.of(2019, 1, 1, 0, 0));
+        courtId = insertCourt(99999980, "AVAILABLE", null);
+        otherCourtId = insertCourt(99999981, "AVAILABLE", null);
+        maintenanceCourtId = insertCourt(99999982, "MAINTENANCE", null);
+        closedCourtId = insertCourt(99999983, "CLOSED", null);
+        deletedCourtId = insertCourt(99999984, "AVAILABLE", LocalDateTime.of(2019, 1, 1, 0, 0));
         slotId = insertSlot("00:00:00", "01:00:00");
         otherSlotId = insertSlot("01:00:00", "02:00:00");
         deletedSlotId = insertSlot("02:00:00", "03:00:00");
@@ -126,7 +129,37 @@ class AvailabilityPostgresTest {
         AvailabilityResponse response = service.getAvailability(DATE, courtId);
 
         assertThat(slot(response, courtId, slotId).isAvailable()).isFalse();
+        assertThat(slot(response, courtId, slotId).getOccupancy()).isEqualTo("BOOKED");
         assertThat(slot(response, courtId, otherSlotId).isAvailable()).isTrue();
+        assertThat(slot(response, courtId, otherSlotId).getOccupancy()).isEqualTo("AVAILABLE");
+    }
+
+    @Test
+    void pendingAndRetainedExpiredDetailsRemainBlockedWithExplicitOccupancy() {
+        insertDetail(courtId, slotId, DATE, BookingStatus.PENDING);
+        insertDetail(courtId, otherSlotId, DATE, BookingStatus.EXPIRED);
+        var response=service.getAvailability(DATE,courtId);
+        assertThat(slot(response,courtId,slotId).getOccupancy()).isEqualTo("HELD");
+        assertThat(slot(response,courtId,otherSlotId).getOccupancy()).isEqualTo("BLOCKED");
+        assertThat(slot(response,courtId,slotId).isAvailable()).isFalse();
+        assertThat(slot(response,courtId,otherSlotId).isAvailable()).isFalse();
+    }
+
+    @Test
+    void publicGridIncludesRoundedServerPricesAndNoBookingIdentity() throws Exception {
+        jdbc.update("UPDATE courts SET base_price=10000.01 WHERE id=?", courtId);
+        jdbc.update("UPDATE time_slots SET price_multiplier=1.50 WHERE id=?", slotId);
+        insertDetail(courtId, otherSlotId, DATE, BookingStatus.PAID);
+        assertThat(slot(service.getAvailability(DATE, courtId), courtId, slotId).getPrice())
+                .isEqualByComparingTo("15000.02");
+        mvc.perform(get("/api/public/availability").contextPath("/api")
+                        .param("date", DATE.toString()).param("courtId", courtId.toString())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous()))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")))
+                .andExpect(jsonPath("$.data.courts[0].slots[?(@.timeSlotId == '" + slotId + "')].price").value(org.hamcrest.Matchers.hasItem(15000.02)))
+                .andExpect(jsonPath("$.data.courts[0].customerId").doesNotExist())
+                .andExpect(jsonPath("$.data.courts[0].bookingId").doesNotExist());
     }
 
     @Test
@@ -196,8 +229,8 @@ class AvailabilityPostgresTest {
                 .andExpect(jsonPath("$.data.date").value(DATE.toString()))
                 .andExpect(jsonPath("$.data.courts", hasSize(1)))
                 .andExpect(jsonPath("$.data.courts[0].courtId").value(courtId.toString()))
-                .andExpect(jsonPath("$.data.courts[0].courtNumber").value(-20))
-                .andExpect(jsonPath("$.data.courts[0].name").value("Court -20"))
+                .andExpect(jsonPath("$.data.courts[0].courtNumber").value(99999980))
+                .andExpect(jsonPath("$.data.courts[0].name").value("Court 99999980"))
                 .andExpect(jsonPath("$.data.courts[0].slots[0].timeSlotId").value(slotId.toString()))
                 .andExpect(jsonPath("$.data.courts[0].slots[0].startTime").value("00:00:00"))
                 .andExpect(jsonPath("$.data.courts[0].slots[0].endTime").value("01:00:00"))
@@ -257,7 +290,9 @@ class AvailabilityPostgresTest {
         insertDetail(courtId, slotId, DATE, BookingStatus.EXPIRED);
         for (int i = 0; i < 20; i++) {
             insertCourt(1000 + i, "AVAILABLE", null);
-            insertSlot("02:00:00", "03:00:00");
+            // Grow valid, non-overlapping master templates (the integrated schema rejects duplicates).
+            var start=java.time.LocalTime.of(3,0).plusMinutes(i*5L);
+            insertSlot(start.toString()+":00",start.plusMinutes(5).toString()+":00");
         }
         Map<String, String> before = databaseSnapshot();
         var statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
@@ -293,7 +328,7 @@ class AvailabilityPostgresTest {
     private UUID insertCourt(int number, String status, LocalDateTime deletedAt) {
         UUID id = UUID.randomUUID();
         jdbc.update("""
-                INSERT INTO courts (id, court_number, name, status, base_price, deleted_at)
+                INSERT INTO courts (id, court_code, name, status, base_price, deleted_at)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """, id, number, "Court " + number, status, new BigDecimal("100000.00"), deletedAt);
         return id;

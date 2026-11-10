@@ -19,6 +19,14 @@ import java.util.*;
 @RequiredArgsConstructor
 public class ProductController {
     private final MasterDataService service;
+    private final com.bcm.service.ProductPriceService prices;
+
+    @PostMapping("/{id}/approve-price")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
+    @io.swagger.v3.oas.annotations.Operation(summary="Duyệt giá niêm yết hàng nhập kho",description="Giá 0 là chờ duyệt, bị ẩn/chặn ở POS. Chỉ Admin duyệt giá >0; kiểm tra version và khóa sản phẩm để tránh ghi đè thay đổi tồn kho/giá. Không thêm trạng thái vào schema.")
+    public ApiResponse<Product> approvePrice(@PathVariable UUID id,@Valid @RequestBody com.bcm.dto.request.ApproveProductPriceRequest request){
+        return ApiResponse.success(prices.approve(id,request.price(),request.version()));
+    }
 
     @GetMapping
     public ApiResponse<List<Product>> list() {

@@ -30,6 +30,12 @@ public class ImportOrderController {
 
     private final ImportOrderService importOrderService;
 
+    @PostMapping("/manual")
+    @io.swagger.v3.oas.annotations.Operation(summary="Tạo phiếu bằng tên nhập tay",description="Tái sử dụng tên đang có (không phân biệt hoa thường); tên mới được tạo cùng transaction với phiếu. Sản phẩm mới: GOODS, đơn vị cái, giá bán 0, tồn kho 0 cho tới khi duyệt. Tổng tiền giữ chính xác 2 số thập phân, tên trùng nhiều bản ghi trả 409.")
+    public ResponseEntity<ApiResponse<ImportOrderResponse>> createManual(@Valid @RequestBody com.bcm.dto.request.ManualImportOrderRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Tạo phiếu nhập thành công",importOrderService.createManual(request)));
+    }
+
     @GetMapping
     public ResponseEntity<ApiResponse<List<ImportOrderResponse>>> findAll() {
         return ResponseEntity.ok(ApiResponse.success(importOrderService.findAll()));

@@ -74,7 +74,7 @@ class BookingWriteAuthorizationPostgresTest {
                     pair.get(1), pair.get(0));
             jdbc.update("INSERT INTO user_roles(user_id,role_id) SELECT ?,id FROM roles WHERE role_name='CUSTOMER'", pair.get(0));
         }
-        jdbc.update("INSERT INTO courts(id,court_number,name,base_price) VALUES (?,999701,'Write auth',10.05)", court);
+        jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?,999701,'Write auth',10.05)", court);
         jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier) VALUES (?,'00:00','01:00',1.10)", slot);
         tokenA = token(userA);
         assertThat(customerA).isNotEqualTo(userA);
@@ -166,12 +166,34 @@ class BookingWriteAuthorizationPostgresTest {
     }
 
     @Test
-    void anonymousWritesRetain403() throws Exception {
+    void anonymousWritesReturn401() throws Exception {
         mvc.perform(post("/api/bookings").contextPath("/api").contentType(MediaType.APPLICATION_JSON).content(createBody(customerA)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mvc.perform(post("/api/bookings/" + booking(customerA) + "/payments").contextPath("/api")
                         .contentType(MediaType.APPLICATION_JSON).content("{\"paymentMethod\":\"VNPAY\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void bookingProfileResolvesPrincipalAndCanCreateBookingWithoutUserIdGuessing() throws Exception {
+        var response = mvc.perform(get("/api/bookings/customer-profile").contextPath("/api")
+                        .header("Authorization", "Bearer " + tokenA).param("customerId", customerB.toString()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.customerId").value(customerA.toString()))
+                .andReturn().getResponse().getContentAsString();
+        UUID resolved = UUID.fromString(mapper.readTree(response).path("data").path("customerId").asText());
+        create(resolved).andExpect(status().isCreated());
+        assertThat(resolved).isNotEqualTo(userA).isNotEqualTo(customerB);
+    }
+
+    @Test
+    void bookingProfileRejectsDeletedOrMissingCustomerWithoutRepair() throws Exception {
+        jdbc.update("UPDATE customers SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", customerA);
+        mvc.perform(get("/api/bookings/customer-profile").contextPath("/api").header("Authorization", "Bearer " + tokenA))
                 .andExpect(status().isForbidden());
+        jdbc.update("DELETE FROM customers WHERE id=?", customerA);
+        mvc.perform(get("/api/bookings/customer-profile").contextPath("/api").header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isForbidden());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM customers WHERE user_id=?", Integer.class, userA)).isZero();
     }
 
     @Test
@@ -181,6 +203,8 @@ class BookingWriteAuthorizationPostgresTest {
             jdbc.update("DELETE FROM user_roles WHERE user_id=?", userA);
             jdbc.update("INSERT INTO user_roles(user_id,role_id) SELECT ?,id FROM roles WHERE role_name=?", userA, role);
             tokenA = token(userA);
+            mvc.perform(get("/api/bookings/customer-profile").contextPath("/api").header("Authorization", "Bearer " + tokenA))
+                    .andExpect(status().isForbidden());
             create(customerA).andExpect(status().isForbidden());
             payment(booking).andExpect(status().isForbidden());
         }

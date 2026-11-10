@@ -23,10 +23,11 @@ public class MasterDataService {
     private final TimeSlotRepository slots;
     private final CategoryRepository categories;
     private final ProductRepository products;
+    private final ProductPriceService productPrices;
     private final JdbcTemplate jdbc;
 
     public List<Court> courts() {
-        return courts.findByDeletedAtIsNullOrderByCourtNumberAsc();
+        return courts.findByDeletedAtIsNullOrderByCourtCodeAsc();
     }
 
     public List<TimeSlot> slots() {
@@ -38,7 +39,7 @@ public class MasterDataService {
     }
 
     public List<Product> products() {
-        return products.findByDeletedAtIsNullOrderByNameAsc();
+        return products.findByDeletedAtIsNullOrderByNameAsc().stream().map(productPrices::describe).toList();
     }
 
     public Court court(UUID id) {
@@ -58,20 +59,47 @@ public class MasterDataService {
     }
 
     public Product product(UUID id) {
-        return products.findByIdAndDeletedAtIsNull(id)
+        return products.findByIdAndDeletedAtIsNull(id).map(productPrices::describe)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy sản phẩm"));
     }
 
     public Court saveCourt(UUID id, CourtRequest r) {
-        Court c = id == null ? new Court() : court(id);
-        if (courts.existsByCourtNumberAndIdNot(r.courtNumber(), id == null ? new UUID(0, 0) : id))
+        Court c = id == null ? new Court() : courts.findAllForBookingWithLock(List.of(id)).stream()
+            .filter(v->v.getDeletedAt()==null).findFirst().orElseThrow(()->new ResourceNotFoundException("Không tìm thấy sân"));
+        if(id!=null && r.status()!=CourtStatus.AVAILABLE && c.getStatus()!=r.status()) {
+            boolean affected=Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM booking_details d JOIN bookings b ON b.id=d.booking_id JOIN time_slots t ON t.id=d.time_slot_id WHERE d.court_id=? AND b.status IN ('PENDING','PAID') AND d.booking_date+t.end_time>=?)",Boolean.class,id,LocalDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"))));
+            if(affected) throw new BadRequestException("Sân còn lịch PENDING/PAID hiện tại hoặc tương lai, không thể bảo trì/đóng cửa.");
+        }
+        if (courts.existsByCourtCodeAndIdNot(r.courtNumber(), id == null ? new UUID(0, 0) : id))
             throw new DuplicateResourceException("Số sân đã được sử dụng");
-        c.setCourtNumber(r.courtNumber());
+        c.setCourtCode(r.courtNumber());
         c.setName(r.name().strip());
         c.setType(r.type());
         c.setStatus(r.status());
         c.setBasePrice(r.basePrice());
+        // Omitted optional field preserves legacy updates; an explicit blank clears the label.
+        if (r.district() != null) c.setDistrict(r.district().isBlank() ? null : r.district().strip());
+        // Omitted, null or blank addresses preserve existing metadata on legacy updates.
+        if (r.address() != null && !r.address().isBlank()) c.setAddress(r.address().strip());
+        validateCourtAddress(c.getDistrict(), c.getAddress());
         return courts.saveAndFlush(c);
+    }
+
+    private void validateCourtAddress(String district, String address) {
+        if (address == null || address.isBlank()) return;
+        if (district == null || district.isBlank())
+            throw new BadRequestException("Vui lòng nhập quận / huyện cho địa chỉ sân");
+        // Check explicit comma-separated district components, never infer from a street/name.
+        var known = Set.of("1", "3", "5", "7", "bình thạnh", "tân bình", "gò vấp");
+        String expected = district.toLowerCase(Locale.ROOT).replaceFirst("^quận\\s+", "").strip();
+        for (String part : address.split("[,;]")) {
+            String value = part.strip().toLowerCase(Locale.ROOT);
+            boolean numericDistrict = value.matches("quận\\s+\\d+");
+            value = value.replaceFirst("^quận\\s+", "");
+            if ((numericDistrict || known.contains(value) && !value.matches("\\d+"))
+                    && !value.equals(expected))
+                throw new BadRequestException("Địa chỉ sân không khớp quận / huyện");
+        }
     }
 
     private boolean activeCourtBooking(UUID id) {
@@ -79,7 +107,7 @@ public class MasterDataService {
                 jdbc.queryForObject(
                         "select exists(select 1 from booking_details d join bookings b on"
                             + " b.id=d.booking_id where d.court_id=? and b.status in"
-                            + " ('PENDING','PAID','CHECKED_IN'))",
+                            + " ('PENDING','PAID'))",
                         Boolean.class,
                         id));
     }
@@ -168,6 +196,13 @@ public class MasterDataService {
         if (r.type() == ProductType.SERVICE && r.stockQuantity() != 0)
             throw new BadRequestException("Dịch vụ phải có tồn kho bằng 0");
         Product p = id == null ? new Product() : product(id);
+        boolean managedTarget=productPrices.managed(r.categoryId());
+        if(id==null&&managedTarget&&r.price().signum()!=0)throw new BadRequestException("Tạo hàng nhập kho với giá 0, sau đó dùng Duyệt giá niêm yết");
+        if(id!=null){
+            boolean managedSource=productPrices.managed(p.getCategoryId());
+            if((managedSource||managedTarget)&&r.price().compareTo(p.getPrice())!=0)throw new BadRequestException("Vui lòng dùng Duyệt giá niêm yết để thay đổi giá hàng nhập kho");
+            if(managedSource&&p.getPrice().signum()==0&&!managedTarget)throw new BadRequestException("Cần duyệt giá trước khi chuyển danh mục");
+        }
         if (id != null) {
             if (r.version() == null || !r.version().equals(p.getVersion()))
                 throw new DuplicateResourceException("Dữ liệu đã thay đổi; hãy tải lại sản phẩm");

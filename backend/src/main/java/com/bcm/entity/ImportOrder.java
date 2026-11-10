@@ -53,4 +53,6 @@ public class ImportOrder {
 
     @Column(name = "updated_by")
     private UUID updatedBy;
+    private UUID createdByUser;
+    private UUID updatedByUser;
 }

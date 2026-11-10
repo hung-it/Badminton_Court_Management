@@ -1,13 +1,21 @@
 .tools/
+node_modules/
+**/node_modules/
+**/dist/
+hs_err_pid*.log
 web-admin/node_modules/
 web-admin/dist/
 web-admin/.vite/
+web-app/node_modules/
+web-app/dist/
+web-app/.vite/
 frontend/node_modules/
 frontend/dist/
 backend/target/
 **/target/
 *.local
 *.local.png
+env
 .env
 .env.*
 !.env.example
@@ -18,3 +26,16 @@ backend/target/
 **/*credentials*.local
 .vscode/
 .idea/
+
+# Private browser preview, excluded from shared source.
+/web-admin/vite.local.mjs
+/web-admin/src/sampleData.local.js
+
+/db/member2-upgrade.sql
+
+/db/member2-payment-method-upgrade.sql
+.backups/
+
+# backups/ kept out of git except the audit dump
+backups/
+!backups/bcm-remove-transfer-2026-11-05T09-39-40-425Z.dump

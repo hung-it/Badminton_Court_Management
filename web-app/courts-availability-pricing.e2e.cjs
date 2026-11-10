@@ -1,0 +1,146 @@
+// Real catalog/availability/prices. Default run is read-only on the project runtime.
+// BCM_E2E_WRITE=1 enables booking checks ONLY on the dedicated audit backend.
+const {chromium, request, expect} = require('playwright/test');
+const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const baseURL = process.env.BCM_E2E_WEB_URL || 'http://127.0.0.1:5174';
+const money = value => new Intl.NumberFormat('vi-VN', {style: 'currency', currency: 'VND', maximumFractionDigits: 0}).format(value);
+const pass = name => console.log(`PASS ${name}`);
+
+(async () => {
+  const api = await request.newContext({baseURL});
+  const get = async path => { const r = await api.get(`/api${path}`); assert.equal(r.status(), 200); return (await r.json()).data; };
+  const clock = await get('/public/booking-clock');
+  const {nextBookingDate} = await import('./src/lib/bookingTime.js');
+  const date = process.env.BCM_E2E_DATE || nextBookingDate(clock.today);
+  const catalog = await get('/public/courts');
+  assert.equal(catalog.length, 210);
+  const legacyCatalog = catalog.filter(c => c.branchCourtNumber === 1);
+  assert.ok(catalog.every(c => c.district && !c.name.includes('[DEMO]')));
+  const templates = await get('/public/time-slots');
+  const grid = await get(`/public/availability?date=${date}`);
+  const targetDistricts = ['Quận 1', 'Quận 3', 'Quận 5', 'Quận 7', 'Bình Thạnh', 'Tân Bình', 'Gò Vấp'];
+  for (const district of targetDistricts) assert.ok(catalog.some(c => c.district === district));
+  const demo = legacyCatalog.find(c => (c.courtCode??c.courtNumber) === 1);
+  assert.ok(demo, 'Legacy single-court flow remains available alongside branch bookings');
+  const courtGrid = grid.courts.find(c => c.courtId === demo.id);
+  const normal = courtGrid.slots.find(s => s.available && Number(s.priceMultiplier) === 1);
+  const peak = courtGrid.slots.find(s => s.available && Number(s.priceMultiplier) > 1);
+  assert.ok(normal && peak);
+  assert.equal(Number(peak.price), Number(demo.basePrice) * Number(peak.priceMultiplier));
+  assert.equal(templates.length, 16);
+  pass('Live API: seven districts, 16 templates and server peak-hour price');
+
+  const browser = await chromium.launch({channel: 'msedge', headless: true});
+  try {
+    const context = await browser.newContext({viewport: {width: 1440, height: 1100}, timezoneId: 'America/Los_Angeles'});
+    const page = await context.newPage(); const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto(`${baseURL}/courts?date=${date}&timeSlotId=${normal.timeSlotId}`);
+    const district = page.locator('.customer-district-filter');
+    for (const label of targetDistricts) await expect(district.getByLabel(label, {exact: true})).toBeVisible();
+    await district.getByLabel('Quận 1', {exact: true}).check();
+    await expect(page.locator('.customer-court-card')).toHaveCount(legacyCatalog.filter(c => c.district === 'Quận 1').length);
+    await district.getByLabel('Quận 7', {exact: true}).check();
+    await expect(page.locator('.customer-court-card')).toHaveCount(legacyCatalog.filter(c => ['Quận 1', 'Quận 7'].includes(c.district)).length);
+    await page.getByLabel('Tên sân', {exact: true}).fill(demo.name);
+    await expect(page.locator('.customer-court-card')).toHaveCount(1);
+    await page.getByRole('spinbutton', {name: 'Giá tối đa mỗi khung giờ'}).fill(String(Number(normal.price) - 1));
+    await expect(page.locator('.customer-court-card')).toHaveCount(0);
+    for (const label of targetDistricts) await expect(district.getByLabel(label, {exact: true})).toBeVisible();
+    await page.getByRole('spinbutton', {name: 'Giá tối đa mỗi khung giờ'}).fill('');
+    await page.getByLabel('Tên sân', {exact: true}).fill('');
+    await district.getByLabel('Quận 7', {exact: true}).uncheck();
+    await expect(page.locator('.customer-court-card')).toHaveCount(legacyCatalog.filter(c => c.district === 'Quận 1').length);
+    await district.getByRole('button', {name: 'Xóa lựa chọn', exact: true}).click();
+    await expect(page.locator('.customer-court-card')).toHaveCount(legacyCatalog.length);
+    await expect(page.locator('.customer-branch-card')).toHaveCount(0);
+    pass('Seven visible checkboxes, single/multiple OR, deselect/clear, combined name/price/date/time; catalog stays stable');
+
+    const card = page.locator(`[data-court-id="${demo.id}"]`);
+    const chips = card.locator('button.customer-slot-chip');
+    const checks = card.locator('.customer-extra-slots input');
+    const available = courtGrid.slots.filter(s => s.available);
+    await expect(card.locator('.customer-slot-row')).toHaveCount(1);
+    await expect(card.getByText('Khung giờ còn:', {exact: true})).toHaveCount(1);
+    await expect(page.getByText('Đặt thêm khung giờ:', {exact: true})).toHaveCount(0);
+    await expect(chips).toHaveCount(0);
+    await expect(checks).toHaveCount(available.length);
+    assert.deepEqual(await checks.evaluateAll(nodes => nodes.map(n => n.value)), available.map(s => s.timeSlotId));
+    await card.locator(`input[value="${normal.timeSlotId}"]`).uncheck();
+    await card.locator(`input[value="${peak.timeSlotId}"]`).check();
+    await expect(card.locator('.customer-court-price-row strong')).toHaveText(money(Number(peak.price)));
+    await expect(card.locator('.customer-court-price-row small')).toContainText(peak.startTime.slice(0, 5));
+    const extra = card.locator(`.customer-extra-slots input[value="${normal.timeSlotId}"]`);
+    await extra.check();
+    await expect(card.locator('.customer-extra-slots input:checked')).toHaveCount(2);
+    await expect(extra.locator('..')).toContainText(money(Number(normal.price)));
+    await expect(page.getByText('Tổng dự kiến', {exact: false})).toHaveCount(0);
+    await expect(page.locator('.customer-slot-total')).toHaveCount(0);
+    await expect(page.getByText('sân chưa cập nhật quận / huyện', {exact: false})).toHaveCount(0);
+    await expect(extra).toBeChecked();
+    await extra.uncheck();
+    await expect(card.locator('.customer-extra-slots input:checked')).toHaveCount(1);
+    await expect(card.locator('.customer-court-price-row strong')).toHaveText(money(Number(peak.price)));
+    await extra.check();
+    const other = page.locator(`[data-court-id="${legacyCatalog.find(c => c.id !== demo.id).id}"]`);
+    await expect(other.locator('.customer-extra-slots input:checked')).toHaveCount(0);
+    await other.locator('.customer-extra-slots input:not(:checked)').first().check();
+    await expect(card.locator('.customer-extra-slots input:checked')).toHaveCount(0);
+    pass('One checkbox list matches availability; peak/unit prices and exclusive court selection remain; total preview and missing-district notice absent');
+    const screenshotDir = process.env.TEMP || process.env.TMP || '.';
+    await page.getByLabel('Tên sân', {exact: true}).fill(demo.name);
+    await card.scrollIntoViewIfNeeded();
+    await page.screenshot({path: require('node:path').join(screenshotDir, 'courts-desktop.png'), fullPage: false});
+    await page.getByLabel('Tên sân', {exact: true}).fill('');
+
+    if (process.env.BCM_E2E_WRITE === '1') {
+      assert.ok(baseURL.includes(':5175'), 'Writes require the explicitly isolated audit frontend');
+      const registered = await api.post('/api/auth/register', {data: {email: `courts-price-${crypto.randomUUID()}@example.test`, password: crypto.randomBytes(18).toString('hex'), fullName: 'Courts price audit', phone: '0900000000'}});
+      assert.equal(registered.status(), 201); const session = (await registered.json()).data;
+      await page.evaluate(s => { sessionStorage.setItem('bcm.accessToken', s.accessToken); sessionStorage.setItem('bcm.user', JSON.stringify(s.user)); }, session);
+      await page.reload();
+      await card.locator(`input[value="${normal.timeSlotId}"]`).uncheck();
+      await card.locator(`input[value="${peak.timeSlotId}"]`).check();
+      await extra.check();
+      await card.getByRole('button', {name: 'Đặt sân', exact: true}).click();
+      await expect(page).toHaveURL(/\/checkout/);
+      await expect(page.getByRole('button', {name: 'Thanh toán', exact: true})).toBeEnabled();
+      const draft = await page.evaluate(() => JSON.parse(sessionStorage.getItem('bcm-booking-draft')));
+      assert.ok(draft.bookingId);
+      const headers = {Authorization: `Bearer ${session.accessToken}`};
+      const booking = (await (await api.get(`/api/bookings/${draft.bookingId}`, {headers})).json()).data;
+      const expected = Number(peak.price) + Number(normal.price);
+      assert.equal(Number(booking.courtFee), expected);
+      assert.equal(booking.details.length, 2);
+      for (const detail of booking.details) assert.equal(Number(detail.price), Number(available.find(s => s.timeSlotId === detail.timeSlotId).price));
+      assert.ok(Math.abs((Date.parse(booking.expiresAt) - Date.parse(booking.createdAt)) / 1000 - 600) < 2);
+      await expect(page.locator('.checkout-grand-total')).toContainText(money(expected));
+      await expect(page.locator('textarea')).toHaveCount(0);
+      const recheck = await get(`/public/availability?date=${date}&courtId=${demo.id}`);
+      assert.equal(recheck.courts[0].slots.find(s => s.timeSlotId === peak.timeSlotId).available, false);
+      pass('Mixed-price checkout and stored detail/header amounts match; 10-minute hold blocks availability; checkout note absent');
+
+      const raceDate = nextBookingDate(date);
+      await page.goto(`${baseURL}/courts?date=${raceDate}&timeSlotId=${peak.timeSlotId}`);
+      await page.getByLabel('Chỉ hiện sân còn khung giờ', {exact: true}).uncheck();
+      await expect(card.getByRole('button', {name: 'Đặt sân', exact: true})).toBeEnabled();
+      const profile = (await (await api.get('/api/bookings/customer-profile', {headers})).json()).data;
+      const occupied = await api.post('/api/bookings', {headers, data: {customerId: profile.customerId,
+        details: [{courtId: demo.id, bookingDate: raceDate, timeSlotId: peak.timeSlotId}]}});
+      assert.equal(occupied.status(), 201);
+      await card.getByRole('button', {name: 'Đặt sân', exact: true}).click();
+      await expect(page.getByRole('status').filter({hasText: 'Khung giờ vừa hết chỗ'})).toBeVisible();
+      await expect(page).toHaveURL(/\/courts/);
+      await expect(card.getByRole('button', {name: 'Đặt sân', exact: true})).toBeDisabled();
+      pass('A real hold created after rendering is rejected by submit revalidation without navigating or creating another booking');
+    }
+    await page.goto(`${baseURL}/courts?date=${nextBookingDate(nextBookingDate(date))}`);
+    await expect(page.locator('.customer-extra-slots input:checked')).toHaveCount(0);
+    await page.setViewportSize({width: 390, height: 844});
+    await district.scrollIntoViewIfNeeded();
+    await page.screenshot({path: require('node:path').join(screenshotDir, 'courts-mobile.png'), fullPage: false});
+    assert.deepEqual(errors, []);
+    pass('Date change resets selections/prices; mobile screenshot; no JavaScript errors');
+  } finally { await browser.close(); await api.dispose(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

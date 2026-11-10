@@ -1,3 +1,5 @@
+name: badminton_court_management
+
 services:
   postgres:
     image: postgres:15-alpine
@@ -11,14 +13,42 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
 
     ports:
-      - "5432:5432"
+      # Host 5433: native PostgreSQL trên Windows đã chiếm 5432,
+      # application.yml mặc định trỏ localhost:5433
+      - "5433:5432"
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/migration.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
-      - ./db/member2-upgrade.sql:/docker-entrypoint-initdb.d/02-member2-upgrade.sql:ro
-      - ./db/member2-payment-method-upgrade.sql:/docker-entrypoint-initdb.d/03-payment-method-upgrade.sql:ro
-      - ./db/product-promotions-upgrade.sql:/docker-entrypoint-initdb.d/04-product-promotions-upgrade.sql:ro
+      - type: bind
+        source: ./db/migration.sql
+        target: /docker-entrypoint-initdb.d/01-init.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./db/booking-ux-upgrade.sql
+        target: /docker-entrypoint-initdb.d/02-booking-ux-upgrade.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./db/branches-seed.sql
+        target: /docker-entrypoint-initdb.d/03-branches-seed.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./db/product-promotions-upgrade.sql
+        target: /docker-entrypoint-initdb.d/06-product-promotions-upgrade.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./db/court-promotions-upgrade.sql
+        target: /docker-entrypoint-initdb.d/07-court-promotions-upgrade.sql
+        read_only: true
+        bind:
+          create_host_path: false
 
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bcm_admin -d badminton_court_db"]
@@ -40,10 +70,21 @@ services:
         condition: service_healthy
 
     environment:
+      # Pin JVM local zone to the business zone so any code still using the
+      # default zone (logging, ad-hoc LocalDateTime.now()) matches the app clock.
+      TZ: Asia/Ho_Chi_Minh
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/badminton_court_db
       SPRING_DATASOURCE_USERNAME: bcm_admin
       SPRING_DATASOURCE_PASSWORD: "12345"
       SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      BOOKING_PAYMENT_ENABLED_METHODS: VNPAY
+      BCM_SEED_ENABLED: "false"
+      BOOKING_HOLD_DURATION: ${BOOKING_HOLD_DURATION:-PT10M}
+      BOOKING_VNPAY_PAYMENT_URL: ${BOOKING_VNPAY_PAYMENT_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+      BOOKING_VNPAY_TMN_CODE: ${BOOKING_VNPAY_TMN_CODE:-}
+      BOOKING_VNPAY_HASH_SECRET: ${BOOKING_VNPAY_HASH_SECRET:-}
+      BOOKING_VNPAY_RETURN_URL: ${BOOKING_VNPAY_RETURN_URL:-}
+      BOOKING_PAYMENT_FRONTEND_RESULT_URL: ${BOOKING_PAYMENT_FRONTEND_RESULT_URL:-http://localhost:5174/payment-result}
 
     ports:
       - "8080:8080"
@@ -51,4 +92,5 @@ services:
 
 volumes:
   postgres_data:
-    driver: local
+    external: true
+    name: badminton_court_management_postgres_data

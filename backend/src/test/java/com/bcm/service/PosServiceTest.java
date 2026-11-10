@@ -44,6 +44,10 @@ class PosServiceTest {
 
     @Mock
     private ProductPromotionService productPromotions;
+    @Mock private ProductPriceService productPrices;
+
+    @Mock private com.bcm.security.CurrentStaffService currentStaff;
+    @Mock private org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     @InjectMocks
     private PosService posService;
@@ -59,7 +63,7 @@ class PosServiceTest {
         product.setPrice(BigDecimal.TEN);
         product.setStockQuantity(1);
         product.setVersion(0);
-        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdForPriceApproval(productId)).thenReturn(Optional.of(product));
         when(productRepository.saveAndFlush(any(Product.class)))
                 .thenThrow(new ObjectOptimisticLockingFailureException(Product.class, productId));
 
@@ -72,6 +76,8 @@ class PosServiceTest {
                 BigDecimal.ZERO,
                 List.of(new PosSaleItemRequest(productId, 1)));
 
+        request.setIdempotencyKey(UUID.randomUUID());request.setPaymentConfirmed(true);
+        when(currentStaff.requireUserId()).thenReturn(UUID.randomUUID());
         BadRequestException exception = assertThrows(
                 BadRequestException.class,
                 () -> posService.sell(request));

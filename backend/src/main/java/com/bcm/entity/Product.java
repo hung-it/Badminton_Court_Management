@@ -10,6 +10,8 @@ import lombok.Setter;
 @Getter
 @Setter
 public class Product extends BaseEntity {
+    @Transient
+    private boolean priceApprovalManaged;
     @Column(name = "category_id", nullable = false)
     private java.util.UUID categoryId;
 

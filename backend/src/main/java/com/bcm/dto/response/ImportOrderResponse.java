@@ -25,6 +25,8 @@ public class ImportOrderResponse {
     private LocalDate importDate;
     private UUID createdBy;
     private UUID updatedBy;
+    private UUID createdByUser;
+    private UUID updatedByUser;
     private List<ImportOrderDetail> details;
 
     public static ImportOrderResponse from(ImportOrder order, List<ImportOrderDetail> details) {
@@ -35,7 +37,7 @@ public class ImportOrderResponse {
                 .totalAmount(order.getTotalAmount())
                 .importDate(order.getImportDate())
                 .createdBy(order.getCreatedBy())
-                .updatedBy(order.getUpdatedBy())
+                .updatedBy(order.getUpdatedBy()).createdByUser(order.getCreatedByUser()).updatedByUser(order.getUpdatedByUser())
                 .details(details)
                 .build();
     }

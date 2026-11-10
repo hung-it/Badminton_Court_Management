@@ -13,12 +13,16 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface CourtRepository extends JpaRepository<Court, UUID> {
+    List<Court> findByBranchIdAndDeletedAtIsNullOrderByBranchCourtNumberAsc(UUID branchId);
 
-    List<Court> findByDeletedAtIsNullOrderByCourtNumberAsc();
+    @Query(value = "select exists(select 1 from branches where id=:id and active and deleted_at is null)", nativeQuery = true)
+    boolean isBranchActive(@Param("id") UUID id);
+
+    List<Court> findByDeletedAtIsNullOrderByCourtCodeAsc();
 
     Optional<Court> findByIdAndDeletedAtIsNull(UUID id);
 
-    boolean existsByCourtNumberAndIdNot(Integer courtNumber, UUID id);
+    boolean existsByCourtCodeAndIdNot(Integer courtNumber, UUID id);
 
     // Lock existing court rows in a stable order while a booking is created.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -29,7 +33,7 @@ public interface CourtRepository extends JpaRepository<Court, UUID> {
             select c from Court c
             where c.status = :status and c.deletedAt is null
               and (:courtId is null or c.id = :courtId)
-            order by c.courtNumber
+            order by c.courtCode
             """)
     List<Court> findForAvailability(@Param("status") CourtStatus status,
                                     @Param("courtId") UUID courtId);

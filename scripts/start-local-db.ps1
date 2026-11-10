@@ -1,5 +1,4 @@
-﻿param([switch]$Demo)
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $bin = Join-Path $root '.tools/pgsql/bin'
 $data = Join-Path $root '.tools/pgdata'
@@ -24,11 +23,10 @@ if (([string]$hasSchema).Trim() -ne 't') {
     & "$bin/psql.exe" @dbArgs -d bcm_member2_test -v ON_ERROR_STOP=1 -f "$root/db/migration.sql"
     Check-Exit
 }
-& "$bin/psql.exe" @dbArgs -d bcm_member2_test -v ON_ERROR_STOP=1 -f "$root/db/member2-upgrade.sql"
+& "$bin/psql.exe" @dbArgs -d bcm_member2_test -v ON_ERROR_STOP=1 -f "$root/db/booking-ux-upgrade.sql"
 Check-Exit
-& "$bin/psql.exe" @dbArgs -d bcm_member2_test -v ON_ERROR_STOP=1 -f "$root/db/member2-payment-method-upgrade.sql"
-Check-Exit
-if ($Demo) { & "$bin/psql.exe" @dbArgs -d bcm_member2_test -v ON_ERROR_STOP=1 -f "$root/db/member2-demo.sql"; Check-Exit }
 & "$bin/psql.exe" @dbArgs -d bcm_member2_test -v ON_ERROR_STOP=1 -f "$root/db/product-promotions-upgrade.sql"
+Check-Exit
+& "$bin/psql.exe" @dbArgs -d bcm_member2_test -v ON_ERROR_STOP=1 -f "$root/db/court-promotions-upgrade.sql"
 Check-Exit
 Write-Host 'Database ready: localhost:55432/bcm_member2_test'

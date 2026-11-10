@@ -1,6 +1,22 @@
 package com.bcm.service;
 
 import com.bcm.dto.response.RevenueReportResponse;
+import com.bcm.dto.response.InvoiceReportResponse;
+import com.bcm.entity.Invoice;
+import com.bcm.entity.InvoiceDetail;
+import com.bcm.entity.Customer;
+import com.bcm.entity.Product;
+import com.bcm.exception.ResourceNotFoundException;
+import com.bcm.repository.InvoiceDetailRepository;
+import com.bcm.repository.ProductRepository;
+import com.bcm.repository.CustomerRepository;
+import com.bcm.repository.BookingDetailRepository;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import java.util.UUID;
+import java.util.List;
+import java.util.stream.Collectors;
+
 import com.bcm.exception.BadRequestException;
 import com.bcm.repository.InvoiceRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,11 +36,65 @@ public class AnalyticsService {
     private static final String PAID_STATUS = "PAID";
 
     private final InvoiceRepository invoiceRepository;
+    private final InvoiceDetailRepository invoiceDetails;
+    private final ProductRepository products;
+    private final CustomerRepository customers;
+    private final BookingDetailRepository bookingDetails;
+    private final com.bcm.repository.BookingRepository bookings;
+    private final com.bcm.repository.PaymentTransactionRepository payments;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+
+    public InvoiceReportResponse.History history(String period, LocalDate date, int page) {
+        return history(period,date,page,null,null);
+    }
+
+    public InvoiceReportResponse.History history(String period, LocalDate date, int page, LocalDate from, LocalDate to) {
+        return history(period,date,page,from,to,"","");
+    }
+    public InvoiceReportResponse.History history(String period,LocalDate date,int page,LocalDate from,LocalDate to,String search,String method) {
+        if(!List.of("","CASH","VNPAY").contains(method)) throw new BadRequestException("Invalid payment method");
+        if(page<0) throw new BadRequestException("Trang phải từ 0 trở lên");
+        var range=resolveRange(period,date,from,to);
+        var result=invoiceRepository.searchPaidHistory(range.from().atStartOfDay(),range.toExclusive().atStartOfDay(),"%"+search.trim().toLowerCase(java.util.Locale.ROOT)+"%",method,
+            PageRequest.of(page,20,Sort.by(
+                Sort.Order.desc("createdAt"),Sort.Order.desc("id"))));
+        return new InvoiceReportResponse.History(result.stream().map(this::summary).toList(),page,result.getTotalPages(),result.getTotalElements());
+    }
+
+    public InvoiceReportResponse invoice(UUID id) {
+        var invoice=invoiceRepository.findById(id).filter(i->i.getDeletedAt()==null && PAID_STATUS.equals(i.getStatus()))
+            .orElseThrow(()->new ResourceNotFoundException("Không tìm thấy hóa đơn doanh thu"));
+        var details=invoiceDetails.findByInvoiceId(id);
+        var names=products.findAllById(details.stream().map(InvoiceDetail::getProductId).distinct().toList())
+            .stream().collect(Collectors.toMap(Product::getId,Product::getName));
+        var items=details.stream().map(d->new InvoiceReportResponse.Item(d.getProductId(),d.getProductName()!=null?d.getProductName():"[Chưa lưu snapshot] "+names.getOrDefault(d.getProductId(),"Sản phẩm"),
+            d.getQuantity(),d.getUnitPrice(),d.getDiscountAmount(),d.getPromotionName(),d.getUnitPrice().multiply(BigDecimal.valueOf(d.getQuantity())).subtract(d.getDiscountAmount()))).toList();
+        var courts=invoice.getBookingId()==null?List.<InvoiceReportResponse.CourtLine>of():
+            bookingDetails.findHistoryDetails(invoice.getBookingId()).stream().map(d->new InvoiceReportResponse.CourtLine(
+                d.getCourt().getName(),d.getBookingDate(),d.getTimeSlot().getStartTime(),d.getTimeSlot().getEndTime(),d.getPrice())).toList();
+        var receipts=payments.findInvoiceReceipts(id,invoice.getBookingId()).stream().map(p->
+            new InvoiceReportResponse.Receipt(p.getId(),p.getInvoice()==null?"COURT_PREPAYMENT":"CHECKOUT_OR_POS",
+                p.getPaymentMethod().name(),p.getSource(),p.getStatus().name(),p.getAmount(),p.getConfirmedBy(),p.getConfirmedByUser(),
+                p.getConfirmedByUser()==null?"VNPay Gateway":jdbc.queryForObject("SELECT full_name FROM users WHERE id=?",String.class,p.getConfirmedByUser()),
+                p.getTransactionDate(),p.getReference()==null?p.getTransactionId():p.getReference())).toList();
+        return new InvoiceReportResponse(summary(invoice),items,courts,receipts,invoice.getCreatedBy(),invoice.getCreatedByUser());
+    }
+
+    private InvoiceReportResponse.Summary summary(Invoice i) {
+        String name=customers.findById(i.getCustomerId()).map(Customer::getFullName).orElse("Khách vãng lai");
+        return new InvoiceReportResponse.Summary(i.getId(),i.getBookingId(),name,i.getCreatedAt(),i.getPaymentMethod(),
+            valueOrZero(i.getCourtFee()),i.getProductFee(),i.getDiscountAmount(),i.getTotalAmount(),i.getStatus(),i.getBookingId()==null?null:bookings.findById(i.getBookingId()).map(b->b.getStatus().name()).orElse(null),
+            payments.findInvoiceReceipts(i.getId(),i.getBookingId()).stream().filter(p->p.getStatus()==com.bcm.entity.PaymentStatus.SUCCESS)
+                .map(p->p.getPaymentMethod().name()).distinct().toList());
+    }
 
     public RevenueReportResponse getRevenue(String period, LocalDate date) {
-        String normalizedPeriod = normalizePeriod(period);
-        LocalDate referenceDate = date == null ? LocalDate.now() : date;
-        DateRange range = createDateRange(normalizedPeriod, referenceDate);
+        return getRevenue(period,date,null,null);
+    }
+
+    public RevenueReportResponse getRevenue(String period, LocalDate date, LocalDate from, LocalDate to) {
+        DateRange range = resolveRange(period,date,from,to);
+        String normalizedPeriod = from == null ? normalizePeriod(period) : "RANGE";
 
         InvoiceRepository.RevenueTotals totals = invoiceRepository.sumRevenueByPeriod(
                 PAID_STATUS,
@@ -41,8 +111,16 @@ public class AnalyticsService {
                 .courtFee(courtFee)
                 .productFee(productFee)
                 .discountAmount(discount)
-                .totalAmount(courtFee.add(productFee).subtract(discount))
+                .totalAmount(valueOrZero(totals.getTotalAmount()))
                 .build();
+    }
+
+    private DateRange resolveRange(String period, LocalDate date, LocalDate from, LocalDate to) {
+        if (from == null && to == null) return createDateRange(normalizePeriod(period),date == null ? LocalDate.now() : date);
+        if (from == null || to == null) throw new BadRequestException("Vui lòng chọn đủ từ ngày và đến ngày");
+        if (from.isAfter(to)) throw new BadRequestException("Từ ngày không được sau đến ngày");
+        if (to.equals(LocalDate.MAX)) throw new BadRequestException("Ngày kết thúc không hợp lệ");
+        return new DateRange(from,to.plusDays(1),to);
     }
 
     private String normalizePeriod(String period) {

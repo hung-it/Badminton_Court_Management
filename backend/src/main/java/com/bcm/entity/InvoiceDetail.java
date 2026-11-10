@@ -36,6 +36,13 @@ public class InvoiceDetail {
     @Column(name = "product_id", nullable = false)
     private UUID productId;
 
+    @Column(name = "product_name", length = 255)
+    private String productName;
+    private UUID addedBy;
+    private UUID addedByUser;
+    @Builder.Default
+    private Boolean stockDeducted = false;
+
     @Column(nullable = false)
     private Integer quantity;
 

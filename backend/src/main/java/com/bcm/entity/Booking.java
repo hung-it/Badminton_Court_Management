@@ -29,6 +29,12 @@ public class Booking {
     @JoinColumn(name = "customer_id", nullable = false)
     private Customer customer;
 
+    @Column(name = "contact_full_name", length = 255)
+    private String contactFullName;
+
+    @Column(name = "contact_phone", length = 20)
+    private String contactPhone;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private BookingStatus status = BookingStatus.PENDING;
@@ -36,8 +42,25 @@ public class Booking {
     @Column(name = "court_fee", nullable = false, precision = 10, scale = 2)
     private BigDecimal courtFee;
 
+    @Column(name = "discount_amount", nullable = false, precision = 10, scale = 2)
+    @org.hibernate.annotations.ColumnDefault("0")
+    private BigDecimal discountAmount = new BigDecimal("0.00");
+
+    @Column(name = "promotion_code", length = 50)
+    private String promotionCode;
+
+    @Column(name = "requested_voucher", length = 50)
+    private String requestedVoucher;
+
+    public BigDecimal getFinalAmount() {
+        return courtFee.subtract(discountAmount);
+    }
+
     @Column(name = "expires_at")
     private LocalDateTime expiresAt;
+
+    @Column(name = "checkout_release_at")
+    private LocalDateTime checkoutReleaseAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")

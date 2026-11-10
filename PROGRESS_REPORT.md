@@ -1,298 +1,217 @@
-# 📊 PROGRESS REPORT - Badminton Court Management System
-> **Generated:** 2024-10-13
-> **Status:** ✅ ALL BUGS FIXED - BACKEND CLEAN
+# BÁO CÁO TIẾN TRÌNH — Quản lý sân cầu lông
+
+**Ngày cập nhật:** 27/10/2026
+**Người lập:** Thành viên 1 (Leader)
+**Nhánh hiện tại:** `develop` (đã merge `feature/front-end-user` + `feature/booking-history-v2`)
 
 ---
 
-## 📋 EXECUTIVE SUMMARY
+## 1. Tóm tắt
 
-| Module | Owner | Status | Critical Issues |
-|--------|-------|--------|----------------|
-| **Auth & Foundation** | TV1 (Leader) | ✅ FIXED | 0 issues |
-| **Master Data & Promotions** | TV2 | ✅ APPROVED | 0 issues |
-| **Booking & Payments** | TV3 | ✅ APPROVED | 0 issues |
-| **POS & Analytics** | TV4 | ✅ FIXED | 0 issues |
+Backend của cả 4 thành viên đã hoàn thành và **build/test thành công**. Frontend Web App
+đã được hợp nhất vào `develop` (đủ trang sân cầu lông, hướng dẫn, liên hệ, khách vãng
+lai, checkout, thanh toán VNPay). Trong phiên làm việc này đã:
 
-**Overall Test Status:** 229 tests, 0 failures, 0 errors
-**Build Status:** ✅ SUCCESS
-**Re-review Status:** ✅ ALL CLEAN
-
----
-
-## 🔧 BUG FIXES COMPLETED
-
-### TV1 - Authentication & Security
-
-| # | File | Fix | Status |
-|---|------|-----|--------|
-| 1 | `JwtUtil.java` | `validateToken()` now verifies signature via `extractAllClaims()` | ✅ Fixed |
-| 2 | `JwtAuthenticationFilter.java` | Refresh token in Authorization header returns 401 | ✅ Fixed |
-| 3 | `SecurityConfig.java` | `authenticationEntryPoint` returns 401 (not 403) | ✅ Fixed |
-
-### TV4 - POS & Analytics
-
-| # | File | Fix | Status |
-|---|------|-----|--------|
-| 1 | `PosService.java` | GOODS products deduct stock; SERVICE products skip stock check | ✅ Fixed |
-| 2 | `CheckoutService.java` | `discountAmount` aggregated from DRAFT POS invoices; `totalAmount = courtFee + productFee - discountAmount` | ✅ Fixed |
-| 3 | `PosSaleRequest.java` | New `discountAmount` field with validation | ✅ Added |
-| 4 | `CheckoutResponse.java` | New `discount_amount` field exposed | ✅ Added |
-| 5 | `InvoiceRepository.java` | New `sumDiscountAmountByBookingIdAndStatus` query | ✅ Added |
+- Tái hiện và sửa lỗi đăng nhập 403 (`Invalid CORS request`)
+- Tách cổng `web-admin` (5173) khỏi `web-app` (5174) để tránh trùng cổng
+- Nâng schema database lên đúng phiên bản nhánh hiện tại (35 chi nhánh / 210 sân)
+- Bổ sung trang **Lịch đặt của tôi** (`/my-bookings`) — thay thế redirect cũ
+- Chạy và xác nhận toàn bộ test backend (487) + test browser
+- Merge `feature/front-end-user` → `develop`, rồi `feature/booking-history-v2` → `develop`
 
 ---
 
-## 🔴 TV1 - AUTHENTICATION & FOUNDATION
-### Status: ✅ FIXED
+## 2. Trạng thái theo thành viên
+
+| # | Thành viên | Phạm vi | Trạng thái |
+|---|---|---|---|
+| 1 | Leader | Backend nền tảng, Auth, tích hợp, review | ✅ Hoàn thành |
+| 2 | Web Admin | Quản lý sân, hàng hóa, POS, thanh toán | ✅ Hoàn thành |
+| 3 | Booking Engine | Đặt sân, VNPay sandbox, availability, branches | ✅ Hoàn thành |
+| 4 | Front-end User | Trang khách: sân, hướng dẫn, liên hệ, checkout | ✅ Hoàn thành |
+| 1 | Leader (bổ sung) | Trang lịch sử đặt sân, sửa lỗi hệ thống | ✅ Hoàn thành |
 
 ---
 
-## 🔴 TV1 - AUTHENTICATION & FOUNDATION
-### Status: ⚠️ REQUEST CHANGES
+## 3. Những gì đã sửa trong phiên làm việc này
 
-**Phân hệ:** JWT Auth, Security, Base Entities, Data Seeder
+### 3.1 Lỗi đăng nhập 403 — "Bạn không có quyền thực hiện thao tác này"
 
-### Critical Issues Cần Sửa
+**Nguyên nhân:** `CorsConfig.java` chỉ khai báo `http://localhost:5173`, nhưng Vite chạy
+với `--host 127.0.0.1` nên origin thực tế của trình duyệt là `http://127.0.0.1:5174`
+→ backend trả `403 Invalid CORS request`.
 
-#### 1. JwtUtil.validateToken() - Security Vulnerability (CRITICAL)
-**File:** `JwtUtil.java:161-167`
-```java
-public Boolean validateToken(String token) {
-    try {
-        return !isTokenExpired(token);  // CHỈ check expiration, KHÔNG verify signature!
-    } catch (Exception e) {
-        return false;
-    }
-}
+> Lưu ý: `curl` không gửi header `Origin` nên gọi tay vẫn trả 200 — dễ gây nhầm là
+> lỗi mật khẩu. Phải kiểm tra bằng trình duyệt thật.
+
+**Cách xác nhận:** dùng Playwright bắt network khi click nút "Đăng nhập", thấy
+`POST /api/auth/login -> 403 Invalid CORS request`.
+
+**Cách sửa:** bổ sung đủ origin `localhost`/`127.0.0.1` cho các cổng dev.
+
+### 3.2 Trùng cổng dev server
+
+`web-app` và `web-admin` cùng dùng cổng **5173** với `strictPort: true` → không chạy
+đồng thời được. Đã tách:
+
+| Ứng dụng | Cổng | Ghi chú |
+|---|---|---|
+| Web App (khách) | 5174 | `vite.config.js` dùng `BCM_API_PROXY_TARGET` |
+| Web Admin | 5173 | trở lại cổng chuẩn |
+
+### 3.3 Schema database
+
+Nhánh `feature/front-end-user` yêu cầu schema mới (`branches`, `court_code`,
+`checkout_release_at`, `promotion_code`…) nhưng database đang chạy mới chỉ có schema
+cũ (8 sân, không có bảng `branches`). Đã áp theo đúng thứ tự `docker-compose.yml`:
+
 ```
-**Vấn đề:** Token bị chỉnh sửa (tampered) nhưng còn hạn vẫn pass validation.
-**Fix:** Verify signature bằng `Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token)`
-
-#### 2. JwtAuthenticationFilter - Refresh Token Xử Lý Sai
-**File:** `JwtAuthenticationFilter.java:49-53`
-```java
-if (!jwtUtil.isAccessToken(jwt)) {
-    log.warn("Rejected non-access token in Authorization header");
-    filterChain.doFilter(request, response);  // BUG: tiếp tục request
-    return;
-}
+db/migration.sql  →  db/booking-ux-upgrade.sql  →  db/branches-seed.sql
 ```
-**Vấn đề:** Refresh token được gửi trong header → request vẫn đi qua không có auth.
-**Fix:** Trả HTTP 401 ngay lập tức.
 
-#### 3. SecurityConfig - HTTP Status Code Sai
-**File:** `SecurityConfig.java:46-47`
-```java
-.response.setStatus(HttpServletResponse.SC_FORBIDDEN);  // 403 - Sai!
-```
-**Vấn đề:** Authentication failure phải trả 401, không phải 403.
-**Fix:** Đổi thành `SC_UNAUTHORIZED` (401).
+Kết quả: **35 chi nhánh, 210 sân, mỗi chi nhánh 6 sân.** Tất cả file đều idempotent
+và có guard, không mất dữ liệu booking/payment.
 
-#### 4. SecurityConfig - Response Format Không Nhất Quán
-**File:** `SecurityConfig.java:47-50`
-```java
-"{\"success\":false,\"message\":\"Access denied: Authentication required\"}"
-```
-**Vấn đề:** Không đúng format `ApiResponse<T>`.
-**Fix:** Sử dụng `ApiResponse.error()` hoặc `ObjectMapper`.
+### 3.4 Trang "Lịch đặt của tôi" (`/my-bookings`)
 
-### Minor Issues (Optional)
-- `RegisterRequest.java` - Phone validation `^[0-9]{10,20}$` không hỗ trợ +84
-- `DataSeeder.java:81` - Dùng `RuntimeException` thay vì custom exception
-- `Role.java` - `@PrePersist` trùng với `@CreatedDate`
+Trước đây route `/my-bookings` chỉ `Navigate` về `/courts#upcoming-booking`, dù Header,
+Footer, Guide, Contact, PaymentResult đều trỏ link "Lịch đặt của tôi" tới đó. Đã thay
+bằng trang thật.
+
+**File mới:**
+
+| File | Nội dung |
+|---|---|
+| `web-app/src/CustomerBookingHistory.jsx` | Trang lịch sử: danh sách, lọc trạng thái, phân trang, mở chi tiết, lịch sử thanh toán, retry |
+| `web-app/src/customer-history.css` | Style theo design system `--cc-*` sẵn có của các trang khách |
+
+**File sửa:** `App.jsx` (nối route), `CustomerLayout.jsx`, `CustomerGuide.jsx`,
+`CustomerContact.jsx`, `PaymentResult.jsx` (đổi link sang `/my-bookings`).
+
+> Trang dùng lại `tokenStore` / `apiClient` / `api()` / `readSession()` / `clearSession()`
+> sẵn có của nhánh hiện tại → **không tạo cơ chế auth thứ hai**. Đăng nhập một lần dùng
+> được mọi trang.
 
 ---
 
-## 🟢 TV2 - MASTER DATA & PROMOTIONS
-### Status: ✅ APPROVED
+## 4. Kết quả kiểm thử
 
-**Phân hệ:** Courts, TimeSlots, Categories, Products, Public API
+### 4.1 Backend
 
-### Kết Quả Review
-- ✅ CRUD operations đầy đủ và đúng
-- ✅ Soft delete pattern nhất quán
-- ✅ Business validation tốt (không xóa sân đang có booking)
-- ✅ Price multiplier logic đúng (17h-21h = 1.5x)
-- ✅ Overlap detection cho time slots
-- ✅ Optimistic locking trên Product (@Version)
+| Cách chạy | Kết quả |
+|---|---|
+| `mvn test` (không truyền DB) | 352 tests · 0 fail · 0 error · 251 skip |
+| `mvn test` + `BCM_TEST_DB_URL` trỏ DB dev | 487 tests · 20 fail — **do giới hạn connection PostgreSQL (max_connections=100)** |
+| `mvn test` + DB test riêng + `forkCount=1` | **487 tests · 0 fail · 0 error · BUILD SUCCESS** |
 
-### Minor Notes
-1. `CourtRepository:21` - Query `existsByCourtNumberAndIdNot` thiếu `deletedAt IS NULL` (impact thấp)
-2. `TimeSlotRepository:22-24` - JPQL style (parentheses cho clarity)
+Lệnh chạy đầy đủ (không skip test PostgreSQL):
 
----
-
-## 🟢 TV3 - BOOKING & PAYMENTS
-### Status: ✅ APPROVED
-
-**Phân hệ:** Booking Engine, Concurrency Control, VNPay Integration, Expiration
-
-### Kết Quả Review
-- ✅ **Pessimistic Locking đúng cách:** Court → Booking → Payment lock order
-- ✅ **Idempotent Payment Webhook:** Check `status == SUCCESS` trước settle
-- ✅ **Concurrency Test Suite:** 5 test files với real PostgreSQL locks
-- ✅ **Unique Index:** `uq_booking_slot` là final safeguard
-- ✅ **Expiration Flow:** Poll + re-check clock + atomic delete
-- ✅ **Payment Status Machine:** Clean state transitions với error codes
-
-### Optional Improvements
-1. VNPay config mặc định empty → nên fail-fast hoặc document
-2. Không có Micrometer metrics cho expiration job
-
----
-
-## 🔴 TV4 - POS & ANALYTICS
-### Status: ⚠️ REQUEST CHANGES
-
-**Phân hệ:** POS Sales, Checkout, Import Orders, Revenue Analytics
-
-### Critical Issues Cần Sửa
-
-#### 1. POS Sale Trừ Stock Cho SERVICE Products (CRITICAL)
-**File:** `PosService.java:51-55`
-```java
-if (product.getStockQuantity() < quantity) {  // Áp dụng cho TẤT CẢ products
-    throw new BadRequestException(INSUFFICIENT_STOCK_MESSAGE);
-}
-product.setStockQuantity(product.getStockQuantity() - quantity);
-```
-**Vấn đề:** SERVICE products (như shuttlecock stringing) không có tồn kho vật lý.
-**Fix:**
-```java
-if (product.getType() == ProductType.GOODS) {
-    if (product.getStockQuantity() < quantity) {
-        throw new BadRequestException(INSUFFICIENT_STOCK_MESSAGE);
-    }
-    product.setStockQuantity(product.getStockQuantity() - quantity);
-}
+```bash
+cd backend
+BCM_TEST_DB_URL="jdbc:postgresql://127.0.0.1:5433/bcm_test_db" \
+BCM_TEST_DB_USERNAME="bcm_admin" \
+BCM_TEST_DB_PASSWORD="12345" \
+mvn test -DforkCount=1 -DreuseForks=false -Dspring.datasource.hikari.maximum-pool-size=10
 ```
 
-#### 2. Discount Amount Không Bao Giờ Được Áp Dụng (CRITICAL)
-**Files:** `CheckoutService.java:52`, `PosService.java:89-90`
-```java
-.discountAmount(BigDecimal.ZERO)
-.totalAmount(courtFee.add(productFee))  // KHÔNG trừ discount!
-```
-**Vấn đề:** `totalAmount` không trừ `discountAmount`.
-**Fix:**
-```java
-.discountAmount(booking.getDiscountAmount() != null ? booking.getDiscountAmount() : BigDecimal.ZERO)
-.totalAmount(courtFee.add(productFee).subtract(discountAmount))
-```
+**Ghi chú quan trọng:** test PostgreSQL **phải** dùng database riêng. Chạy trên
+database dev sẽ vỡ `FATAL: sorry, too many clients already` vì mỗi test class dựng
+một Spring context riêng, mỗi context giữ một connection pool.
 
-### Required Changes
+### 4.2 Frontend (Playwright, dữ liệu thật từ backend)
 
-#### 3. Import Order Approve Thiếu Pessimistic Lock
-**File:** `ImportOrderService.java:97-104`
-**Vấn đề:** Đọc nhiều products sequential, có thể conflict dưới high concurrency.
-**Fix:** Dùng `@Lock(PESSIMISTIC_WRITE)` hoặc atomic update.
+| Luồng | Kết quả |
+|---|---|
+| Đăng ký tài khoản mới | ✅ |
+| Đăng nhập khách hàng | ✅ |
+| Đăng nhập admin | ✅ |
+| Trang `/` `/courts` `/guide` `/contact` `/login` `/register` | ✅ HTTP 200, hiển thị đúng |
+| `/my-bookings` — chưa đăng nhập | ✅ Hiện yêu cầu đăng nhập |
+| `/my-bookings` — khách, có booking | ✅ Hiện booking, trạng thái, giá, chi tiết khung giờ |
+| Lọc theo trạng thái (PENDING/PAID/EXPIRED) | ✅ Lọc đúng |
+| Mở chi tiết + lịch sử thanh toán | ✅ |
+| Responsive mobile 390px | ✅ Không tràn ngang |
+| Lỗi console / network | ✅ 0 lỗi |
 
-#### 4. Checkout Gộp InvoiceDetails Không Validate
-**File:** `CheckoutService.java:57-66`
-**Vấn đề:** InvoiceDetails được move mà không kiểm tra quantity changes.
-**Recommendation:** Thêm comment document hoặc implement validation.
+### 4.3 Build
 
-### Optional
-- Không record `payment_transactions` cho POS checkout
-- `Invoice.java` thiếu `@Version`
-
----
-
-## 🧪 TEST RESULTS
-
-```
-Tests run: 229, Failures: 0, Errors: 0, Skipped: 143
-BUILD SUCCESS
-```
-
-| Test Category | Count | Status |
-|---------------|-------|--------|
-| Unit Tests (Auth, Security, Utils) | ~40 | ✅ PASS |
-| Service Tests (POS, Payment) | ~45 | ✅ PASS |
-| Controller Tests | ~18 | ✅ PASS |
-| Integration Tests (Postgres) | ~143 | ⏭️ SKIPPED |
-
-> ⚠️ **Lưu ý:** 143 integration tests bị skip vì cần PostgreSQL thật. Cần chạy với Docker container để test đầy đủ.
-
-## 📅 TIẾN TRÌNH THEO SPRINT
-
-| Sprint | Tuần | Nội dung | Trạng thái |
-|--------|------|---------|------------|
-| **Sprint 1** | Tuần 1 | Foundation + Auth + Master Data Basic | ✅ DONE |
-| **Sprint 2** | Tuần 2 | Booking Engine + POS + Promotions | ✅ DONE |
-| **Sprint 3** | Tuần 3 | VNPay Integration + Analytics | ✅ DONE |
-| **Sprint 4** | Tuần 4 | Bug Fixes + Frontend | ✅ BACKEND CLEAN |
-
----
-
-## ✅ VERIFICATION
-
-### Test Results
-```
-Tests run: 229, Failures: 0, Errors: 0, Skipped: 143
-BUILD SUCCESS
-```
-
-### Re-review Status (After Fixes)
-- **TV1 (Auth):** APPROVE - All fixes correct, no regressions
-- **TV4 (POS):** APPROVE - All fixes correct, no regressions
-
-### Files Modified
-1. `JwtUtil.java` - Signature verification in validateToken
-2. `JwtAuthenticationFilter.java` - 401 for refresh tokens
-3. `SecurityConfig.java` - 401 status code
-4. `PosService.java` - GOODS vs SERVICE stock handling + discount
-5. `CheckoutService.java` - Discount aggregation + totalAmount formula
-6. `PosSaleRequest.java` - Added discountAmount field
-7. `CheckoutResponse.java` - Added discountAmount field
-8. `InvoiceRepository.java` - Added sumDiscountAmountByBookingIdAndStatus query
-9. `JwtAuthenticationFilterTest.java` - Updated test for 401 behavior
-10. `PosServiceTest.java` - Updated test for new constructor
-
----
-
-## 🎯 NEXT STEPS (FOR FRONTEND TEAM)
-
-### Immediate
-1. ✅ Backend is clean - Frontend team can start building UI
-2. CORS config already permits all origins in `CorsConfig.java`
-3. Swagger UI available at `/swagger-ui.html` (once running)
-
-### Optional Enhancements (Future)
-1. Add Micrometer metrics for production observability
-2. Refresh token revocation mechanism
-3. Add `@DecimalMin("0.0")` validation to PosSaleRequest.discountAmount
-4. Cap discountAmount to prevent negative totalAmount
-
----
-
-## 📁 KEY FILES & LOCATIONS
-
-```
-Badminton_Court_Management/
-├── backend/
-│   ├── src/main/java/com/bcm/
-│   │   ├── config/           # Security, CORS, Swagger, Booking configs
-│   │   ├── controller/       # 16 REST controllers
-│   │   ├── dto/              # Request/Response DTOs
-│   │   ├── entity/           # 22 JPA entities
-│   │   ├── exception/        # Custom exceptions + GlobalExceptionHandler
-│   │   ├── repository/       # 18 repositories
-│   │   ├── security/         # JWT filter, UserDetailsService
-│   │   └── service/          # Business logic services
-│   └── src/test/            # 26 test files
-├── db/
-│   └── migration.sql        # Database schema (18 tables)
-├── docker-compose.yml       # PostgreSQL + Adminer
-└── docs/                    # API documentation
+```text
+web-app:    npm run build   → ✓ built in 8.21s
+backend:    mvn -DskipTests package → ✓ BUILD SUCCESS
 ```
 
 ---
 
-## 👥 CONTACT
+## 5. Trạng thái hệ thống đang chạy
 
-| Thành viên | Module | Git Branch |
-|------------|--------|------------|
-| TV1 (Leader) | Auth & Foundation | `feature/foundation-and-auth` |
-| TV2 | Master Data & Promotions | `feature/master-data-and-promotions` |
-| TV3 | Booking & Payments | `feature/booking-and-users` |
-| TV4 | POS & Analytics | `feature/pos-and-analytics` |
+| Thành phần | Địa chỉ | Trạng thái |
+|---|---|---|
+| PostgreSQL | `localhost:5433` | 🟢 healthy (35 branches / 210 courts) |
+| Backend | `http://localhost:8080/api` | 🟢 UP |
+| Swagger | `http://localhost:8080/api/swagger-ui.html` | 🟢 |
+| Web App | `http://127.0.0.1:5174` | 🟢 |
+| Web Admin | `http://127.0.0.1:5173` | 🟢 |
+
+**Tài khoản demo**
+
+```text
+admin@bcm.com  / admin123     (ADMIN)
+guest@bcm.com  / guest123     (CUSTOMER)
+```
+
+**Khởi động lại từ đầu**
+
+```bash
+# Terminal 1 — database + backend
+docker compose up -d --build
+
+# Terminal 2 — web app
+cd web-app && npm install && npm run dev      # http://127.0.0.1:5174
+
+# Terminal 3 — web admin
+cd web-admin && npm install && npm run dev    # http://127.0.0.1:5173
+```
+
+---
+
+## 6. Vấn đề còn lại & đề xuất
+
+| # | Vấn đề | Mức độ | Ghi chú |
+|---|---|---|---|
+| 1 | `max_connections = 100` của PostgreSQL hơi thấp cho test suite | Thấp | Đã xử lý bằng DB test riêng + `forkCount=1`. Có thể nâng lên 200–300 |
+| 2 | `web-app/dist/` đang được Git theo dõi | Thấp | Cân nhắc thêm `web-app/dist/` vào `.gitignore` |
+| 3 | Biến môi trường VNPay trong `docker-compose.yml` đang để trống | Trung bình | `BOOKING_VNPAY_TMN_CODE` / `HASH_SECRET` cần điền để chạy thanh toán thật |
+| 4 | `docker-compose.yml` có URL VNPay chứa ký tự ẩn (zero-width) | Trung bình | `https://sandbox.vnpayment.vn` — nên kiểm tra lại khi deploy |
+| 5 | Trang `/profile` vẫn là placeholder | Thấp | Chưa có yêu cầu cụ thể |
+
+---
+
+## 7. Việc chưa làm
+
+- **Chưa tạo PR** — đã merge thẳng vào `develop` theo yêu cầu.
+- **Chưa xoá** `web-app/dist/` khỏi Git (thao tác khôi phục bị hệ thống chặn).
+- **Chưa deploy** môi trường thật.
+
+---
+
+## 8. Lịch sử merge vào `develop`
+
+```text
+70154f0  Merge branch 'feature/front-end-user' into develop
+7750141  Merge branch 'feature/booking-history-v2' into develop
+6a83709  feat(web-app): them trang lich dat cua toi
+```
+
+Nhánh `feature/front-end-user` (của Thành viên 4) đã được merge vào `develop` trước,
+bao gồm commit `275b228` "Xóa icon bị chê" sửa `web-admin/src/App.jsx` — build
+web-admin sau thay đổi này vẫn PASS.
+
+---
+
+## 8. Ghi chú về quy trình
+
+Trong phiên trước tôi đã tạo nhánh `feature/booking-history` từ `develop` (commit `7d27fb6`)
+mà **không** đưa code từ `feature/front-end-user` vào — khiến toàn bộ phần việc của
+Thành viên 4 vắng mặt khỏi nhánh đó. Phiên này đã sửa lại: lấy `feature/front-end-user`
+làm nền, tạo nhánh `feature/booking-history-v2`, và chỉ bổ sung phần còn thiếu
+(trang lịch sử) mà không sửa lại các trang đã hoàn thành.

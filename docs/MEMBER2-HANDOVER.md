@@ -8,7 +8,7 @@ Không triển khai booking engine, hóa đơn, nhập/xuất kho, upload ảnh,
 Đã chuẩn bị JDK 17, Maven portable `.tools/apache-maven-3.9.9`, PostgreSQL portable `.tools/pgsql`; Node.js có sẵn.
 Mở các terminal riêng ở thư mục gốc:
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/start-local-db.ps1 -Demo
+powershell -ExecutionPolicy Bypass -File scripts/start-local-db.ps1
 powershell -ExecutionPolicy Bypass -File scripts/start-backend.ps1
 powershell -ExecutionPolicy Bypass -File scripts/start-frontend.ps1
 ```
@@ -21,10 +21,10 @@ Không đổi database cũ ở cổng 5433.
 ## Máy khác / leader
 Cần JDK 17, Maven 3.8+, Node.js 22+ và PostgreSQL 15+.
 `.tools` là công cụ/dữ liệu cục bộ, không commit. `node_modules`, `dist`, `target` cũng được bỏ qua.
-1. Database mới: chạy `db/migration.sql`, rồi `db/member2-upgrade.sql` và `db/member2-payment-method-upgrade.sql`.
-2. Database đã có schema: chạy `db/member2-upgrade.sql` và `db/member2-payment-method-upgrade.sql` sau khi sao lưu và kiểm tra dữ liệu hiện có.
+1. Database mới: chạy `db/migration.sql`, rồi `db/booking-ux-upgrade.sql` và `db/booking-ux-upgrade.sql`.
+2. Database đã có schema: chạy `db/booking-ux-upgrade.sql` và `db/booking-ux-upgrade.sql` sau khi sao lưu và kiểm tra dữ liệu hiện có.
 3. Upgrade không ghi đè giá/tồn hiện có. Dữ liệu cũ trùng tên danh mục, chồng khung giờ hoặc giá/tồn không hợp lệ sẽ khiến migration dừng để sửa dữ liệu có chủ đích.
-4. Seed demo là tùy chọn `db/member2-demo.sql`.
+4. The obsolete member2 demo seed was removed; use current admin APIs for controlled demo data.
 5. Đặt biến môi trường `DB_URL`, `DB_USER`, `DB_PASSWORD`; chạy backend với profile `local`, hoặc sửa cấu hình database theo môi trường của nhóm.
 6. FE nằm trong `web-admin/`: `npm ci`, `npm run dev`; build: `npm run build`.
 
@@ -108,3 +108,19 @@ mvn -f backend/pom.xml test
 - Build Web Admin thành công trong `web-admin/`; script start-frontend.ps1 và tài nguyên main.jsx phục vụ HTTP 200.
 - `/api/public/courts` và `/api/public/categories` trả HTTP 200 khi không có token.
 - PostgreSQL: cả invoices và payment_transactions nhận CASH/BANK_TRANSFER/VNPAY, từ chối MOMO; migration chạy lại thành công. Dữ liệu fixture kiểm tra được rollback.
+
+
+## POS / Checkout receipts — 2026-11-05
+
+- Upgrade: chỉ section `invoice-receipts` trong `db/booking-ux-upgrade.sql`, sau backup `pg_dump -Fc` và kiểm tra `pg_restore --list`. Không chạy seed. Section có thể chạy lại; dữ liệu không tương thích bị chặn và báo UUID, không tự chuyển đổi tiền.
+- `POST /pos/sales`: `idempotencyKey` UUID bắt buộc; retry cùng key và body. Bán lẻ yêu cầu `paymentConfirmed: true`, `paymentMethod: CASH|VNPAY`, `reference` tùy chọn. Booking POS tạo DRAFT với method NULL, không thu tiền hàng. `staffId` bị bỏ qua khi xác định actor.
+- `POST /checkout/{booking}`: gửi `expectedAmountDue` từ preview hiện tại, `paymentConfirmed: true` khi còn phải thu, `paymentMethod: CASH|VNPAY`, `reference` tùy chọn. Khóa Booking; retry trả cùng invoice. Không gọi gateway từ POS/Checkout. amountDue=0 không tạo khoản thu.
+- `POST /pos/bookings/{id}/receive`: xác nhận tiền sân tại quầy bằng CASH/VNPAY với `paymentConfirmed: true`; nguồn MANUAL khác GATEWAY. CUSTOMER Gateway/IPN giữ nguyên.
+- Kho trừ tại POS cho GOODS (cả DRAFT/PAID), không trừ lại tại Checkout. `POST /pos/sales/{id}/cancel` hoàn kho DRAFT đúng một lần; nháp đã gộp không được hủy riêng. Dòng legacy không rõ nguồn tồn kho phải đối soát.
+- Lưu snapshot tên hàng và người thêm hàng; hóa đơn lưu người lập; payment_transactions lưu người thu, staffs.id/user.id, thời điểm và tham chiếu. ADMIN thiếu Staff chỉ lưu user.id.
+- invoice.payment_method chỉ lưu CASH/VNPAY nếu đơn phương thức; NULL khi nhiều phương thức hoặc không có khoản thu. DTO paymentMethods lấy từ receipt SUCCESS (tiền sân trước, khoản thu thêm sau), distinct; UI hiển thị bằng dấu +. Chi tiết hóa đơn trả `receipts`; tiền sân trả trước vẫn gắn Booking, tiền hàng gắn Invoice. Không tạo lại khoản thu tiền sân.
+- Doanh thu tổng lấy một lần từ hóa đơn PAID. Doanh thu nhân viên lấy khoản SUCCESS có confirmed_by; online/Admin/số dư legacy chưa đối soát ở nhóm không gán. Kỳ đối soát theo created_at của hóa đơn, thống nhất Statistics. Chi tiết sản phẩm hiển thị người thêm hàng, không dùng làm doanh thu thu ngân.
+- Đã kiểm tra references: giữ Analytics/Statistics/Revenue Breakdown và `/analytics/revenue` còn được kiểm tra bởi acceptance/API tests. Bỏ hai truy vấn/alias repository cũ không còn caller; không xóa bảng hay dữ liệu.
+- Kiểm thử PostgreSQL an toàn opt-in bằng BCM_INVOICE_DEV_DB_* cho CheckoutReceiptPostgresTest và PosPromotionCodePostgresTest; chỉ tạo/dọn fixture UUID riêng, không reset bảng. Không đặt BCM_TEST_DB_URL vào DB phát triển để chạy các suite legacy có thao tác schema/reset.
+
+- Docker: Compose cố định CUSTOMER methods=VNPAY; POS/Checkout nhận CASH/VNPAY qua xác nhận thủ công, không dùng config gateway để phân loại khoản thu. BCM_SEED_ENABLED=false bỏ qua DataSeeder khi khởi động Docker. Chỉ recreate backend bằng `docker compose up -d --no-deps backend`; không recreate PostgreSQL/volume/network. Environment của container cũ và .env cũ không tự cập nhật khi thay JAR hay restart.

@@ -52,8 +52,9 @@ public class VnPayIpnVerifier {
         boolean success = "00".equals(response) && "00".equals(status);
         if (success && new BigDecimal(transaction).signum() <= 0) { throw error(INVALID_DATA); }
         LocalDateTime date = null;
-        // vnp_PayDate is optional. Preserve NULL if omitted, never substitute the server clock.
+        // A successful receipt requires a provider date; never fabricate one from the clock.
         String payDate = fields.get("vnp_PayDate");
+        if(success && (payDate==null || payDate.isEmpty())) throw error(INVALID_DATA);
         if (payDate != null && !payDate.isEmpty()) {
             try {
                 if (!payDate.matches("[0-9]{14}")) { throw error(INVALID_DATA); }
@@ -62,7 +63,7 @@ public class VnPayIpnVerifier {
             } catch (java.time.DateTimeException ex) { throw error(INVALID_DATA); }
         }
         return new PaymentNotification(attempt, PaymentMethod.VNPAY, new BigDecimal(amount).movePointLeft(2),
-                success, transaction, date);
+                success, transaction, date, !success && "02".equals(status));
     }
 
     private String required(Map<String, String> fields, String key, String pattern,

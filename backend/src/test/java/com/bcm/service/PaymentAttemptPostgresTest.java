@@ -203,11 +203,11 @@ class PaymentAttemptPostgresTest {
 
     @ParameterizedTest
     @EnumSource(value = PaymentStatus.class, names = "PENDING", mode = EnumSource.Mode.EXCLUDE)
-    void existingNonPendingHistoryIsNotMutatedOrTreatedAsBookingPaymentResult(PaymentStatus state) throws Exception {
+    void terminalHistoryIsPreservedAndSuccessfulHistoryBlocksAnotherCharge(PaymentStatus state) throws Exception {
         UUID history = seedPayment(state);
         var before = jdbc.queryForMap("SELECT * FROM payment_transactions WHERE id = ?", history);
-        assertThat(perform(PaymentMethod.VNPAY)).isEqualTo(201);
-        assertCount(2);
+        assertThat(perform(PaymentMethod.VNPAY)).isEqualTo(state == PaymentStatus.SUCCESS ? 409 : 201);
+        assertCount(state == PaymentStatus.SUCCESS ? 1 : 2);
         assertThat(jdbc.queryForMap("SELECT * FROM payment_transactions WHERE id = ?", history)).isEqualTo(before);
     }
 
@@ -278,7 +278,8 @@ class PaymentAttemptPostgresTest {
     void expirationStillExpiresBookingAndPreservesCreatedAttempt() throws Exception {
         assertThat(perform(PaymentMethod.VNPAY)).isEqualTo(201);
         var before = jdbc.queryForMap("SELECT * FROM payment_transactions WHERE booking_id = ?", bookingId);
-        setTime(NOW.plusMinutes(5));
+        // Past the 5-minute in-flight window the created PENDING attempt is stale, so the booking expires.
+        setTime(NOW.plusMinutes(11));
         assertThat(expiration.expireBooking(bookingId)).isTrue();
         assertThat(perform(PaymentMethod.VNPAY)).isEqualTo(400);
         assertThat(jdbc.queryForMap("SELECT * FROM payment_transactions WHERE booking_id = ?", bookingId)).isEqualTo(before);

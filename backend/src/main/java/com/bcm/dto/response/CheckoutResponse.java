@@ -29,6 +29,19 @@ public class CheckoutResponse {
 
     @JsonProperty("total_amount")
     private BigDecimal totalAmount;
+    private BigDecimal courtDiscount;
+    private BigDecimal productDiscount;
+    private BigDecimal paidCourtAmount;
+    // Compatibility: amount to collect at this checkout, retained in replay responses.
+    private BigDecimal amountDue;
+    private BigDecimal collectedAmount;
+    // Outstanding after the returned operation; zero after a successful checkout.
+    private BigDecimal remainingDue;
+    private boolean checkoutEligible;
+    private String checkoutMessage;
+    private java.time.LocalDateTime latestEndAt;
+    private String paymentMethod;
+    private java.util.List<String> paymentMethods;
 
     public BigDecimal getCourtAmount() {
         return courtFee;

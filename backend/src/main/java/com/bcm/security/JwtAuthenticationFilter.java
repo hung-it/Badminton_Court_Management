@@ -58,19 +58,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 String email = jwtUtil.extractEmail(jwt);
                 String userId = jwtUtil.extractUserId(jwt);
-                java.util.List<String> roles = jwtUtil.extractRoles(jwt);
 
-                UserDetails userDetails;
-                if (userId != null && roles != null && !roles.isEmpty()) {
-                    // Truly stateless: construct UserPrincipal directly from verified JWT claims
-                    java.util.Collection<org.springframework.security.core.GrantedAuthority> authorities =
-                            roles.stream()
-                                    .map(org.springframework.security.core.authority.SimpleGrantedAuthority::new)
-                                    .collect(java.util.stream.Collectors.toList());
-                    userDetails = new UserPrincipal(userId, email, "", authorities, true);
-                } else {
-                    // Fallback to database lookup if token lacks uid or roles
-                    userDetails = userDetailsService.loadUserByUsername(email);
+                // Resolve current lock state and roles, so existing access tokens cannot outlive a lock.
+                UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+                if (!userDetails.isEnabled() || (userId != null && (!(userDetails instanceof UserPrincipal p) || !userId.equals(p.getId())))) {
+                    throw new org.springframework.security.access.AccessDeniedException("Account unavailable");
                 }
 
                 if (jwtUtil.validateToken(jwt, userDetails)) {
@@ -88,6 +80,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 }
             }
         } catch (Exception ex) {
+            SecurityContextHolder.clearContext();
             log.error("Cannot set user authentication: {}", ex.getMessage());
         }
 

@@ -5,6 +5,7 @@ import com.bcm.dto.response.PaymentAttemptResponse;
 import com.bcm.entity.BookingStatus;
 import com.bcm.entity.Booking;
 import com.bcm.entity.PaymentStatus;
+import jakarta.validation.Validator;
 import com.bcm.entity.PaymentTransaction;
 import com.bcm.exception.BadRequestException;
 import com.bcm.exception.DuplicateResourceException;
@@ -28,16 +29,20 @@ public class PaymentAttemptService {
     private final PaymentGatewayPreparation gateway;
     private final Clock clock;
     private final CurrentCustomerService currentCustomer;
+    private final Validator validator;
+    private final BookingPromotionService promotions;
 
     public PaymentAttemptService(BookingRepository bookings, PaymentTransactionRepository payments,
                                  PaymentGatewayPreparation gateway,
                                  @Qualifier("bookingExpirationClock") Clock clock,
-                                 CurrentCustomerService currentCustomer) {
+                                 CurrentCustomerService currentCustomer, Validator validator, BookingPromotionService promotions) {
         this.bookings = bookings;
         this.payments = payments;
         this.gateway = gateway;
         this.clock = clock;
         this.currentCustomer = currentCustomer;
+        this.validator = validator;
+        this.promotions = promotions;
     }
 
     @Transactional
@@ -57,6 +62,9 @@ public class PaymentAttemptService {
             throw new BadRequestException("Booking ID and payment method are required");
         }
         gateway.validateMethod(request.getPaymentMethod());
+        if (!validator.validate(request).isEmpty()) {
+            throw new BadRequestException("Valid payment method is required");
+        }
         UUID trustedCustomerId = currentCustomer.requireCustomerId();
         // Reuse the existing Booking row lock without changing expiration's query or lock order.
         var booking = bookings.findByIdForExpiration(bookingId)
@@ -69,9 +77,10 @@ public class PaymentAttemptService {
             var pending = payments.findFirstByBookingIdAndStatusOrderByCreatedAtAscIdAsc(bookingId, PaymentStatus.PENDING);
             if (pending.isPresent()) {
                 var existing = pending.get();
-                if (existing.getInvoice() != null) {
-                    throw new DuplicateResourceException("A PENDING payment attempt exists with a different target");
+                if (existing.getInvoice() != null || existing.getPaymentMethod() != request.getPaymentMethod()) {
+                    throw new DuplicateResourceException("A PENDING payment attempt exists with a different method or target");
                 }
+
                 return response(existing, booking);
             }
         }
@@ -83,8 +92,10 @@ public class PaymentAttemptService {
         payment.setBooking(booking);
         payment.setPaymentMethod(request.getPaymentMethod());
         payment.setStatus(PaymentStatus.PENDING);
-        payment.setAmount(booking.getCourtFee());
+        promotions.validatePayment(booking);
+        payment.setAmount(booking.getFinalAmount());
         // invoice, transaction ID and transaction date remain NULL; no gateway result exists yet.
+
         payments.saveAndFlush(payment);
         return response(payment, booking);
     }
@@ -114,15 +125,30 @@ public class PaymentAttemptService {
     }
 
     private void requireEligible(Booking booking) {
+        if (booking.getCheckoutReleaseAt() != null
+                && !booking.getCheckoutReleaseAt().isAfter(LocalDateTime.now(clock))
+                && !payments.existsByBookingIdAndStatus(booking.getId(), PaymentStatus.PENDING)) {
+            throw new DuplicateResourceException("BOOKING_EXPIRED: Checkout release deadline has passed");
+        }
+        if (booking.getFinalAmount() == null || booking.getFinalAmount().signum() <= 0) {
+            throw new BadRequestException("Booking amount must be positive");
+        }
         if (booking.getStatus() != BookingStatus.PENDING || booking.getExpiresAt() == null
                 || !booking.getExpiresAt().isAfter(LocalDateTime.now(clock))) {
             throw new BadRequestException("Booking must be PENDING and before its payment deadline");
         }
+        if (payments.existsByBookingIdAndStatus(booking.getId(), PaymentStatus.SUCCESS)) {
+            throw new DuplicateResourceException("Booking already has a successful payment; reconciliation required");
+        }
+        // Starting/continuing payment cancels an early release under the same Booking lock.
+        // The original ten-minute deadline remains unchanged.
+        booking.setCheckoutReleaseAt(null);
     }
 
     private PaymentAttemptResponse response(PaymentTransaction payment, Booking booking) {
         var preparation = gateway.prepare(payment.getPaymentMethod(), payment.getId(), payment.getAmount());
         return new PaymentAttemptResponse(payment.getId(), booking.getId(), payment.getPaymentMethod(),
-                payment.getStatus(), payment.getAmount(), booking.getExpiresAt(), preparation);
+                payment.getStatus(), payment.getAmount(), booking.getExpiresAt(), preparation,
+                booking.getStatus());
     }
 }
