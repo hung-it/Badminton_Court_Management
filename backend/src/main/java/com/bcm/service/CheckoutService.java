@@ -123,6 +123,27 @@ public class CheckoutService {
         UUID actor=currentStaff.requireUserId();
         Booking booking=bookingRepository.findByIdForExpiration(bookingId)
             .orElseThrow(()->new ResourceNotFoundException("Booking not found"));
+        return complete(booking,request,actor,currentStaff.currentStaffId().orElse(null));
+    }
+
+    /** Called by the scheduler through the Spring proxy; every booking has its own transaction. */
+    @Transactional
+    public boolean autoCheckout(UUID bookingId, java.time.Duration grace) {
+        if(grace==null || grace.isNegative() || grace.isZero()) throw new IllegalArgumentException("Grace must be positive");
+        Booking booking=bookingRepository.findByIdForExpiration(bookingId).orElse(null);
+        if(booking==null || booking.getStatus()!=BookingStatus.PAID) return false;
+        var end=latestEnd(bookingId);
+        if(end==null || nowVietnam().isBefore(end.plus(grace))) return false;
+        // Staff must reconcile all open merchandise bills, even a zero-value draft.
+        if(!invoiceRepository.findByBookingIdAndStatusForUpdate(bookingId,PENDING_POS_STATUS).isEmpty()) return false;
+        var request=new com.bcm.dto.request.CheckoutRequest();
+        request.setExpectedAmountDue(BigDecimal.ZERO);
+        complete(booking,request,null,null);
+        return true;
+    }
+
+    private ApiResponse<CheckoutResponse> complete(Booking booking, com.bcm.dto.request.CheckoutRequest request, UUID actor, UUID staffId) {
+        UUID bookingId=booking.getId();
         if(booking.getStatus()==BookingStatus.COMPLETED) {
             var paid=invoiceRepository.findByBookingIdAndStatusForUpdate(bookingId,PAID_STATUS).stream()
                 .filter(i->i.getParentInvoiceId()==null).toList();
@@ -133,9 +154,9 @@ public class CheckoutService {
             throw new BadRequestException("Booking must already be paid before staff checkout");
         if(invoiceRepository.findByBookingIdAndStatusForUpdate(bookingId,PAID_STATUS).stream().anyMatch(i->i.getParentInvoiceId()==null))
             throw new BadRequestException("Booking already has a paid main invoice; reconciliation required");
-        var end=latestEnd(bookingId);
-        if(end==null) throw new BadRequestException("Không đủ chi tiết lịch chơi để xác minh giờ kết thúc.");
-        if(nowVietnam().isBefore(end)) throw new BadRequestException("Chưa đến giờ kết thúc lịch chơi, không thể kết toán.");
+        var start=earliestStart(bookingId);
+        if(start==null) throw new BadRequestException("Không đủ chi tiết lịch chơi để xác minh giờ bắt đầu.");
+        if(nowVietnam().isBefore(start)) throw new BadRequestException("Ca chơi chưa bắt đầu, không thể kết toán.");
         BigDecimal paidCourt=verifiedCourtReceipt(booking);
         var drafts=invoiceRepository.findByBookingIdAndStatusForUpdate(bookingId,PENDING_POS_STATUS);
         for(var draft:drafts) {
@@ -163,7 +184,7 @@ public class CheckoutService {
         Invoice invoice=Invoice.builder().bookingId(bookingId).customerId(booking.getCustomer().getId())
             .status(PAID_STATUS).paymentMethod(summary).courtFee(booking.getCourtFee()).productFee(productFee)
             .discountAmount(booking.getDiscountAmount().add(productDiscount)).totalAmount(total)
-            .createdBy(currentStaff.currentStaffId().orElse(null)).updatedBy(currentStaff.currentStaffId().orElse(null))
+            .createdBy(staffId).updatedBy(staffId)
             .createdByUser(actor).build();
         invoice=invoiceRepository.saveAndFlush(invoice);
         for(var draft:drafts) {
@@ -204,12 +225,13 @@ public class CheckoutService {
         BigDecimal total=b.getFinalAmount().add(products).subtract(productDiscount);
         BigDecimal paidCourt=verifiedCourtReceipt(b);
         var end=latestEnd(id);
-        boolean eligible=end!=null && !nowVietnam().isBefore(end);
+        var start=earliestStart(id);
+        boolean eligible=start!=null && !nowVietnam().isBefore(start);
         return CheckoutResponse.builder().bookingId(id).courtFee(b.getCourtFee()).productFee(products)
             .discountAmount(b.getDiscountAmount().add(productDiscount)).courtDiscount(b.getDiscountAmount())
             .productDiscount(productDiscount).totalAmount(total).paidCourtAmount(paidCourt)
             .amountDue(total.subtract(paidCourt)).collectedAmount(BigDecimal.ZERO).remainingDue(total.subtract(paidCourt))
-            .latestEndAt(end).checkoutEligible(eligible).checkoutMessage(eligible?null:end==null?"Không đủ chi tiết lịch chơi để xác minh giờ kết thúc.":"Chưa đến giờ kết thúc lịch chơi, không thể kết toán.").build();
+            .latestEndAt(end).checkoutEligible(eligible).checkoutMessage(eligible?null:start==null?"Không đủ chi tiết lịch chơi để xác minh giờ bắt đầu.":"Ca chơi chưa bắt đầu, không thể kết toán.").build();
     }
 
     private java.time.LocalDateTime nowVietnam() {
@@ -225,6 +247,18 @@ public class CheckoutService {
             if(end==null || candidate.isAfter(end)) end=candidate;
         }
         return end;
+    }
+
+    private java.time.LocalDateTime earliestStart(UUID id) {
+        var details=bookingDetailRepository.findHistoryDetails(id);
+        if(details.isEmpty()) return null;
+        java.time.LocalDateTime start=null;
+        for(var d:details) {
+            if(d.getBookingDate()==null || d.getTimeSlot()==null || d.getTimeSlot().getStartTime()==null) return null;
+            var candidate=d.getBookingDate().atTime(d.getTimeSlot().getStartTime());
+            if(start==null || candidate.isBefore(start)) start=candidate;
+        }
+        return start;
     }
 
     // A PAID booking header alone is not evidence of receipt. Never collect its court fee again

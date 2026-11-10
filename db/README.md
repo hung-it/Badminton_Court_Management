@@ -2,7 +2,7 @@
 
 ## Current payment contract — 2026-11-05
 
-Database and Java enum accept only **CASH / VNPAY**. CUSTOMER booking payments accept only VNPAY; POS/Checkout accept CASH or VNPAY. Unsupported raw payment-method requests return 400. There is no manual self-declared receipt flow, alias, bank form or reconciliation checkbox.
+New payments accept only **CASH / VNPAY**. The Java enum also maps BANK_TRANSFER solely for explicitly preserved historical records; it is rejected for all new payments. CUSTOMER booking payments accept only VNPAY; POS/Checkout accept CASH or VNPAY. Unsupported raw payment-method requests return 400. There is no manual self-declared receipt flow, alias, bank form or reconciliation checkbox.
 
 After explicit authorization to remove unfinished development data, a fresh custom backup was verified: `backups/bcm-remove-transfer-2026-11-05T09-39-40-425Z.dump`, SHA256 `fc29699d4333b9bacc8306f405db0a41f6d973478e1b3a2f7a974d7f03fa026c`, 155 TOC lines. The reviewed cluster contained 9 transfer payments (6 PENDING, 3 SUCCESS), 9 bookings and 5 dependent counter-settlement invoices. They were deleted atomically, not relabelled. Retained data across all 21 tables was fingerprint-checked before COMMIT, including products/stock and independent CASH/VNPAY history. Full counts and UUIDs: `docs/admin-customers-invoices.md`.
 
@@ -27,6 +27,25 @@ On 2026-11-05 a new backup was captured before the main database constraint corr
 All nine old BCM containers were removed without deleting any volume. The two Compose services were recreated after a no-cache backend build using the same external PostgreSQL volume. Hibernate validation/startup and the separate 16-case acceptance suite passed. This does not certify full legacy regression, empty-database bootstrap or a restore rehearsal. See docs/admin-customers-invoices.md for the full evidence and container inventory. Never run migration.sql again on the retained data directory.
 
 Use docker-compose.yml as the bootstrap source of truth. The existing development service is bcm-postgres / badminton_court_db, exposed on localhost:5433. Resolve connection identity from the container environment; do not copy credentials into ad hoc scripts.
+
+## Preserve reviewed legacy transfers — 2026-11-10
+
+The user explicitly approved retaining the main database's 5 successful BANK_TRANSFER
+receipts (1,260,000 VND) and 3 BANK_TRANSFER invoices (780,000 VND). After a verified
+backup, run `legacy-bank-transfer-upgrade.sql` before `booking-ux-upgrade.sql` on
+that existing database. This opt-in script is not in fresh Compose bootstrap.
+It only adds `source=LEGACY` metadata, preserves all original receipt/invoice fields,
+and installs triggers rejecting any new BANK_TRANSFER row, relabelling into it, or
+updates/deletes of protected historical rows. It never invents staff confirmation.
+The ordinary upgrade still rejects unreviewed unsupported history; fresh databases
+retain two-method constraints. Restored-backup tests cover both read compatibility
+and forbidden writes. Existing legacy invoices remain included in revenue and use
+an explicit historical label in the UI.
+
+The 2026-11-10 deployment skipped the shared catalog seed: only schema sections of
+product/court upgrades were needed. Before/after hashes matched all original fields
+and row counts of 11 business tables; no historical money/status/date/method changed.
+See `docs/booking-checkout-account-fixes.md` for deployment evidence and backups.
 
 ## Fresh database
 

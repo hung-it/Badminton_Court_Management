@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.*;
 
 /** Explicit opt-in; UUID-owned fixtures only. Never resets tables or seeds. */
 @org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
-@SpringBootTest(properties={"booking.expiration-enabled=false","bcm.seed.enabled=false","spring.jpa.show-sql=false","logging.level.org.hibernate.SQL=OFF","logging.level.org.springframework.security=ERROR"})
+@SpringBootTest(properties={"booking.auto-checkout.enabled=false","booking.expiration-enabled=false","bcm.seed.enabled=false","spring.jpa.show-sql=false","logging.level.org.hibernate.SQL=OFF","logging.level.org.springframework.security=ERROR"})
 @EnabledIfEnvironmentVariable(named="BCM_INVOICE_DEV_DB_URL", matches="jdbc:postgresql:.*")
 class CheckoutReceiptPostgresTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry r) {
@@ -30,6 +30,7 @@ class CheckoutReceiptPostgresTest {
         r.add("spring.datasource.password",()->System.getenv("BCM_INVOICE_DEV_DB_PASSWORD"));
     }
     @Autowired CheckoutService checkout;
+    @Autowired com.bcm.repository.BookingRepository bookingRepository;
     @Autowired MasterDataService master;
     @Autowired PaymentCallbackTransactionService callbacks;
     @Autowired CourtPromotionService courtPromotions;
@@ -132,6 +133,104 @@ class CheckoutReceiptPostgresTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE invoice_id=?",Integer.class,result.getInvoiceId())).isZero();
         assertThat(analytics.invoice(result.getInvoiceId()).receipts()).hasSize(1);
         assertThat(result.getCollectedAmount()).isEqualByComparingTo("0");assertThat(result.getRemainingDue()).isEqualByComparingTo("0");
+    }
+
+    @Test void autoCheckoutRecognizesVerifiedRevenueWithoutStaffAndOnlyOnce() {
+        var before=analytics.getRevenue("DAY",LocalDate.now()).getTotalAmount();
+        SecurityContextHolder.clearContext();
+        assertThat(checkout.autoCheckout(booking,java.time.Duration.ofHours(3))).isTrue();
+        assertThat(checkout.autoCheckout(booking,java.time.Duration.ofHours(3))).isFalse();
+        assertThat(analytics.getRevenue("DAY",LocalDate.now()).getTotalAmount().subtract(before)).isEqualByComparingTo("200000");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM invoices WHERE booking_id=? AND status='PAID'",Integer.class,booking)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT created_by_user FROM invoices WHERE booking_id=?",UUID.class,booking)).isNull();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?",Integer.class,booking)).isEqualTo(1);
+    }
+
+    @Test void automaticCheckoutRechecksGraceAndPosAndVerifiedPayment() {
+        assertThat(checkout.autoCheckout(booking,java.time.Duration.ofDays(3))).isFalse();
+        var draft=pos.sell(sale(true,null));
+        assertThat(checkout.autoCheckout(booking,java.time.Duration.ofHours(3))).isFalse();
+        pos.cancelDraft(draft.getId());
+        jdbc.update("UPDATE payment_transactions SET status='PENDING' WHERE booking_id=?",booking);
+        assertThatThrownBy(()->checkout.autoCheckout(booking,java.time.Duration.ofHours(3))).hasMessageContaining("verified full court receipt");
+        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,booking)).isEqualTo("PAID");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM invoices WHERE booking_id=? AND status='PAID'",Integer.class,booking)).isZero();
+    }
+
+    @Test void automaticAndManualCheckoutRacePostsOneInvoice() throws Exception {
+        var calls=new java.util.concurrent.atomic.AtomicInteger();
+        var results=concurrent(()->{
+            if(calls.getAndIncrement()==0) {checkout.autoCheckout(booking,java.time.Duration.ofHours(3));return booking;}
+            checkout.checkout(booking,receipt(null,"0"));return booking;
+        });
+        assertThat(results).hasSize(2);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM invoices WHERE booking_id=? AND status='PAID'",Integer.class,booking)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?",Integer.class,booking)).isEqualTo(1);
+    }
+
+    @Test void autoCheckoutQueryUsesLatestEndAndSkipsUnverifiedOrPosBookings() {
+        var cutoff=java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"));
+        assertThat(bookingRepository.findAutoCheckoutCandidates(cutoff)).contains(booking);
+        jdbc.update("UPDATE payment_transactions SET status='PENDING' WHERE booking_id=?",booking);
+        assertThat(bookingRepository.findAutoCheckoutCandidates(cutoff)).doesNotContain(booking);
+        jdbc.update("UPDATE payment_transactions SET status='SUCCESS' WHERE booking_id=?",booking);
+        pos.sell(sale(true,null));
+        assertThat(bookingRepository.findAutoCheckoutCandidates(cutoff)).doesNotContain(booking);
+    }
+
+    @Test void autoCheckoutWaitsForExactGraceAfterLatestSlotAndJobNeedsNoUser() {
+        jdbc.update("INSERT INTO booking_details(booking_id,court_id,time_slot_id,booking_date,price) SELECT booking_id,court_id,time_slot_id,booking_date+1,price FROM booking_details WHERE booking_id=?",booking);
+        Object target=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(checkout);
+        var previous=(java.time.Clock)org.springframework.test.util.ReflectionTestUtils.getField(target,"clock");
+        var end=jdbc.queryForObject("SELECT max(d.booking_date+t.end_time) FROM booking_details d JOIN time_slots t ON t.id=d.time_slot_id WHERE d.booking_id=?",java.time.LocalDateTime.class,booking);
+        var zone=java.time.ZoneId.of("Asia/Ho_Chi_Minh");
+        try {
+            var boundary=end.plusHours(3).atZone(zone).toInstant();
+            org.springframework.test.util.ReflectionTestUtils.setField(target,"clock",java.time.Clock.fixed(boundary.minusNanos(1),zone));
+            assertThat(checkout.autoCheckout(booking,java.time.Duration.ofHours(3))).isFalse();
+            SecurityContextHolder.clearContext();
+            var fixed=java.time.Clock.fixed(boundary,zone);
+            org.springframework.test.util.ReflectionTestUtils.setField(target,"clock",fixed);
+            new BookingAutoCheckoutJob(bookingRepository,checkout,fixed,java.time.Duration.ofHours(3)).run();
+            assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,booking)).isEqualTo("COMPLETED");
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM invoices WHERE booking_id=? AND status='PAID'",Integer.class,booking)).isEqualTo(1);
+        } finally {org.springframework.test.util.ReflectionTestUtils.setField(target,"clock",previous);}
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"CASH","VNPAY"})
+    void pendingCounterReceiptHttpRequiresConfirmationAndRetriesSafely(String method) throws Exception {
+        jdbc.update("DELETE FROM payment_transactions WHERE booking_id=?",booking);
+        jdbc.update("UPDATE bookings SET status='PENDING',expires_at=? WHERE id=?",java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).plusHours(1),booking);
+        var auth=org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(SecurityContextHolder.getContext().getAuthentication());
+        String route="/api/pos/bookings/"+booking+"/receive";
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(route).contextPath("/api").with(auth)
+            .contentType("application/json").content(mapper.writeValueAsBytes(Map.of("paymentMethod",method,"paymentConfirmed",false))))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?",Integer.class,booking)).isZero();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(route).contextPath("/api").with(auth)
+            .contentType("application/json").content(mapper.writeValueAsBytes(Map.of("paymentMethod",method,"paymentConfirmed",true,"expectedAmount",1))))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isConflict());
+        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,booking)).isEqualTo("PENDING");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?",Integer.class,booking)).isZero();
+        for(int repeat=0;repeat<2;repeat++) mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(route).contextPath("/api").with(auth)
+            .contentType("application/json").content(mapper.writeValueAsBytes(Map.of("paymentMethod",method,"paymentConfirmed",true,"reference","counter-test","expectedAmount",200000))))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
+        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,booking)).isEqualTo("PAID");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?",Integer.class,booking)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT payment_method FROM payment_transactions WHERE booking_id=?",String.class,booking)).isEqualTo(method);
+    }
+
+    @Test void counterReceiptRejectsExpiredBookingAndExistingOnlineAttempt() {
+        jdbc.update("DELETE FROM payment_transactions WHERE booking_id=?",booking);
+        jdbc.update("UPDATE bookings SET status='PENDING',expires_at=? WHERE id=?",java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).plusHours(1),booking);
+        jdbc.update("INSERT INTO payment_transactions(booking_id,payment_method,status,amount) VALUES (?,'VNPAY','PENDING',200000)",booking);
+        assertThatThrownBy(()->promotions.staffReceive(booking,"CASH",true,null,new BigDecimal("200000"))).hasMessageContaining("đã có giao dịch");
+        jdbc.update("DELETE FROM payment_transactions WHERE booking_id=?",booking);
+        jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?",java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).minusSeconds(1),booking);
+        assertThatThrownBy(()->promotions.staffReceive(booking,"CASH",true,null,new BigDecimal("200000"))).hasMessageContaining("BOOKING_EXPIRED");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?",Integer.class,booking)).isZero();
     }
     @Test void cancelDraftRestoresStockExactlyOnceAndRetainsSnapshots() {
         var r=sale(true,null);var inv=pos.sell(r);assertThat(pos.sell(r).getId()).isEqualTo(inv.getId());assertThat(stock()).isEqualTo(9);
@@ -267,7 +366,7 @@ class CheckoutReceiptPostgresTest {
         assertThat(report.staff().stream().filter(r->staff.equals(r.staffId())).map(r->r.total()).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo("10007");
         assertThat(report.staff().stream().map(r->r.total()).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo("210007");
     }
-    @Test void checkoutRequiresTheLatestActualEndAndRejectsMissingDetails() {
+    @Test void checkoutRequiresTheActualStartAndRejectsMissingDetails() {
         jdbc.update("UPDATE booking_details SET booking_date=? WHERE booking_id=?",LocalDate.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).plusDays(1),booking);
         assertThat(checkout.preview(booking).isCheckoutEligible()).isFalse();
         assertThatThrownBy(()->checkout.checkout(booking,receipt(null,"0"))).hasMessageContaining("không thể kết toán");
@@ -382,7 +481,7 @@ class CheckoutReceiptPostgresTest {
         var result=bookingService.createBooking(new CreateBookingRequest(customer,List.of(new CreateBookingRequest.Detail(LocalDate.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).plusDays(2),court,slot))));
         booking=result.getBookingId();assertThat(result.getStatus()).isEqualTo(BookingStatus.PENDING);
     }
-    @Test void completeDemoUsesOnlyOfficialStatesAndCheckoutAtLatestEnd() throws Exception {
+    @Test void completeDemoAllowsEarlyCheckoutAtActualStart() throws Exception {
         createPendingBookingAsCustomer();
         assertThatThrownBy(()->paymentAttempts.createAttempt(booking,new CreatePaymentAttemptRequest(PaymentMethod.CASH))).isInstanceOf(com.bcm.exception.BadRequestException.class);
         var attempt=paymentAttempts.createAttempt(booking,new CreatePaymentAttemptRequest(PaymentMethod.VNPAY));
@@ -392,12 +491,13 @@ class CheckoutReceiptPostgresTest {
         assertThatThrownBy(()->checkout.checkout(booking,receipt("CASH","10000"))).hasMessageContaining("không thể kết toán");
         Object target=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(checkout);
         var previous=(java.time.Clock)org.springframework.test.util.ReflectionTestUtils.getField(target,"clock");
-        var end=jdbc.queryForObject("SELECT max(d.booking_date+t.end_time) FROM booking_details d JOIN time_slots t ON t.id=d.time_slot_id WHERE d.booking_id=?",java.time.LocalDateTime.class,booking);
+        var start=jdbc.queryForObject("SELECT min(d.booking_date+t.start_time) FROM booking_details d JOIN time_slots t ON t.id=d.time_slot_id WHERE d.booking_id=?",java.time.LocalDateTime.class,booking);
         try {
             var zone=java.time.ZoneId.of("Asia/Ho_Chi_Minh");
-            org.springframework.test.util.ReflectionTestUtils.setField(target,"clock",java.time.Clock.fixed(end.atZone(zone).toInstant().minusNanos(1),zone));
+            org.springframework.test.util.ReflectionTestUtils.setField(target,"clock",java.time.Clock.fixed(start.atZone(zone).toInstant().minusNanos(1),zone));
             assertThat(checkout.preview(booking).isCheckoutEligible()).isFalse();
-            org.springframework.test.util.ReflectionTestUtils.setField(target,"clock",java.time.Clock.fixed(end.atZone(zone).toInstant(),zone));
+            org.springframework.test.util.ReflectionTestUtils.setField(target,"clock",java.time.Clock.fixed(start.atZone(zone).toInstant(),zone));
+            assertThat(checkout.preview(booking).isCheckoutEligible()).isTrue();
             var result=checkout.checkout(booking,receipt("CASH","10000")).getData();
             assertThat(result.getRemainingDue()).isEqualByComparingTo("0");assertThat(result.getPaymentMethods()).containsExactly("VNPAY","CASH");
             assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,booking)).isEqualTo("COMPLETED");

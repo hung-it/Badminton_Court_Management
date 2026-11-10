@@ -171,7 +171,7 @@ class FeatureAcceptanceTest {
   assertThat(db.queryForObject("select count(*) from invoices where booking_id=?",Integer.class,b)).isZero();
  }
  @Test void enumAndDatabaseRejectRemovedPaymentMethod()throws Exception{
-  assertThat(com.bcm.entity.PaymentMethod.values()).extracting(Enum::name).containsExactly("CASH","VNPAY");
+  assertThat(com.bcm.entity.PaymentMethod.values()).extracting(Enum::name).containsExactly("CASH","VNPAY","BANK_TRANSFER");
   for(String table:List.of("invoices","payment_transactions")){
    String constraint=db.queryForObject("select pg_get_constraintdef(oid) from pg_constraint where conname=? and conrelid=?::regclass",String.class,table+"_payment_method_check",table);
    assertThat(constraint).contains("CASH","VNPAY").doesNotContain("BANK_TRANSFER");

@@ -4,6 +4,10 @@
 # ======================================
 
 booking:
+  auto-checkout:
+    enabled: ${BOOKING_AUTO_CHECKOUT_ENABLED:true}
+    grace: ${BOOKING_AUTO_CHECKOUT_GRACE:PT3H}
+    interval: ${BOOKING_AUTO_CHECKOUT_INTERVAL:PT5M}
   # ISO-8601 duration; must be positive.
   hold-duration: ${BOOKING_HOLD_DURATION:PT10M}
   expiration-enabled: ${BOOKING_EXPIRATION_ENABLED:true}
