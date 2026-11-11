@@ -39,7 +39,8 @@ SELECT 'CREATE DATABASE bcm_acceptance_test OWNER bcm_acceptance_owner' WHERE NO
  # destination and otherwise leaves stale migrations at the paths psql executes.
  Dc exec bcm-postgres mkdir -p /tmp/acceptance-db
  foreach($sqlFile in @('migration.sql','booking-ux-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql')) {
-  Dc cp "db/$sqlFile" "bcm-postgres:/tmp/acceptance-db/$sqlFile"
+  $sourceFile=if($sqlFile -eq 'migration.sql'){"db/$sqlFile"}else{"db/upgrades/$sqlFile"}
+  Dc cp $sourceFile "bcm-postgres:/tmp/acceptance-db/$sqlFile"
  }
  $check=& docker exec -e PGPASSWORD=acceptance-local-only bcm-postgres psql -h 127.0.0.1 -U bcm_acceptance_owner -d bcm_acceptance_test -Atc "select current_database()||'|'||current_user"
  if($LASTEXITCODE -ne 0 -or $check -ne 'bcm_acceptance_test|bcm_acceptance_owner'){throw 'Wrong acceptance target'}

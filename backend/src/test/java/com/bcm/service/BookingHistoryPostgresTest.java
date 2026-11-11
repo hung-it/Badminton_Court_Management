@@ -174,7 +174,8 @@ class BookingHistoryPostgresTest {
         UUID id = booking(customerA, BookingStatus.PENDING, NOW);
         addDetail(id, LocalDate.of(2026, 10, 5));
         UUID payment = payment(id, "VNPAY", "PENDING", NOW, null);
-        jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?", NOW, id);
+        // Far past the in-flight grace window, so the stale PENDING attempt no longer holds the court.
+        jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?", NOW.minusMinutes(6), id);
         assertThat(expiration.expireBooking(id)).isTrue();
         mvc.perform(get("/api/bookings/" + id).contextPath("/api"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("EXPIRED"))

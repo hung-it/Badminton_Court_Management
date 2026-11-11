@@ -103,7 +103,7 @@ Chức năng gồm:
 Đã tạo file seed:
 
 ```text
-db/revenue-breakdown-sample.sql
+db/seeds/revenue-breakdown-sample.sql
 ```
 
 File seed:
@@ -214,7 +214,7 @@ Các e2e hiện có khác của Web Admin cũng đã được chạy. Các bài 
 
 ### Dữ liệu và tài liệu
 
-- `db/revenue-breakdown-sample.sql`
+- `db/seeds/revenue-breakdown-sample.sql`
 - `docs/revenue-breakdown-progress.md`
 
 ## 7. Giới hạn và lưu ý

@@ -1,422 +1,202 @@
-# Payment & Invoice Flow - Hệ thống Quản lý Sân Cầu Lông
+# Payment & Invoice Flow - Hệ thống Quản lý Sân Cầu Lông (Bản Đồng Bộ V5)
 
-## 1. Tổng Quan Luồng Nghiệp Vụ
-
-### 1.1. Các Luồng Chính
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  LUỒNG 1: Đặt sân Online → Check-in → Mua thêm hàng    │
-└─────────────────────────────────────────────────────────┘
-Customer App:
-  1. Chọn sân, khung giờ → Tạo booking (status: PENDING)
-  2. Thanh toán online (VNPay Sandbox) → booking.status = PAID
-  3. Đến sân check-in → booking.status = CHECKED_IN
-                      → Tạo invoice (court_fee từ booking)
-  4. Mua nước/cầu → Thêm invoice_details → Tính product_fee
-  5. Thanh toán product_fee (cash/transfer)
-  6. Chơi xong → booking.status = COMPLETED
-
-
-┌─────────────────────────────────────────────────────────┐
-│  LUỒNG 2: Khách vãng lai (Walk-in) - Không đặt trước   │
-└─────────────────────────────────────────────────────────┘
-Quầy Thu Ngân:
-  1. Khách đến → Kiểm tra sân trống
-  2. Tạo invoice (booking_id = NULL, court_fee = manual input)
-  3. Khách mua hàng → Thêm invoice_details
-  4. Tính total = court_fee + product_fee
-  5. Thanh toán ngay (cash/bank_transfer) → invoice.status = PAID
-
-
-┌─────────────────────────────────────────────────────────┐
-│  LUỒNG 3: Đặt sân Online nhưng bùng kèo (NO_SHOW)      │
-└─────────────────────────────────────────────────────────┘
-Hệ Thống Tự Động:
-  1. Booking đã PAID nhưng không check-in
-  2. Sau khi quá giờ đặt 30 phút → Cron job đổi status = NO_SHOW
-  3. KHÔNG tạo invoice (vì khách không đến)
-  4. KHÔNG hoàn tiền (business rule)
-  5. Báo cáo: Tổng thiệt hại từ NO_SHOW = SUM(bookings.court_fee WHERE status = NO_SHOW)
-```
+Tài liệu này là nguồn tài liệu chuẩn hóa toàn diện về luồng Thanh Toán (Payment), Bán hàng tại quầy (POS), Kết toán trả sân (Checkout) và Hạch toán hóa đơn (Invoice) trong hệ thống Badminton Court Management (BCM).
 
 ---
 
-## 2. Sequence Diagrams
+## 0. Các Chính Sách Nghiệp Vụ Cốt Lõi
 
-### 2.1. Luồng 1 - Đặt Sân Online & Check-in
+### P0 — Cửa sổ ân hạn In-flight (Chống mất tiền khi VNPay phản hồi muộn)
+Một booking có giao dịch `PENDING` (khách hàng đang tiến hành thanh toán trên cổng VNPay) **không bị hủy (EXPIRED)** khi chạm mốc 10 phút nếu thời gian hiện tại vẫn nằm trong cửa sổ `expires_at + inFlightGrace` (mặc định `PT5M` - 5 phút).
+* **Cơ chế:** IPN Webhook từ VNPay gửi về trong cửa sổ này vẫn được chấp nhận và đối soát thành công $\rightarrow$ chuyển đơn sang `PAID`.
+* **Mục đích:** Khắc phục triệt để rủi ro *"Khách bị ngân hàng trừ tiền nhưng hệ thống đã nhả sân cho người khác"*. Sau khi hết cửa sổ 5 phút mà không có IPN thành công, lượt thử đó được xem là hết hạn (stale) và sân được giải phóng bình thường.
 
-```mermaid
-sequenceDiagram
-    participant C as Customer (App)
-    participant API as Backend API
-    participant DB as Database
-    participant PG as Payment Gateway (VNPay Sandbox)
-    participant Staff as Staff (POS)
+### P1 — Chính sách Không Hoàn Tiền (No Cancellation / No Refund)
+Sau khi booking đã thanh toán thành công (trạng thái `PAID` với giao dịch `SUCCESS`), hệ thống **không cung cấp tính năng hủy đơn hay hoàn tiền tự động**:
+* Khách hàng không thể tự hủy đơn đặt sân đã thanh toán.
+* Mọi trường hợp bất khả kháng phát sinh (khách không đến, thời tiết) đều được xử lý đối soát thủ công bởi chủ sân / quản trị viên.
 
-    %% Phase 1: Booking & Payment
-    C->>API: POST /bookings (court_id, time_slot_id, date)
-    API->>DB: INSERT bookings (status=PENDING, court_fee=calculated)
-    API->>DB: INSERT booking_details (price=base_price*multiplier)
-    DB-->>API: booking_id
-    API-->>C: booking_id, court_fee, payment_url
+### P2 — Giải phóng Slot khi Booking Quá Hạn (`EXPIRED`)
+Khi một booking ở trạng thái `PENDING` quá hạn thanh toán:
+* `BookingExpirationService.expireBooking` đổi trạng thái booking thành `EXPIRED`.
+* Trong cùng một transaction, hệ thống thực hiện **xóa toàn bộ các dòng liên quan trong `booking_details`** để giải phóng ràng buộc duy nhất `uq_booking_slot(booking_date, court_id, time_slot_id)`.
+* **Hệ quả:** Slot trống được mở lại ngay lập tức cho các khách hàng khác đặt. Bản ghi `bookings` header và lịch sử các lượt thử thanh toán (nếu có) vẫn được lưu giữ đầy đủ để phục vụ kiểm toán đối soát.
 
-    C->>PG: Click payment_url
-    PG->>C: QR Code / Payment form
-    C->>PG: Xác nhận thanh toán
-    PG->>API: Webhook callback (transaction_id, status=SUCCESS)
-    API->>DB: INSERT payment_transactions (booking_id, status=SUCCESS, amount=court_fee)
-    API->>DB: UPDATE bookings SET status=PAID
-    DB-->>API: OK
-    API-->>PG: 200 OK
-    PG->>C: Thanh toán thành công
+### P3 — Hai Phương Thức Thanh Toán Hợp Lệ (`CASH`, `VNPAY`)
+* Hệ thống đã chuẩn hóa toàn bộ về 2 phương thức: **`CASH`** (Tiền mặt) và **`VNPAY`** (Cổng thanh toán VNPay).
+* Khách hàng đặt sân online chỉ sử dụng `VNPAY`.
+* Tại quầy thu ngân (POS bán hàng và Checkout trả sân), nhân viên có thể thu bằng `CASH` hoặc `VNPAY` (xác nhận thủ công).
 
-    %% Phase 2: Check-in
-    Note over C,Staff: Khách đến sân (30 phút trước giờ đặt)
-    C->>Staff: Đưa mã booking (QR code / số điện thoại)
-    Staff->>API: POST /bookings/{id}/check-in
-    API->>DB: SELECT bookings WHERE id=? AND status=PAID
-    DB-->>API: booking record
-    
-    API->>DB: BEGIN TRANSACTION
-    API->>DB: UPDATE bookings SET status=CHECKED_IN
-    API->>DB: INSERT invoices (booking_id, customer_id, court_fee=booking.court_fee, product_fee=0, status=DRAFT)
-    DB-->>API: invoice_id
-    API->>DB: COMMIT
-    API-->>Staff: Check-in thành công, invoice_id
-
-    %% Phase 3: Mua hàng & Thanh toán product_fee
-    Note over Staff: Khách mua nước, cầu lông
-    Staff->>API: POST /invoices/{id}/items (product_id, quantity)
-    API->>DB: BEGIN TRANSACTION
-    API->>DB: SELECT products WHERE id=? FOR UPDATE (lock row)
-    DB-->>API: product (stock=10, version=3)
-    API->>DB: INSERT invoice_details (invoice_id, product_id, quantity, unit_price)
-    API->>DB: UPDATE products SET stock_quantity=stock-quantity, version=version+1 WHERE id=? AND version=3
-    DB-->>API: 1 row updated (success)
-    API->>DB: UPDATE invoices SET product_fee = SUM(invoice_details.quantity * unit_price)
-    API->>DB: COMMIT
-    API-->>Staff: Đã thêm vào hóa đơn
-
-    Staff->>API: POST /invoices/{id}/pay (payment_method=CASH)
-    API->>DB: BEGIN TRANSACTION
-    API->>DB: UPDATE invoices SET status=PAID, total_amount=court_fee+product_fee
-    API->>DB: INSERT payment_transactions (invoice_id, payment_method=CASH, status=SUCCESS, amount=product_fee)
-    API->>DB: COMMIT
-    API-->>Staff: In hóa đơn
-
-    %% Phase 4: Hoàn thành
-    Note over Staff: Sau khi khách chơi xong
-    Staff->>API: POST /bookings/{id}/complete
-    API->>DB: UPDATE bookings SET status=COMPLETED
-    API-->>Staff: Đã hoàn thành
-```
-
----
-
-### 2.2. Luồng 2 - Khách Vãng Lai (Walk-in)
-
-```mermaid
-sequenceDiagram
-    participant C as Customer (Walk-in)
-    participant Staff as Staff (POS)
-    participant API as Backend API
-    participant DB as Database
-
-    C->>Staff: Hỏi sân trống
-    Staff->>API: GET /courts/availability?date=today&time_slot_id=X
-    API->>DB: SELECT booking_details WHERE booking_date=? AND time_slot_id=?
-    DB-->>API: Danh sách sân đã đặt
-    API-->>Staff: Sân 3, 5, 7 còn trống
-
-    Staff->>C: Sân 5 trống, giá 150k/giờ
-    C->>Staff: OK, cho 1 giờ + mua 2 chai nước
-
-    Staff->>API: POST /invoices (customer_id, booking_id=NULL)
-    API->>DB: INSERT invoices (status=DRAFT, court_fee=150000, product_fee=0)
-    DB-->>API: invoice_id
-    API-->>Staff: invoice_id
-
-    Staff->>API: POST /invoices/{id}/set-court-fee (amount=150000, note="Sân 5, 18:00-19:00")
-    API->>DB: UPDATE invoices SET court_fee=150000
-    API-->>Staff: OK
-
-    Staff->>API: POST /invoices/{id}/items (product_id=nước, quantity=2)
-    API->>DB: BEGIN TRANSACTION
-    API->>DB: INSERT invoice_details
-    API->>DB: UPDATE products SET stock_quantity=stock-2, version=version+1
-    API->>DB: UPDATE invoices SET product_fee=20000
-    API->>DB: COMMIT
-    API-->>Staff: Tổng: 170,000 VND
-
-    C->>Staff: Thanh toán tiền mặt
-    Staff->>API: POST /invoices/{id}/pay (payment_method=CASH)
-    API->>DB: UPDATE invoices SET status=PAID, total_amount=170000
-    API->>DB: INSERT payment_transactions (invoice_id, amount=170000, payment_method=CASH, status=SUCCESS)
-    API-->>Staff: In hóa đơn
-    Staff->>C: Hóa đơn + Sân 5
-```
-
----
-
-### 2.3. Luồng 3 - Bùng Kèo (NO_SHOW)
-
-```mermaid
-sequenceDiagram
-    participant Cron as Cron Job (Scheduler)
-    participant API as Backend API
-    participant DB as Database
-    participant Notify as Notification Service
-
-    Note over Cron: Chạy mỗi 15 phút
-    Cron->>API: GET /bookings/check-no-show
-    API->>DB: SELECT bookings b JOIN booking_details bd<br/>WHERE b.status='PAID'<br/>AND bd.booking_date = TODAY<br/>AND (bd.start_time + 30 minutes) < NOW()
-    DB-->>API: List of late bookings
-
-    loop Mỗi booking trễ
-        API->>DB: UPDATE bookings SET status='NO_SHOW' WHERE id=?
-        DB-->>API: OK
-        API->>Notify: Send notification (Khách {name} bùng kèo booking {id})
-    end
-
-    API-->>Cron: Đã xử lý X bookings
-
-    Note over DB: KHÔNG tạo invoice<br/>KHÔNG hoàn tiền<br/>Báo cáo: SUM(court_fee) WHERE status=NO_SHOW
-```
-
----
-
-## 3. Làm Rõ Câu Hỏi
-
-### ❓ Invoice được tạo khi nào?
-**Trả lời:**
-- **Luồng Online:** Tạo lúc **CHECKED_IN** (khách đã đến sân)
-- **Luồng Walk-in:** Tạo ngay khi **Staff nhập liệu** (khách đang ở quầy)
-- **Luồng NO_SHOW:** **KHÔNG tạo invoice** (khách không đến)
-
-### ❓ `invoices.court_fee` vs `bookings.court_fee` - Có duplicate?
-**Trả lời:**
-- **bookings.court_fee:** Tiền sân **đã thu trước** qua VNPay Sandbox (dùng cho payment gateway + báo cáo thiệt hại NO_SHOW)
-- **invoices.court_fee:** Tiền sân **ghi vào hóa đơn tổng hợp** (dùng cho kế toán, in bill)
-
-**Quan hệ:**
-```
-- Nếu có booking: invoices.court_fee = bookings.court_fee (copy value)
-- Nếu walk-in: invoices.court_fee = staff nhập tay, bookings.court_fee = NULL (vì không có booking)
-```
-
-### ❓ Một `payment_transaction` có thể có CẢ `booking_id` VÀ `invoice_id`?
-**Trả lời:** **KHÔNG**. Một transaction chỉ thuộc 1 trong 2:
-
-**Case 1: Thanh toán tiền sân Online (trước khi check-in)**
+### P4 — Ràng buộc Mục tiêu Thanh toán (XOR Constraint)
+Bảng `payment_transactions` áp dụng ràng buộc nghiêm ngặt: Mỗi giao dịch thanh toán chỉ được phép thanh toán cho **HOẶC** Đơn đặt sân (`booking_id`), **HOẶC** Hóa đơn (`invoice_id`), tuyệt đối không được phép có cả hai hoặc không có cái nào:
 ```sql
-INSERT INTO payment_transactions (
-    booking_id = 'uuid-booking',
-    invoice_id = NULL,  -- Chưa có invoice
-    amount = 200000,
-    payment_method = 'VNPAY',
-    status = 'SUCCESS'
-)
-```
-
-**Case 2: Thanh toán tiền hàng tại quầy (sau khi check-in)**
-```sql
-INSERT INTO payment_transactions (
-    booking_id = NULL,
-    invoice_id = 'uuid-invoice',
-    amount = 50000,  -- Chỉ product_fee
-    payment_method = 'CASH',
-    status = 'SUCCESS'
-)
-```
-
-**Constraint cần thêm:**
-```sql
-ALTER TABLE payment_transactions
-ADD CONSTRAINT chk_payment_target 
-CHECK (
+CONSTRAINT chk_payment_target CHECK (
     (booking_id IS NOT NULL AND invoice_id IS NULL) OR
     (booking_id IS NULL AND invoice_id IS NOT NULL)
 );
 ```
 
-### ❓ `customers.email` vs `users.email` - Tại sao 2 email?
-**Trả lời:** **BỎ `customers.email`**. Chỉ giữ `users.email`.
+---
 
-**Lý do:**
-- Khách hàng đăng ký tài khoản bằng email → Dùng `users.email` cho login
-- Không có lý do business nào cần email thứ 2
-- Nếu cần contact info khác → Dùng `customers.phone` (đã có sẵn)
+## 1. Tổng Quan Các Luồng Nghiệp Vụ
 
-**Migration:**
-```sql
--- Bỏ cột customers.email
-ALTER TABLE customers DROP COLUMN email;
+### 1.1. Luồng 1: Đặt Sân Online $\rightarrow$ Mua Hàng POS $\rightarrow$ Trả Sân Kết Toán (Checkout)
+```text
+[Khách Hàng]                                   [Nhân Viên Thu Ngân]
+     │                                                   │
+     ├─ 1. Chọn sân & giờ (POST /api/bookings)           │
+     │     └─ status: PENDING (giữ slot 10 phút)         │
+     │                                                   │
+     ├─ 2. Thanh toán VNPay Sandbox                      │
+     │     └─ IPN Callback: status -> PAID               │
+     │                                                   │
+     ▼                                                   ▼
+[Đến Sân Chơi Cầu Lông]                                  │
+     │                                                   │
+     ├─ 3. Khách mua nước/cầu tại quầy ─────────────────►│ Thêm hàng POS vào bookingId
+     │                                                   │   └─ Tạo Invoice DRAFT
+     │                                                   │   └─ Trừ kho hàng GOODS
+     ▼                                                   ▼
+[Chơi Xong Ca Đặt] ─────────────────────────────────────►│ Bấm "Kết toán" (POST /api/checkout/{id})
+                                                         │   ├─ Tiền sân: Đã trả trước
+                                                         │   ├─ Tiền hàng: Thu thêm (CASH/VNPay)
+                                                         │   ├─ Xuất 1 Hóa đơn duy nhất (PAID)
+                                                         │   ├─ Hủy các hóa đơn DRAFT tạm
+                                                         │   └─ Booking chuyển sang COMPLETED
+```
 
--- Nếu cần email cho contact → JOIN với users.email
-SELECT c.full_name, u.email, c.phone
-FROM customers c
-JOIN users u ON c.user_id = u.id;
+### 1.2. Luồng 2: Khách Vãng Lai (Walk-in) Mua Hàng Lẻ Tại Quầy
+* Khách đến quầy mua nước, phụ kiện (không gắn với lịch đặt sân).
+* Nhân viên chọn hàng $\rightarrow$ Áp dụng khuyến mãi sản phẩm (nếu có) $\rightarrow$ Chọn phương thức `CASH` hoặc `VNPAY` $\rightarrow$ Xác nhận thu tiền (`POST /api/pos/sales`).
+* Hệ thống tự động map với tài khoản khách vãng lai hệ thống (`guest@bcm.com`), trừ tồn kho và xuất hóa đơn `PAID` kèm bản ghi thanh toán ngay tại thời điểm bán.
+
+### 1.3. Luồng 3: Khách Đặt Trước Thu Tiền Sân Tại Quầy
+* Áp dụng khi khách đã tạo đơn đặt trước (đang `PENDING`) và muốn trả tiền mặt hoặc quét mã trực tiếp tại quầy thu ngân.
+* Nhân viên xác nhận thu tiền (`POST /api/pos/bookings/{id}/receive`) với phương thức `CASH` hoặc `VNPAY`.
+* Hệ thống ghi nhận biên lai thu tiền sân (`source = 'MANUAL'`), chuyển booking sang `PAID`, hủy bỏ bộ đếm timeout giữ chỗ.
+
+### 1.4. Luồng 4: Hết Hạn Giữ Chỗ (Expiration)
+* Đơn đặt sân `PENDING` nếu sau 10 phút khách không thanh toán và không có giao dịch in-flight đang chờ:
+* Cron job (`BookingExpirationJob`) tự động chuyển `bookings.status = 'EXPIRED'`, đồng thời xóa toàn bộ bản ghi trong `booking_details`.
+* Slot ngay lập tức được hiển thị khả dụng trở lại trên màn hình chọn sân của khách hàng khác.
+
+---
+
+## 2. Sơ Đồ Tuần Tự (Sequence Diagrams)
+
+### 2.1. Đặt Sân & Thanh Toán Online VNPay
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Khách Hàng (Web App)
+    participant API as Backend API
+    participant DB as PostgreSQL
+    participant VN as Cổng VNPay Sandbox
+
+    C->>API: POST /api/bookings (details: date, courtId, timeSlotId)
+    activate API
+    API->>DB: Khóa sân PESSIMISTIC_WRITE & Kiểm tra slot trùng
+    API->>DB: INSERT bookings (status='PENDING', expires_at = now + 10m)
+    API->>DB: INSERT booking_details (price snapshot)
+    API-->>C: 201 Created (bookingId, courtFee, expiresAt)
+    deactivate API
+
+    C->>API: POST /api/bookings/{id}/payments (method='VNPAY')
+    activate API
+    API->>DB: INSERT payment_transactions (status='PENDING', amount=courtFee)
+    API->>VN: Tạo payment URL (HMAC SHA-512)
+    API-->>C: 201 Created (paymentUrl)
+    deactivate API
+
+    C->>VN: Chuyển hướng & Xác nhận thanh toán
+    VN->>API: GET /api/payments/vnpay/ipn (params, vnp_SecureHash)
+    activate API
+    API->>API: Kiểm tra chữ ký & Đối chiếu số tiền
+    API->>DB: Khóa booking & Kiểm tra deadline/in-flight window
+    API->>DB: UPDATE payment_transactions SET status='SUCCESS'
+    API->>DB: UPDATE bookings SET status='PAID'
+    API-->>VN: 200 OK (RspCode: "00")
+    deactivate API
+
+    VN-->>C: Trình duyệt chuyển về /payment-result
+    C->>API: GET /api/bookings/{id} (Kiểm tra trạng thái)
+    API-->>C: 200 OK (status='PAID')
+```
+
+### 2.2. Bán Hàng POS và Trả Sân Kết Toán (Checkout)
+```mermaid
+sequenceDiagram
+    autonumber
+    actor S as Nhân Viên Thu Ngân
+    participant UI as Web Admin
+    participant API as Backend API
+    participant DB as PostgreSQL
+
+    Note over S,UI: 1. Khách mua nước trong ca chơi
+    S->>UI: Thêm nước ngọt vào bookingId
+    UI->>API: POST /api/pos/sales (bookingId, items, expectedTotal)
+    activate API
+    API->>DB: SELECT & UPDATE products (stock = stock - qty, version = version + 1)
+    API->>DB: INSERT invoices (status='DRAFT', booking_id=id, court_fee=0)
+    API->>DB: INSERT invoice_details (line items)
+    API-->>UI: 200 OK (Hóa đơn DRAFT)
+    deactivate API
+
+    Note over S,UI: 2. Ca chơi kết thúc - Trả sân
+    S->>UI: Mở màn hình Trả sân & Bấm "Kết toán"
+    UI->>API: GET /api/checkout/{id}/preview
+    API-->>UI: Chi tiết bill: Tiền sân, Tiền hàng, Đã trả, Còn phải thu (amountDue)
+
+    S->>UI: Xác nhận thu amountDue (CASH / VNPAY)
+    UI->>API: POST /api/checkout/{id} (paymentMethod, paymentConfirmed=true, expectedAmountDue)
+    activate API
+    API->>DB: Khóa booking PESSIMISTIC_WRITE
+    API->>DB: INSERT invoices (status='PAID', total = courtFee + productFee - discounts)
+    API->>DB: Chuyển chi tiết hàng từ các hóa đơn DRAFT sang Hóa đơn mới
+    API->>DB: UPDATE invoices (drafts) SET status='CANCELLED'
+    API->>DB: INSERT payment_transactions (invoice_id, amount=amountDue, status='SUCCESS')
+    API->>DB: UPDATE bookings SET status='COMPLETED'
+    API-->>UI: 200 OK (CheckoutResponse - invoiceId)
+    deactivate API
+    UI-->>S: Thông báo kết toán thành công & In hóa đơn
 ```
 
 ---
 
-## 4. Schema Updates
+## 3. Công Thức & Logic Hạch Toán Tài Chính
 
-### 4.1. Bỏ CANCELLED và Loyalty Points
+### 3.1. Công thức Tính toán khi Kết Toán Trả Sân (Checkout)
+* **Tiền thuê sân sau giảm:**
+  $$\text{Tiền sân} = \text{court\_fee} - \text{court\_discount}$$
+* **Tiền hàng sau giảm:**
+  $$\text{Tiền hàng} = \sum (\text{unit\_price} \times \text{quantity}) - \text{product\_discount}$$
+* **Tổng giá trị hóa đơn (Total Amount):**
+  $$\text{total\_amount} = \text{Tiền sân sau giảm} + \text{Tiền hàng sau giảm}$$
+* **Số tiền còn phải thu khi trả sân (Amount Due):**
+  $$\text{amount\_due} = \text{total\_amount} - \text{paid\_court\_amount}$$
+  *(Nếu khách đã thanh toán online đủ tiền sân và không mua thêm hàng POS: $\text{amount\_due} = 0$, nhân viên chỉ cần bấm "Hoàn tất trả sân" mà không cần thu thêm tiền).*
 
-```sql
--- Update bookings.status enum
--- CHỈ GIỮ: PENDING, PAID, CHECKED_IN, COMPLETED, NO_SHOW
-
--- Bỏ cột loyalty_points
-ALTER TABLE customers DROP COLUMN loyalty_points;
-
--- Bỏ cột email (dùng users.email)
-ALTER TABLE customers DROP COLUMN email;
-```
-
-### 4.2. Thêm Constraints
-
-```sql
--- Payment transaction phải có đúng 1 target
-ALTER TABLE payment_transactions
-ADD CONSTRAINT chk_payment_target 
-CHECK (
-    (booking_id IS NOT NULL AND invoice_id IS NULL) OR
-    (booking_id IS NULL AND invoice_id IS NOT NULL)
-);
-
--- Court fee không âm
-ALTER TABLE bookings
-ADD CONSTRAINT chk_bookings_court_fee_positive
-CHECK (court_fee >= 0);
-
-ALTER TABLE invoices
-ADD CONSTRAINT chk_invoices_amounts_positive
-CHECK (court_fee >= 0 AND product_fee >= 0 AND total_amount >= 0);
-
--- Stock không âm
-ALTER TABLE products
-ADD CONSTRAINT chk_products_stock_positive
-CHECK (stock_quantity >= 0);
-
--- Time slot hợp lệ
-ALTER TABLE time_slots
-ADD CONSTRAINT chk_time_slots_valid
-CHECK (start_time < end_time);
-```
-
-### 4.3. Thêm Indexes
-
-```sql
--- Booking lookups
-CREATE INDEX idx_bookings_customer_status ON bookings(customer_id, status, created_at DESC);
-CREATE INDEX idx_bookings_status_date ON bookings(status) 
-    WHERE status IN ('PAID', 'CHECKED_IN');
-
--- Check availability
-CREATE INDEX idx_booking_details_availability 
-    ON booking_details(booking_date, time_slot_id, court_id);
-
--- Invoice lookups  
-CREATE INDEX idx_invoices_booking ON invoices(booking_id) 
-    WHERE booking_id IS NOT NULL;
-CREATE INDEX idx_invoices_customer ON invoices(customer_id, created_at DESC);
-
--- Payment transactions
-CREATE INDEX idx_payment_trans_booking ON payment_transactions(booking_id) 
-    WHERE booking_id IS NOT NULL;
-CREATE INDEX idx_payment_trans_invoice ON payment_transactions(invoice_id) 
-    WHERE invoice_id IS NOT NULL;
-
--- Products stock check
-CREATE INDEX idx_products_category_active 
-    ON products(category_id, stock_quantity) 
-    WHERE deleted_at IS NULL;
-```
+### 3.2. Hạch Toán Doanh Thu Hệ Thống
+* Mọi số liệu trong các API Báo cáo Doanh thu (`/api/analytics/revenue`, `/api/analytics/statistics`, `/api/analytics/revenue-breakdown`) đều được tổng hợp từ bảng `invoices` thỏa mãn:
+  $$\text{status} = \text{'PAID'} \quad \text{AND} \quad \text{deleted\_at IS NULL}$$
+* Nhờ cơ chế chuyển đổi tại thời điểm Checkout, toàn bộ tiền sân của các ca chơi hoàn tất đều được gom vào `invoices.court_fee` và tiền hàng vào `invoices.product_fee`, giúp báo cáo tài chính phân loại doanh thu rõ ràng và minh bạch.
 
 ---
 
-## 5. State Machine - Booking Status
+## 4. Bảng Trạng Thái & Điều Kiện Chuyển Đổi (State Transitions)
 
-```
-┌─────────┐
-│ PENDING │ Khách vừa tạo booking, chưa thanh toán
-└────┬────┘
-     │ Thanh toán VNPay Sandbox thành công
-     ▼
-┌─────────┐
-│  PAID   │ Đã thanh toán, chờ đến sân
-└────┬────┘
-     │ Check-in tại quầy → Tạo invoice
-     ▼
-┌────────────┐
-│ CHECKED_IN │ Đã check-in, đang chơi
-└─────┬──────┘
-      │ Staff đánh dấu hoàn thành
-      ▼
-┌───────────┐
-│ COMPLETED │ Đã chơi xong
-└───────────┘
+### 4.1. Booking Status
+| Trạng thái | Ý nghĩa | Điều kiện chuyển tiếp |
+| :--- | :--- | :--- |
+| **`PENDING`** | Vừa tạo đơn, đang giữ slot (10 phút) | Chuyển sang `PAID` khi thanh toán thành công; chuyển sang `EXPIRED` nếu quá hạn. |
+| **`PAID`** | Đã thanh toán đầy đủ tiền sân | Được phép thêm hàng POS nháp. Chuyển sang `COMPLETED` khi nhân viên thực hiện Checkout. |
+| **`COMPLETED`** | Ca chơi đã hoàn tất & đã xuất hóa đơn tổng | Trạng thái kết thúc cuối cùng của đơn đặt sân. |
+| **`EXPIRED`** | Đơn bị hủy do quá hạn thanh toán | Hệ thống tự động xóa `booking_details`, giải phóng slot. |
 
-┌─────────┐
-│  PAID   │
-└────┬────┘
-     │ Quá giờ 30 phút, không check-in
-     │ (Cron job tự động)
-     ▼
-┌─────────┐
-│ NO_SHOW │ Bùng kèo - KHÔNG hoàn tiền
-└─────────┘
-```
-
-**Transitions:**
-- `PENDING → PAID`: Webhook từ payment gateway
-- `PAID → CHECKED_IN`: Staff scan QR/nhập số điện thoại
-- `CHECKED_IN → COMPLETED`: Staff click "Hoàn thành"
-- `PAID → NO_SHOW`: Cron job (sau 30 phút quá giờ)
-
-**Không cho phép:**
-- ❌ PAID → PENDING (không thể "undo" thanh toán)
-- ❌ CHECKED_IN → PAID (không quay lại)
-- ❌ Bất kỳ status nào → CANCELLED (đã bỏ)
-
----
-
-## 6. Báo Cáo Tài Chính
-
-### 6.1. Doanh Thu Tiền Sân
-```sql
--- Doanh thu thực tế (đã check-in)
-SELECT SUM(court_fee) 
-FROM bookings 
-WHERE status IN ('CHECKED_IN', 'COMPLETED')
-AND DATE(created_at) = '2024-01-15';
-
--- Thiệt hại từ NO_SHOW
-SELECT SUM(court_fee)
-FROM bookings
-WHERE status = 'NO_SHOW'
-AND DATE(created_at) = '2024-01-15';
-```
-
-### 6.2. Doanh Thu Hàng Hóa
-```sql
-SELECT SUM(product_fee)
-FROM invoices
-WHERE status = 'PAID'
-AND DATE(created_at) = '2024-01-15';
-```
-
-### 6.3. Tổng Doanh Thu
-```sql
-SELECT SUM(total_amount)
-FROM invoices
-WHERE status = 'PAID'
-AND DATE(created_at) = '2024-01-15';
-```
-
----
-
-Xong! Còn câu hỏi nào chưa rõ không?
+### 4.2. Invoice Status
+| Trạng thái | Ý nghĩa |
+| :--- | :--- |
+| **`DRAFT`** | Hóa đơn tạm thời khi nhân viên thêm hàng POS vào ca đặt sân đang chơi. |
+| **`PAID`** | Hóa đơn chính thức đã thanh toán (bán lẻ walk-in hoặc hóa đơn tổng kết toán lúc trả sân). |
+| **`CANCELLED`** | Hóa đơn tạm `DRAFT` bị hủy khi hủy đơn nháp, hoặc tự động hủy khi đã dồn chi tiết vào hóa đơn tổng lúc Checkout. |
+| **`REFUNDED`** | Trạng thái dự phòng trong CSDL (hệ thống hiện tại không kích hoạt hoàn tiền tự động). |

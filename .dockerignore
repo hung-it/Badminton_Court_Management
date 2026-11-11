@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/target
+.git
+.tools
+.backups
+backups
+.env
+.env.*
+**/*.local.*
+**/application-local.*
+docs

@@ -84,10 +84,17 @@ public class BookingPromotionService {
 
     @Transactional
     public BigDecimal staffReceive(UUID id,String method,boolean confirmed,String reference) {
+        return staffReceive(id,method,confirmed,reference,null);
+    }
+
+    @Transactional
+    public BigDecimal staffReceive(UUID id,String method,boolean confirmed,String reference,BigDecimal expectedAmount) {
         staff.requireUserId();
         pos.manualMethod(method);
         if(!confirmed) throw new com.bcm.exception.BadRequestException("Staff must confirm receipt");
         var booking=bookings.findByIdForExpiration(id).orElseThrow(()->new ResourceNotFoundException("Booking not found"));
+        if(expectedAmount!=null && booking.getFinalAmount().compareTo(expectedAmount)!=0)
+            throw new DuplicateResourceException("Số tiền sân đã thay đổi. Đóng hộp thoại và mở lại để xác nhận số tiền mới.");
         if(booking.getStatus()==BookingStatus.PAID) {
             long received=jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=? AND status='SUCCESS' AND note LIKE 'STAFF_RECEIVED;%'",Long.class,id);
             if(received>0) return booking.getFinalAmount();

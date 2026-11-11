@@ -50,7 +50,7 @@ C:\Users\Tea\AppData\Local\Temp\bcm-before-runtime-20261023-144038.dump
 SHA256 C29572D488003BF3C2DA3486682AC495EA1FB5E303C7A98058ECB01878EED681
 ```
 
-Tái sử dụng nguyên `db/booking-ux-upgrade.sql`; đã apply trên main bằng psql ON_ERROR_STOP.
+Tái sử dụng nguyên `db/upgrades/booking-ux-upgrade.sql`; đã apply trên main bằng psql ON_ERROR_STOP.
 Schema sau: bookings.customer_note character varying(1000), courts.district character varying(150).
 Không tạo bảng/duplicate migration, không ddl-auto update, không restore/reset/drop dữ liệu chính.
 Sau migration restart backend thoát crash; sau verify build image và recreate riêng backend:

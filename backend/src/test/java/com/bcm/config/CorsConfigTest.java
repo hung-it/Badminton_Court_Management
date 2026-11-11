@@ -14,6 +14,23 @@ class CorsConfigTest {
     @ParameterizedTest
     @ValueSource(strings = {"http://localhost:5173", "http://127.0.0.1:5173",
             "http://localhost:5174", "http://127.0.0.1:5174"})
+    void browserLoginReachesApplicationForBothLocalOrigins(String origin) throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/login");
+        request.setContextPath("/api");
+        request.setServletPath("/auth/login");
+        request.addHeader("Origin", origin);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        new CorsConfig().corsFilter().doFilter(request, response, chain);
+
+        assertThat(chain.getRequest()).isSameAs(request);
+        assertThat(response.getHeader("Access-Control-Allow-Origin")).isEqualTo(origin);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"http://localhost:5173", "http://127.0.0.1:5173",
+            "http://localhost:5174", "http://127.0.0.1:5174"})
     void preflightMatchesServletPathAfterApiContextPath(String origin) throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/api/bookings");
         request.setContextPath("/api");

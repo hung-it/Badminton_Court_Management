@@ -21,8 +21,8 @@ Không đổi database cũ ở cổng 5433.
 ## Máy khác / leader
 Cần JDK 17, Maven 3.8+, Node.js 22+ và PostgreSQL 15+.
 `.tools` là công cụ/dữ liệu cục bộ, không commit. `node_modules`, `dist`, `target` cũng được bỏ qua.
-1. Database mới: chạy `db/migration.sql`, rồi `db/booking-ux-upgrade.sql` và `db/booking-ux-upgrade.sql`.
-2. Database đã có schema: chạy `db/booking-ux-upgrade.sql` và `db/booking-ux-upgrade.sql` sau khi sao lưu và kiểm tra dữ liệu hiện có.
+1. Database mới: chạy `db/migration.sql`, rồi `db/upgrades/booking-ux-upgrade.sql` và `db/upgrades/booking-ux-upgrade.sql`.
+2. Database đã có schema: chạy `db/upgrades/booking-ux-upgrade.sql` và `db/upgrades/booking-ux-upgrade.sql` sau khi sao lưu và kiểm tra dữ liệu hiện có.
 3. Upgrade không ghi đè giá/tồn hiện có. Dữ liệu cũ trùng tên danh mục, chồng khung giờ hoặc giá/tồn không hợp lệ sẽ khiến migration dừng để sửa dữ liệu có chủ đích.
 4. The obsolete member2 demo seed was removed; use current admin APIs for controlled demo data.
 5. Đặt biến môi trường `DB_URL`, `DB_USER`, `DB_PASSWORD`; chạy backend với profile `local`, hoặc sửa cấu hình database theo môi trường của nhóm.
@@ -112,7 +112,7 @@ mvn -f backend/pom.xml test
 
 ## POS / Checkout receipts — 2026-11-05
 
-- Upgrade: chỉ section `invoice-receipts` trong `db/booking-ux-upgrade.sql`, sau backup `pg_dump -Fc` và kiểm tra `pg_restore --list`. Không chạy seed. Section có thể chạy lại; dữ liệu không tương thích bị chặn và báo UUID, không tự chuyển đổi tiền.
+- Upgrade: chỉ section `invoice-receipts` trong `db/upgrades/booking-ux-upgrade.sql`, sau backup `pg_dump -Fc` và kiểm tra `pg_restore --list`. Không chạy seed. Section có thể chạy lại; dữ liệu không tương thích bị chặn và báo UUID, không tự chuyển đổi tiền.
 - `POST /pos/sales`: `idempotencyKey` UUID bắt buộc; retry cùng key và body. Bán lẻ yêu cầu `paymentConfirmed: true`, `paymentMethod: CASH|VNPAY`, `reference` tùy chọn. Booking POS tạo DRAFT với method NULL, không thu tiền hàng. `staffId` bị bỏ qua khi xác định actor.
 - `POST /checkout/{booking}`: gửi `expectedAmountDue` từ preview hiện tại, `paymentConfirmed: true` khi còn phải thu, `paymentMethod: CASH|VNPAY`, `reference` tùy chọn. Khóa Booking; retry trả cùng invoice. Không gọi gateway từ POS/Checkout. amountDue=0 không tạo khoản thu.
 - `POST /pos/bookings/{id}/receive`: xác nhận tiền sân tại quầy bằng CASH/VNPAY với `paymentConfirmed: true`; nguồn MANUAL khác GATEWAY. CUSTOMER Gateway/IPN giữ nguyên.

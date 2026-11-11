@@ -9,6 +9,7 @@ export function inPeriod(value,period,month,today=localDate(),range={}){
  const date=value.slice(0,10);
  if(range.from&&range.to)return date>=range.from&&date<=range.to;
  if(month)return date.slice(0,7)===month;
+ if(period==='ALL')return true;
  if(period==='DAY')return date===today;
  if(period==='MONTH')return date.slice(0,7)===today.slice(0,7);
  const start=new Date(today+'T00:00:00');
@@ -17,11 +18,11 @@ export function inPeriod(value,period,month,today=localDate(),range={}){
  return date>=localDate(start)&&date<localDate(end);
 }
 
-export default function PeriodFilter({period,month,range={},onRangeChange,onChange}){
+export default function PeriodFilter({period,month,range={},onRangeChange,onChange,showAll=false}){
  const [from,setFrom]=useState(range.from||''),[to,setTo]=useState(range.to||'');
  function choose(p,m){setFrom('');setTo('');onChange(p,m);}
  return <div className="toolbar period-filter" aria-label="Lọc thời gian">
-  {[['DAY','Hôm nay'],['WEEK','Tuần này'],['MONTH','Tháng này']].map(([p,label])=><button key={p} aria-pressed={!range.from&&!month&&period===p} className={!range.from&&!month&&period===p?'primary':'secondary'} onClick={()=>choose(p,'')}>{label}</button>)}
+  {[...(showAll?[['ALL','Tất cả']]:[]),['DAY','Hôm nay'],['WEEK','Tuần này'],['MONTH','Tháng này']].map(([p,label])=><button key={p} aria-pressed={!range.from&&!month&&period===p} className={!range.from&&!month&&period===p?'primary':'secondary'} onClick={()=>choose(p,'')}>{label}</button>)}
   <label className="field">Lịch sử theo tháng<input aria-label="Lịch sử theo tháng" type="month" value={month} onChange={e=>choose('MONTH',e.target.value)}/></label>
   <form className="period-range" onSubmit={e=>{e.preventDefault();if(from&&to&&from<=to)onRangeChange({from,to});}}>
    <label className="field">Từ ngày<input type="date" aria-label="Từ ngày" value={from} max={to||undefined} onChange={e=>setFrom(e.target.value)} required/></label>

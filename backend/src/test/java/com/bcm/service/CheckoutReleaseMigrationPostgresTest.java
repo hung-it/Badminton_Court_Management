@@ -24,7 +24,7 @@ class CheckoutReleaseMigrationPostgresTest {
                 sql.execute("INSERT INTO payment_transactions(booking_id,payment_method,status,amount) SELECT id,'VNPAY','PENDING',100000 FROM bookings");
                 String snapshot="SELECT jsonb_build_object('bookings',(SELECT jsonb_agg(to_jsonb(b)-'checkout_release_at') FROM bookings b),'details',(SELECT jsonb_agg(to_jsonb(d)) FROM booking_details d),'payments',(SELECT jsonb_agg(to_jsonb(p)) FROM payment_transactions p),'courts',(SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM courts c))::text";
                 String before; try(var r=sql.executeQuery(snapshot)){r.next();before=r.getString(1);}
-                var migration=SqlScriptSections.read("booking-ux-upgrade.sql", "checkout-release");
+                var migration=SqlScriptSections.read("upgrades/booking-ux-upgrade.sql", "checkout-release");
                 sql.execute(migration);sql.execute(migration);
                 try(var r=sql.executeQuery(snapshot)){r.next();assertThat(r.getString(1)).isEqualTo(before);}
                 try(var r=sql.executeQuery("SELECT column_name,is_nullable,data_type FROM information_schema.columns WHERE table_schema='"+schema+"' AND table_name='bookings' AND column_name LIKE 'checkout_%'")) {

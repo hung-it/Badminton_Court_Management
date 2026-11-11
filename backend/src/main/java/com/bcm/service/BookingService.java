@@ -170,8 +170,12 @@ public class BookingService {
                         d.getCourt().getId(), d.getTimeSlot().getId(), d.getPrice())).toList());
     }
 
+    // NUMERIC(10,2) holds at most 99,999,999.99; a BigDecimal "precision" check miscounts
+    // significant digits and would pass values the database rejects (-> 500 instead of 400).
+    private static final BigDecimal MONEY_MAX = new BigDecimal("99999999.99");
+
     private void requireMoneyFits(BigDecimal amount) {
-        if (amount.precision() > 10) {
+        if (amount.compareTo(MONEY_MAX) > 0) {
             throw new BadRequestException("Booking price exceeds NUMERIC(10,2) capacity");
         }
     }
