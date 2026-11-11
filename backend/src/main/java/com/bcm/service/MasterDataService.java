@@ -121,7 +121,9 @@ public class MasterDataService {
     }
 
     public void deleteCourt(UUID id) {
-        Court c = court(id);
+        Court c = courts.findAllForBookingWithLock(List.of(id)).stream()
+                .filter(v -> v.getDeletedAt() == null).findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy sân"));
         if (activeCourtBooking(id))
             throw new BadRequestException("Không thể xóa sân có lịch đặt chưa hoàn tất");
         c.softDelete();
@@ -129,6 +131,8 @@ public class MasterDataService {
     }
 
     public TimeSlot saveSlot(UUID id, TimeSlotRequest r) {
+        // Acquire before reference/overlap checks; never preload a stale managed TimeSlot.
+        TimeSlot s = id == null ? new TimeSlot() : lockedSlot(id);
         if (!r.startTime().isBefore(r.endTime()))
             throw new BadRequestException("Giờ bắt đầu phải trước giờ kết thúc");
         if (r.startTime().getSecond() != 0
@@ -138,7 +142,6 @@ public class MasterDataService {
             throw new BadRequestException("Khung giờ phải chính xác đến phút");
         if (slots.overlaps(id == null ? new UUID(0, 0) : id, r.startTime(), r.endTime()))
             throw new DuplicateResourceException("Khung giờ bị chồng lấn");
-        TimeSlot s = id == null ? new TimeSlot() : slot(id);
         if (id != null
                 && (!s.getStartTime().equals(r.startTime()) || !s.getEndTime().equals(r.endTime()))
                 && slotReferenced(id))
@@ -166,11 +169,15 @@ public class MasterDataService {
     }
 
     public void deleteSlot(UUID id) {
-        TimeSlot s = slot(id);
+        TimeSlot s = lockedSlot(id);
         if (slotReferenced(id))
             throw new BadRequestException("Không thể xóa khung giờ đã có lịch đặt");
         s.softDelete();
         slots.saveAndFlush(s);
+    }
+
+    private TimeSlot lockedSlot(UUID id) {
+        return slots.findForUpdate(id).orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy khung giờ"));
     }
 
     public Category saveCategory(UUID id, CategoryRequest r) {

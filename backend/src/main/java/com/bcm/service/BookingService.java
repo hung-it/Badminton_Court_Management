@@ -109,7 +109,7 @@ public class BookingService {
         // No Court is loaded before this lock query; validation below uses the locked state.
         Customer customer = customers.findById(trustedCustomerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found: " + trustedCustomerId));
-        var slotById = timeSlots.findByIdInAndDeletedAtIsNull(request.getDetails().stream()
+        var slotById = timeSlots.findForBookingWithLock(request.getDetails().stream()
                         .map(CreateBookingRequest.Detail::getTimeSlotId).distinct().toList())
                 .stream().collect(Collectors.toMap(TimeSlot::getId, Function.identity()));
 

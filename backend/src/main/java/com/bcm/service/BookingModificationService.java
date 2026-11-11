@@ -68,9 +68,9 @@ public class BookingModificationService {
         if (court.getStatus() != CourtStatus.AVAILABLE || court.getDeletedAt() != null) {
             throw new BadRequestException("Court is not available for booking");
         }
-        var original = details.findHistoryDetails(bookingId);
-        var selected = slots.findByIdInAndDeletedAtIsNull(request.timeSlotIds());
+        var selected = slots.findForBookingWithLock(request.timeSlotIds());
         if (selected.size() != request.timeSlotIds().size()) throw new BadRequestException("Invalid time slot");
+        var original = details.findHistoryDetails(bookingId);
         if (!details.findConflictingReplacementSlots(bookingId, request.bookingDate(), court.getId(), request.timeSlotIds()).isEmpty()) {
             throw new DuplicateResourceException("This time slot is already booked");
         }

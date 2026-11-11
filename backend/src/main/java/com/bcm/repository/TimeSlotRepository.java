@@ -11,6 +11,15 @@ import java.util.UUID;
 
 public interface TimeSlotRepository extends JpaRepository<TimeSlot, UUID> {
 
+    // Booking holds Court locks first; shared slot locks allow unrelated courts to book concurrently.
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_READ)
+    @Query("select t from TimeSlot t where t.id in :ids and t.deletedAt is null order by t.id")
+    List<TimeSlot> findForBookingWithLock(@Param("ids") Iterable<UUID> ids);
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select t from TimeSlot t where t.id=:id and t.deletedAt is null")
+    Optional<TimeSlot> findForUpdate(@Param("id") UUID id);
+
     List<TimeSlot> findByDeletedAtIsNullOrderByStartTimeAsc();
 
     Optional<TimeSlot> findByIdAndDeletedAtIsNull(UUID id);
