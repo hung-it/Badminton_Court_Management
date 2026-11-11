@@ -12,6 +12,9 @@ import java.util.*;
 @Service @RequiredArgsConstructor
 @Transactional(readOnly=true)
 public class CourtPromotionService {
+ // A payment can still settle after expires_at. Release its voucher only after a terminal
+ // payment state or the atomic booking expiration, never on a wall-clock pre-check alone.
+ static final String PENDING_RESERVATION = "((b.expires_at>? AND NOT EXISTS (SELECT 1 FROM payment_transactions t WHERE t.booking_id=b.id)) OR EXISTS (SELECT 1 FROM payment_transactions t WHERE t.booking_id=b.id AND t.status='PENDING'))";
  private final JdbcTemplate jdbc;
  public List<Map<String,Object>> list() {
   return jdbc.queryForList("SELECT d.id,p.name,p.code,d.rule_type,d.discount_type,d.discount_value,COALESCE(d.min_invoice_amount,0) min_invoice_amount,d.max_discount_amount,d.max_total_usage,d.max_usage_per_customer,p.valid_from,p.valid_to,p.is_active FROM discount_rules d JOIN promotions p ON p.id=d.promotion_id WHERE d.rule_type IN ('INVOICE_TOTAL','VOUCHER') AND p.deleted_at IS NULL ORDER BY d.rule_type,p.code");
@@ -61,7 +64,7 @@ public class CourtPromotionService {
   return rows.size()==1?rows.get(0):null;
  }
  public String limits(Map<String,Object> rule,UUID owner,UUID booking,String code,LocalDateTime now) {
-  String where=" FROM bookings b WHERE b.id<>? AND b.promotion_code=? AND ((b.status='PENDING' AND b.expires_at>? AND (NOT EXISTS (SELECT 1 FROM payment_transactions t WHERE t.booking_id=b.id) OR EXISTS (SELECT 1 FROM payment_transactions t WHERE t.booking_id=b.id AND t.status='PENDING'))) OR (b.status IN ('PAID','COMPLETED') AND EXISTS (SELECT 1 FROM payment_transactions t WHERE t.booking_id=b.id AND t.status IN ('SUCCESS','PENDING'))))";
+  String where=" FROM bookings b WHERE b.id<>? AND b.promotion_code=? AND ((b.status='PENDING' AND "+PENDING_RESERVATION+") OR (b.status IN ('PAID','COMPLETED') AND EXISTS (SELECT 1 FROM payment_transactions t WHERE t.booking_id=b.id AND t.status IN ('SUCCESS','PENDING'))))";
   long all=jdbc.queryForObject("SELECT count(*)"+where,Long.class,booking,code,now);
   long own=jdbc.queryForObject("SELECT count(*)"+where+" AND b.customer_id=?",Long.class,booking,code,now,owner);
   long pos=jdbc.queryForObject("SELECT count(*) FROM customer_voucher_usage u JOIN invoices i ON i.id=u.invoice_id WHERE u.discount_rule_id=? AND i.status='PAID'",Long.class,rule.get("id"));

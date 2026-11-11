@@ -166,8 +166,8 @@ public class BookingPromotionService {
                 + "JOIN invoices i ON i.id=u.invoice_id WHERE u.customer_id=? AND d.voucher_code='NEWMEMBER' AND i.status='PAID'",Long.class,owner);
         if (used>0 || posUsage>0) return "Bạn không còn đủ điều kiện NEWMEMBER vì đã đặt sân thành công hoặc đã dùng ưu đãi người mới.";
         long held=jdbc.queryForObject("SELECT count(*) FROM bookings b WHERE b.customer_id=? AND b.id<>? AND ((b.status='PENDING' "
-                + "AND b.expires_at>? AND ((b.promotion_code='NEWMEMBER' AND NOT EXISTS "
-                + "(SELECT 1 FROM payment_transactions p WHERE p.booking_id=b.id)) OR EXISTS "
+                + "AND " + CourtPromotionService.PENDING_RESERVATION
+                + " AND (b.promotion_code='NEWMEMBER' OR EXISTS "
                 + "(SELECT 1 FROM payment_transactions p WHERE p.booking_id=b.id AND p.status='PENDING'))) "
                 + "OR (b.status IN ('PAID','COMPLETED') AND b.promotion_code='NEWMEMBER' "
                 + "AND EXISTS (SELECT 1 FROM payment_transactions p WHERE p.booking_id=b.id AND p.status='PENDING')))",Long.class,owner,booking.getId(),LocalDateTime.now(clock));

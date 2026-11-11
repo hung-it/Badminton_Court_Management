@@ -58,7 +58,7 @@ class BookingPromotionPostgresTest {
     @Autowired jakarta.persistence.EntityManager entityManager;
     String customCode() { return ("TEST-"+owner).toUpperCase(java.util.Locale.ROOT); }
     void custom(String kind,String type,String value,int limit) {
-        courtRules.save(null,new com.bcm.dto.request.CourtPromotionRequest("Test court",customCode(),kind,type,new BigDecimal(value),BigDecimal.ZERO,new BigDecimal("200000"),limit,null,java.time.LocalDate.now().minusDays(1),null,true));
+        courtRules.save(null,new com.bcm.dto.request.CourtPromotionRequest("Test court",customCode(),kind,type,new BigDecimal(value),type.equals("AMOUNT")?new BigDecimal(value).add(BigDecimal.ONE):BigDecimal.ZERO,new BigDecimal("200000"),limit,null,java.time.LocalDate.now().minusDays(1),null,true));
     }
     @Test void configurableVoucherSupportsAmountCapAndPreservesPaidSnapshot() {
         custom("VOUCHER","PERCENT","80",10);
@@ -68,7 +68,7 @@ class BookingPromotionPostgresTest {
         assertThat(q.promotionCode()).isEqualTo(customCode());
         jdbc.update("UPDATE bookings SET status='PAID' WHERE id=?",b);
         var row=courtRules.list().stream().filter(x->customCode().equals(x.get("code"))).findFirst().orElseThrow();
-        courtRules.save((UUID)row.get("id"),new com.bcm.dto.request.CourtPromotionRequest("Changed",customCode(),"VOUCHER","AMOUNT",new BigDecimal("100"),BigDecimal.ZERO,null,10,null,java.time.LocalDate.now().minusDays(1),null,true));
+        courtRules.save((UUID)row.get("id"),new com.bcm.dto.request.CourtPromotionRequest("Changed",customCode(),"VOUCHER","AMOUNT",new BigDecimal("100"),new BigDecimal("101"),null,10,null,java.time.LocalDate.now().minusDays(1),null,true));
         assertThat(jdbc.queryForObject("SELECT discount_amount FROM bookings WHERE id=?",BigDecimal.class,b)).isEqualByComparingTo("200000");
     }
     @Test void customVoucherIsNotStackedWithAutomaticAndInvalidCodeFallsBack() {
@@ -85,7 +85,7 @@ class BookingPromotionPostgresTest {
         courtRules.remove((UUID)row.get("id"));
         assertThat(promotions.quote(b,null,true).discountAmount()).isEqualByComparingTo("30000");
     }
-    @Test void twoBookingsCannotReserveLastGenericVoucherUse() throws Exception {
+    @RepeatedTest(10) void twoBookingsCannotReserveLastGenericVoucherUse() throws Exception {
         custom("VOUCHER","AMOUNT","100000",1);
         UUID first=booking("200000"),second=booking("200000");
         var ready=new CountDownLatch(2);var start=new CountDownLatch(1);var pool=Executors.newFixedThreadPool(2);
@@ -101,13 +101,18 @@ class BookingPromotionPostgresTest {
 
     @Autowired PosService pos;
     @Autowired CheckoutService checkout;
-    @Test @org.springframework.security.test.context.support.WithMockUser(roles="STAFF")
+    @Test
     void counterReceiptAndDiscountedProductsProduceOneBillWithoutRechargingCourt() {
         UUID b=booking("500000"),cat=UUID.randomUUID(),prod=UUID.randomUUID(),promo=UUID.randomUUID();
+        jdbc.update("INSERT INTO user_roles(user_id,role_id) SELECT ?,id FROM roles WHERE role_name='ADMIN'",user);
+        var actor=new com.bcm.security.UserPrincipal(user.toString(),user+"@promotion.test","unused",
+                java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN")),true);
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(actor,null,actor.getAuthorities()));
         try {
             promotions.staffApply(b,null);
-            assertThat(promotions.staffReceive(b,"CASH")).isEqualByComparingTo("450000");
-            assertThat(promotions.staffReceive(b,"CASH")).isEqualByComparingTo("450000");
+            assertThat(promotions.staffReceive(b,"CASH",true,null,new BigDecimal("450000"))).isEqualByComparingTo("450000");
+            assertThat(promotions.staffReceive(b,"CASH",true,null,new BigDecimal("450000"))).isEqualByComparingTo("450000");
             assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?",Long.class,b)).isEqualTo(1);
             jdbc.update("INSERT INTO categories(id,category_name) VALUES (?,?)",cat,"Bill test "+cat);
             jdbc.update("INSERT INTO products(id,category_id,name,type,unit,price,stock_quantity,version) VALUES (?,?,?,'GOODS','quả',10000,100,0)",prod,cat,"Bill test "+prod);
@@ -115,18 +120,24 @@ class BookingPromotionPostgresTest {
             jdbc.update("INSERT INTO discount_rules(promotion_id,rule_type,target_product_id,min_quantity,discount_type,discount_value) VALUES (?,'PRODUCT',?,10,'PERCENT',10)",promo,prod);
             var request=new com.bcm.dto.request.PosSaleRequest(); request.setBookingId(b);request.setPaymentMethod("CASH");
             var item=new com.bcm.dto.request.PosSaleItemRequest();item.setProductId(prod);item.setQuantity(10);request.setItems(java.util.List.of(item));
+            request.setIdempotencyKey(UUID.randomUUID());request.setExpectedTotal(pos.quote(request).totalAmount());
             assertThat(pos.sell(request).getTotalAmount()).isEqualByComparingTo("90000");
+            jdbc.update("INSERT INTO booking_details(booking_id,court_id,time_slot_id,booking_date,price) SELECT ?,c.id,s.id,?,500000 FROM (SELECT id FROM courts LIMIT 1) c CROSS JOIN (SELECT id FROM time_slots WHERE deleted_at IS NULL LIMIT 1) s",b,java.time.LocalDate.now().minusDays(1));
             var preview=checkout.preview(b);
             assertThat(preview.getTotalAmount()).isEqualByComparingTo("540000");
             assertThat(preview.getPaidCourtAmount()).isEqualByComparingTo("450000");
             assertThat(preview.getAmountDue()).isEqualByComparingTo("90000");
-            var bill=checkout.checkout(b,"CASH").getData();
+            var receipt=new com.bcm.dto.request.CheckoutRequest("CASH");receipt.setPaymentConfirmed(true);receipt.setExpectedAmountDue(new BigDecimal("90000"));
+            var bill=checkout.checkout(b,receipt).getData();
             assertThat(bill.getTotalAmount()).isEqualByComparingTo("540000");
             assertThat(bill.getAmountDue()).isEqualByComparingTo("90000");
             assertThat(jdbc.queryForObject("SELECT count(*) FROM invoices WHERE booking_id=? AND status='PAID'",Long.class,b)).isEqualTo(1);
-            assertThatThrownBy(()->checkout.checkout(b,"CASH")).isInstanceOf(com.bcm.exception.BadRequestException.class);
-            assertThatThrownBy(()->pos.sell(request)).isInstanceOf(com.bcm.exception.BadRequestException.class);
+            assertThat(checkout.checkout(b,receipt).getData().getInvoiceId()).isEqualTo(bill.getInvoiceId());
+            assertThat(pos.sell(request).getTotalAmount()).isEqualByComparingTo("90000");
+            assertThat(jdbc.queryForObject("SELECT stock_quantity FROM products WHERE id=?",Integer.class,prod)).isEqualTo(90);
         } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+            jdbc.update("DELETE FROM payment_transactions WHERE invoice_id IN (SELECT id FROM invoices WHERE booking_id=?)",b);
             jdbc.update("DELETE FROM invoice_details WHERE invoice_id IN (SELECT id FROM invoices WHERE booking_id=?)",b);
             jdbc.update("DELETE FROM invoices WHERE booking_id=?",b);
             jdbc.update("DELETE FROM discount_rules WHERE promotion_id=?",promo);jdbc.update("DELETE FROM promotions WHERE id=?",promo);
@@ -167,7 +178,7 @@ class BookingPromotionPostgresTest {
         for(int i=0;i<n;i++) {
             UUID b=booking("720000");
             jdbc.update("UPDATE bookings SET status=? WHERE id=?",status,b);
-            jdbc.update("INSERT INTO payment_transactions(booking_id,payment_method,status,amount,transaction_id,transaction_date,note) VALUES (?,'CASH',?,720000,?,?,?)",
+            jdbc.update("INSERT INTO payment_transactions(booking_id,payment_method,status,amount,transaction_id,transaction_date,note) VALUES (?,'VNPAY',?,720000,?,?,?)",
                     b,payment,verified?UUID.randomUUID().toString():null,verified?LocalDateTime.now():null,verified?null:"UNVERIFIED_TEST_RECEIPT");
         }
     }
@@ -302,7 +313,43 @@ class BookingPromotionPostgresTest {
         assertThat(quote.message()).contains("đang được giữ").doesNotContain("đã đặt sân thành công");
         assertThat(jdbc.queryForObject("SELECT status FROM payment_transactions WHERE booking_id=?",String.class,a)).isEqualTo("PENDING");
     }
-    @Test void twoIndependentTransactionsCannotReserveNewmemberTwice() throws Exception {
+    @ParameterizedTest @ValueSource(ints={1,6})
+    void pendingPaymentRetainsNewmemberUntilExpirationCommits(int minutesPastDeadline) {
+        UUID a=booking("100000");
+        promotions.quote(a,"NEWMEMBER",true);
+        attempts.createOrReuseAttempt(a,new CreatePaymentAttemptRequest(PaymentMethod.VNPAY),()->{});
+        jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?",LocalDateTime.now().minusMinutes(minutesPastDeadline),a);
+        assertThat(promotions.quote(booking("100000"),"NEWMEMBER",false).voucherValid()).isFalse();
+        if(minutesPastDeadline>5) {
+            assertThat(expiration.expireBooking(a)).isTrue();
+            assertThat(promotions.quote(booking("100000"),"NEWMEMBER",false).voucherValid()).isTrue();
+        }
+    }
+    @Test void lastGenericVoucherUseSurvivesDeadlineAndCallback() {
+        custom("VOUCHER","AMOUNT","100000",1);
+        UUID a=booking("200000");
+        promotions.quote(a,customCode(),true);
+        var p=attempts.createOrReuseAttempt(a,new CreatePaymentAttemptRequest(PaymentMethod.VNPAY),()->{});
+        jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?",LocalDateTime.now().minusMinutes(1),a);
+        UUID b=booking("200000");
+        assertThat(promotions.quote(b,customCode(),false).voucherValid()).isFalse();
+        var n=new PaymentNotification(p.paymentAttemptId(),PaymentMethod.VNPAY,p.amount(),true,UUID.randomUUID().toString(),LocalDateTime.now().withNano(0),false);
+        assertThat(callbacks.settle(n,a)).isEqualTo(PaymentCallbackTransactionService.Result.SUCCESS);
+        assertThat(promotions.quote(b,customCode(),false).voucherValid()).isFalse();
+    }
+    @Test void perCustomerVoucherLimitAlsoRetainsInFlightPayment() {
+        courtRules.save(null,new com.bcm.dto.request.CourtPromotionRequest("Per customer",customCode(),"VOUCHER","AMOUNT",
+                new BigDecimal("10000"),new BigDecimal("10001"),null,100,1,java.time.LocalDate.now().minusDays(1),null,true));
+        UUID a=booking("100000");
+        promotions.quote(a,customCode(),true);
+        var p=attempts.createOrReuseAttempt(a,new CreatePaymentAttemptRequest(PaymentMethod.VNPAY),()->{});
+        jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?",LocalDateTime.now().minusMinutes(1),a);
+        UUID b=booking("100000");
+        assertThat(promotions.quote(b,customCode(),false).voucherValid()).isFalse();
+        jdbc.update("UPDATE payment_transactions SET status='FAILED' WHERE id=?",p.paymentAttemptId());
+        assertThat(promotions.quote(b,customCode(),false).voucherValid()).isTrue();
+    }
+    @RepeatedTest(10) void twoIndependentTransactionsCannotReserveNewmemberTwice() throws Exception {
         UUID a=booking("100000"),b=booking("100000");
         var ready=new CountDownLatch(2);var go=new CountDownLatch(1);var pool=Executors.newFixedThreadPool(2);
         try(var blocker=source.getConnection()) {
