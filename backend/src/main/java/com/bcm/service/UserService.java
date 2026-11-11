@@ -22,11 +22,8 @@ public class UserService {
 
     @Transactional
     public void changePassword(String userId, com.bcm.dto.request.ChangePasswordRequest request) {
-        if(request.currentPassword()==null || request.newPassword()==null
-                || request.newPassword().isBlank() || request.newPassword().length()<8
-                || request.currentPassword().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>72
-                || request.newPassword().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>72)
-            throw new com.bcm.exception.BadRequestException("Mật khẩu mới phải có ít nhất 8 ký tự và không quá 72 byte UTF-8.");
+        com.bcm.security.CredentialPolicy.requireCurrentPassword(request.currentPassword());
+        com.bcm.security.CredentialPolicy.requireNewPassword(request.newPassword());
         User user=userRepository.findActiveForUpdate(UUID.fromString(userId))
                 .orElseThrow(()->new ResourceNotFoundException("Không tìm thấy tài khoản đang hoạt động"));
         if(!passwordEncoder.matches(request.currentPassword(),user.getPasswordHash()))
@@ -54,7 +51,7 @@ public class UserService {
      * @throws ResourceNotFoundException if user not found
      */
     public User findByEmail(String email) {
-        return userRepository.findByEmail(email)
+        return userRepository.findByEmail(com.bcm.security.CredentialPolicy.email(email))
                 .orElseThrow(() -> new ResourceNotFoundException("User", "email", email));
     }
 
@@ -64,6 +61,6 @@ public class UserService {
      * @return true if exists
      */
     public boolean existsByEmail(String email) {
-        return userRepository.existsByEmail(email);
+        return userRepository.existsByEmail(com.bcm.security.CredentialPolicy.email(email));
     }
 }

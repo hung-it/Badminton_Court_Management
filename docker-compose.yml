@@ -56,6 +56,13 @@ services:
         bind:
           create_host_path: false
 
+      - type: bind
+        source: ./db/upgrades/email-identity-upgrade.sql
+        target: /docker-entrypoint-initdb.d/09-email-identity-upgrade.sql
+        read_only: true
+        bind:
+          create_host_path: false
+
     healthcheck:
       # The temporary init server accepts Unix sockets before seed completion.
       # TCP is available only after all init scripts finish successfully.

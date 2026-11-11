@@ -38,7 +38,7 @@ SELECT 'CREATE DATABASE bcm_acceptance_test OWNER bcm_acceptance_owner' WHERE NO
  # Copy files explicitly: copying the directory again nests db/ under an existing
  # destination and otherwise leaves stale migrations at the paths psql executes.
  Dc exec bcm-postgres mkdir -p /tmp/acceptance-db
- foreach($sqlFile in @('migration.sql','booking-ux-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql')) {
+ foreach($sqlFile in @('migration.sql','booking-ux-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql','email-identity-upgrade.sql')) {
   $sourceFile=if($sqlFile -eq 'migration.sql'){"db/$sqlFile"}else{"db/upgrades/$sqlFile"}
   Dc cp $sourceFile "bcm-postgres:/tmp/acceptance-db/$sqlFile"
  }
@@ -47,7 +47,7 @@ SELECT 'CREATE DATABASE bcm_acceptance_test OWNER bcm_acceptance_owner' WHERE NO
  $schema=& docker exec -e PGPASSWORD=acceptance-local-only bcm-postgres psql -h 127.0.0.1 -U bcm_acceptance_owner -d bcm_acceptance_test -Atc "select count(*) from information_schema.tables where table_schema='public'"
  if($LASTEXITCODE -ne 0){throw 'Schema inspection failed'}
  if(([string]$schema).Trim() -eq '0'){Dc exec -e PGPASSWORD=acceptance-local-only bcm-postgres psql -h 127.0.0.1 -U bcm_acceptance_owner -d bcm_acceptance_test -v ON_ERROR_STOP=1 -f /tmp/acceptance-db/migration.sql}
- foreach($file in @('booking-ux-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql')) {
+ foreach($file in @('booking-ux-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql','email-identity-upgrade.sql')) {
   Dc exec -e PGPASSWORD=acceptance-local-only bcm-postgres psql -h 127.0.0.1 -U bcm_acceptance_owner -d bcm_acceptance_test -v ON_ERROR_STOP=1 -f "/tmp/acceptance-db/$file"
  }
  $env:JAVA_HOME=(Resolve-Path backend/target/phase1-tools/jdk-17.0.20.1+1).Path

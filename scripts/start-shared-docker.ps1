@@ -41,7 +41,7 @@ Assert-DockerExit 'Backup archive validation failed; no upgrades applied.'
 & $docker cp bcm-postgres:/tmp/bcm-before-upgrade.dump (Join-Path $backupFolder $backupName)
 Assert-DockerExit 'Cannot preserve backup on host; no upgrades applied.'
 # Mount init chỉ chạy cho volume mới. Volume đang có cần các migration cộng thêm, chạy lại an toàn.
-foreach ($migration in @('booking-ux-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql')) {
+foreach ($migration in @('booking-ux-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql','email-identity-upgrade.sql')) {
     & $docker cp (Join-Path $root "db/upgrades/$migration") "bcm-postgres:/tmp/bcm-$migration"
     Assert-DockerExit "Không copy được $migration."
     $upgradeCommand = 'psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/bcm-' + $migration

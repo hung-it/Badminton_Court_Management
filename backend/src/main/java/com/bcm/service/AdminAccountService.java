@@ -48,7 +48,7 @@ public class AdminAccountService {
   if("0000000000".equals(r.phone().strip()))throw new BadRequestException("Reserved POS guest phone");
   lockUser(id);var u=users.findById(id).orElseThrow();
   if(u.getDeletedAt()!=null||guest.isGuest(u.getId()))throw new BadRequestException("Account cannot be edited");
-  String email=r.email().strip().toLowerCase(Locale.ROOT);
+  String email=com.bcm.security.CredentialPolicy.email(r.email());
   if(jdbc.queryForObject("select count(*) from users where lower(email)=? and id<>?",Long.class,email,id)>0)throw new DuplicateResourceException("Email already registered");
   u.setFullName(r.fullName().strip());u.setEmail(email);u.setPhone(r.phone().strip());u.setAddress(r.address());users.saveAndFlush(u);
   jdbc.update("update customers set full_name=?,phone=?,address=?,updated_at=current_timestamp where user_id=?",u.getFullName(),u.getPhone(),u.getAddress(),id);

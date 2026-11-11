@@ -30,7 +30,7 @@ DockerChecked exec $container mkdir -p /tmp/p1-acceptance
 DockerChecked cp db/migration.sql "${container}:/tmp/p1-acceptance/migration.sql"
 $exists=& docker exec $container psql -U bcm_acceptance_owner -d bcm_acceptance_test -Atc "SELECT to_regclass('public.users') IS NOT NULL"
 if ($exists -eq 'f') { DockerChecked exec $container psql -U bcm_acceptance_owner -d bcm_acceptance_test -v ON_ERROR_STOP=1 -q -f /tmp/p1-acceptance/migration.sql }
-foreach ($file in @('booking-ux-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql')) {
+foreach ($file in @('booking-ux-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql','email-identity-upgrade.sql')) {
     DockerChecked cp "db/upgrades/$file" "${container}:/tmp/p1-acceptance/$file"
     DockerChecked exec $container psql -U bcm_acceptance_owner -d bcm_acceptance_test -v ON_ERROR_STOP=1 -q -f "/tmp/p1-acceptance/$file"
 }

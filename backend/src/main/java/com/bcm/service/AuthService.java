@@ -54,11 +54,13 @@ public class AuthService {
      */
     @Transactional
     public LoginResponse register(RegisterRequest request) {
+        request.setEmail(com.bcm.security.CredentialPolicy.email(request.getEmail()));
         if ("0000000000".equals(request.getPhone())
                 || "guest@bcm.com".equalsIgnoreCase(request.getEmail().strip())) {
             throw new BadRequestException("Reserved POS guest identity");
         }
         // Check if email already exists
+        com.bcm.security.CredentialPolicy.requireNewPassword(request.getPassword());
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new DuplicateResourceException("Email already registered");
         }
@@ -103,6 +105,7 @@ public class AuthService {
      */
     @Transactional(readOnly = true)
     public LoginResponse login(LoginRequest request) {
+        request.setEmail(com.bcm.security.CredentialPolicy.email(request.getEmail()));
         // Authenticate user
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())

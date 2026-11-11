@@ -29,4 +29,6 @@ Check-Exit
 Check-Exit
 & "$bin/psql.exe" @dbArgs -d bcm_member2_test -v ON_ERROR_STOP=1 -f "$root/db/upgrades/court-promotions-upgrade.sql"
 Check-Exit
+& "$bin/psql.exe" @dbArgs -d bcm_member2_test -v ON_ERROR_STOP=1 -f "$root/db/upgrades/email-identity-upgrade.sql"
+Check-Exit
 Write-Host 'Database ready: localhost:55432/bcm_member2_test'

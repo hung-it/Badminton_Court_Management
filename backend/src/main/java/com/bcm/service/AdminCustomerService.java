@@ -32,7 +32,8 @@ public class AdminCustomerService {
   if("0000000000".equals(r.phone().trim())) throw new BadRequestException("Reserved POS guest phone");
   Customer c=id==null?new Customer():active(id); User u=id==null?new User():c.getUser();
   if(id==null && (r.password()==null||r.password().isBlank())) throw new BadRequestException("Password required");
-  String email=r.email().trim().toLowerCase(Locale.ROOT);
+  if(id==null) com.bcm.security.CredentialPolicy.requireNewPassword(r.password());
+  String email=com.bcm.security.CredentialPolicy.email(r.email());
   if(jdbc.queryForObject("select count(*) from users where lower(email)=? and id<>?",Long.class,email,u.getId()==null?new UUID(0,0):u.getId())>0) throw new DuplicateResourceException("Email already registered");
   if(id!=null && (u.hasRole("ADMIN")||u.hasRole("STAFF"))) throw new BadRequestException("Managed staff account");
   u.setEmail(email);u.setFullName(r.fullName().trim());u.setPhone(r.phone().trim());u.setAddress(r.address());

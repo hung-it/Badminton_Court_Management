@@ -23,14 +23,14 @@ $database = & docker exec $container psql -U bcm_test -d postgres -Atc "SELECT d
 if ($database -ne 'bcm_p1_work') { DockerChecked exec $container psql -U bcm_test -d postgres -c 'CREATE DATABASE bcm_p1_work' }
 DockerChecked exec $container mkdir -p /tmp/p1-db/upgrades
 DockerChecked cp db/migration.sql "${container}:/tmp/p1-db/migration.sql"
-foreach ($file in @('booking-ux-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql')) {
+foreach ($file in @('booking-ux-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql','email-identity-upgrade.sql')) {
     DockerChecked cp "db/upgrades/$file" "${container}:/tmp/p1-db/upgrades/$file"
 }
 $exists = & docker exec $container psql -U bcm_test -d bcm_p1_work -Atc "SELECT to_regclass('public.users') IS NOT NULL"
 if ($exists -eq 'f') {
     DockerChecked exec $container psql -U bcm_test -d bcm_p1_work -v ON_ERROR_STOP=1 -q -f /tmp/p1-db/migration.sql
 }
-foreach ($file in @('booking-ux-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql')) {
+foreach ($file in @('booking-ux-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql','email-identity-upgrade.sql')) {
     DockerChecked exec $container psql -U bcm_test -d bcm_p1_work -v ON_ERROR_STOP=1 -q -f "/tmp/p1-db/upgrades/$file"
 }
 DockerChecked exec $container psql -U bcm_test -d bcm_p1_work -v ON_ERROR_STOP=1 -q -c "INSERT INTO users(id,email,password_hash,full_name,phone) VALUES ('00000000-0000-4000-8000-00000000b001','guest@bcm.com','!','P1 test guest','0000000000') ON CONFLICT(id) DO NOTHING; INSERT INTO customers(id,user_id,full_name,phone) VALUES ('00000000-0000-4000-8000-00000000b002','00000000-0000-4000-8000-00000000b001','P1 test guest','0000000000') ON CONFLICT(user_id) DO NOTHING; INSERT INTO user_roles(user_id,role_id) SELECT '00000000-0000-4000-8000-00000000b001',id FROM roles WHERE role_name='CUSTOMER' ON CONFLICT DO NOTHING;"

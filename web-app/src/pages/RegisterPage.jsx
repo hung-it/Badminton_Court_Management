@@ -30,7 +30,7 @@ const PHONE_RE = /^[0-9]{10,20}$/;
 /**
  * Validate phía client theo đúng ràng buộc của `RegisterRequest`:
  *  - email: @Email + @NotBlank
- *  - password: @Size(min = 6, max = 100)
+ *  - new password: at least 8 characters, at most 72 UTF-8 bytes
  *  - fullName: @Size(min = 2, max = 255)
  *  - phone: @Pattern("^[0-9]{10,20}$")
  */
@@ -59,10 +59,10 @@ function validate(values) {
 
   if (!values.password) {
     errors.password = 'Vui lòng nhập mật khẩu.';
-  } else if (values.password.length < 6) {
-    errors.password = 'Mật khẩu phải có ít nhất 6 ký tự.';
-  } else if (values.password.length > 100) {
-    errors.password = 'Mật khẩu không được vượt quá 100 ký tự.';
+  } else if (values.password.length < 8) {
+    errors.password = 'Mật khẩu phải có ít nhất 8 ký tự.';
+  } else if (new TextEncoder().encode(values.password).length > 72) {
+    errors.password = 'Mật khẩu không được vượt quá 72 byte UTF-8.';
   }
 
   if (values.confirmPassword !== values.password) {
@@ -253,7 +253,7 @@ export default function RegisterPage() {
                 onChange={(v) => setField('password', v)}
                 placeholder="Tạo mật khẩu của bạn"
                 autoComplete="new-password"
-                hint="Ít nhất 6 ký tự."
+                hint="Ít nhất 8 ký tự, tối đa 72 byte UTF-8."
                 error={fieldErrors.password}
                 required
               />
