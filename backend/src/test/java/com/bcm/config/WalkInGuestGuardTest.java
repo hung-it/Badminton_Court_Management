@@ -1,43 +1,21 @@
 package com.bcm.config;
-
+import com.bcm.security.WalkInGuestIdentity;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.JdbcTemplate;
-
-import java.util.ArrayList;
 import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
-
-/**
- * P2.5: the startup guard queries the exact PosService guest definition and never throws.
- * No Mockito: a JdbcTemplate subclass recording executed SQL keeps the test light and deterministic.
- */
+import java.util.UUID;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
 class WalkInGuestGuardTest {
-    private static final String GUEST_QUERY = "SELECT count(*) FROM customers c JOIN users u ON u.id = c.user_id "
-            + "WHERE u.email = 'guest@bcm.com' AND c.phone = '0000000000' "
-            + "AND c.deleted_at IS NULL AND u.deleted_at IS NULL";
-
-    private final List<String> executedSql = new ArrayList<>();
-    private final JdbcTemplate fakeJdbc = new JdbcTemplate() {
-        @Override
-        public <T> T queryForObject(String sql, Class<T> requiredType) {
-            executedSql.add(sql);
-            return requiredType.cast(1);
-        }
-    };
-
-    @ParameterizedTest
-    @ValueSource(booleans = {true, false})
-    void guardNeverThrows(boolean branch) {
-        assertThatCode(() -> new WalkInGuestGuard(fakeJdbc).run(null)).doesNotThrowAnyException();
-    }
-
-    @Test
-    void guardQueriesTheExactGuestDefinition() {
-        new WalkInGuestGuard(fakeJdbc).run(null);
-        assertThat(executedSql).containsExactly(GUEST_QUERY);
-    }
+ @Test void missingOrMalformedConfigurationFailsClosed() {
+  for(String id:List.of("","not-a-uuid")) assertThatThrownBy(()->new WalkInGuestIdentity(mock(JdbcTemplate.class),id)).isInstanceOf(IllegalStateException.class).hasMessageContaining("BCM_POS_GUEST_USER_ID");
+ }
+ @Test void startupPropagatesMissingInactiveOrPrivilegedGuest() {
+  var guest=mock(WalkInGuestIdentity.class);when(guest.customerId()).thenThrow(new IllegalStateException("Invalid guest"));
+  assertThatThrownBy(()->new WalkInGuestGuard(guest).run(null)).isInstanceOf(IllegalStateException.class);
+ }
+ @Test void configuredIdentityDoesNotProtectOtherUsers() {
+  UUID id=UUID.randomUUID();var guest=new WalkInGuestIdentity(mock(JdbcTemplate.class),id.toString());
+  assertThat(guest.isGuest(id)).isTrue();assertThat(guest.isGuest(UUID.randomUUID())).isFalse();
+ }
 }

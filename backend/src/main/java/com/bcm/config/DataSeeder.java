@@ -1,9 +1,7 @@
 package com.bcm.config;
 
-import com.bcm.entity.Customer;
 import com.bcm.entity.Role;
 import com.bcm.entity.User;
-import com.bcm.repository.CustomerRepository;
 import com.bcm.repository.RoleRepository;
 import com.bcm.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +18,7 @@ import java.util.Set;
  * Runs automatically on application startup
  */
 @Component
+@org.springframework.core.annotation.Order(0)
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="bcm.seed.enabled", havingValue="true", matchIfMissing=true)
 @RequiredArgsConstructor
 @Slf4j
@@ -27,8 +26,9 @@ public class DataSeeder implements CommandLineRunner {
 
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
-    private final CustomerRepository customerRepository;
     private final PasswordEncoder passwordEncoder;
+    private final com.bcm.security.WalkInGuestIdentity guest;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     @Override
     @Transactional
@@ -105,34 +105,13 @@ public class DataSeeder implements CommandLineRunner {
      * Seed default guest customer "Khách vãng lai" for POS sales
      */
     private void seedGuestCustomer() {
-        String guestPhone = "0000000000";
-        if (customerRepository.findByPhone(guestPhone).isEmpty()) {
-            log.info("Seeding default guest customer...");
-
-            String guestEmail = "guest@bcm.com";
-            Role customerRole = roleRepository.findByRoleName("CUSTOMER")
-                    .orElseThrow(() -> new RuntimeException("CUSTOMER role not found"));
-
-            User guestUser = userRepository.findByEmail(guestEmail).orElseGet(() -> {
-                User u = User.builder()
-                        .email(guestEmail)
-                        .passwordHash(passwordEncoder.encode("guest123"))
-                        .fullName("Khách vãng lai")
-                        .phone(guestPhone)
-                        .address("Tại quầy")
-                        .roles(Set.of(customerRole))
-                        .build();
-                return userRepository.save(u);
-            });
-
-            Customer guestCustomer = new Customer();
-            guestCustomer.setUser(guestUser);
-            guestCustomer.setFullName("Khách vãng lai");
-            guestCustomer.setPhone(guestPhone);
-            guestCustomer.setAddress("Tại quầy");
-            customerRepository.save(guestCustomer);
-
-            log.info("✅ Default guest customer seeded (phone: 0000000000)");
-        }
+        if (userRepository.findById(guest.userId()).isPresent()) return;
+        if (userRepository.existsByEmail("guest@bcm.com"))
+            throw new IllegalStateException("Configure BCM_POS_GUEST_USER_ID with the existing guest users.id");
+        jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone,created_at,updated_at) VALUES (?,'guest@bcm.com',?,'Khách vãng lai','0000000000',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+                guest.userId(), passwordEncoder.encode("guest123"));
+        jdbc.update("INSERT INTO user_roles(user_id,role_id) SELECT ?,id FROM roles WHERE role_name='CUSTOMER'", guest.userId());
+        jdbc.update("INSERT INTO customers(id,user_id,full_name,phone,created_at,updated_at) VALUES (?,?,'Khách vãng lai','0000000000',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+                java.util.UUID.randomUUID(),guest.userId());
     }
 }

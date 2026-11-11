@@ -41,6 +41,7 @@ public class PosService {
     private final ProductPriceService productPrices;
     private final com.bcm.repository.BookingRepository bookings;
     private final com.bcm.security.CurrentStaffService currentStaff;
+    private final com.bcm.security.WalkInGuestIdentity guest;
 
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
     private final com.bcm.repository.PaymentTransactionRepository payments;
@@ -200,10 +201,7 @@ public class PosService {
     private UUID resolveCustomerId(UUID requestedCustomerId) {
         if(requestedCustomerId!=null) return customerRepository.findById(requestedCustomerId)
             .filter(c->c.getDeletedAt()==null).orElseThrow(()->new ResourceNotFoundException("Customer not found")).getId();
-        var guests=jdbc.query("SELECT c.id FROM customers c JOIN users u ON u.id=c.user_id WHERE u.email='guest@bcm.com' AND c.phone='0000000000' AND c.deleted_at IS NULL AND u.deleted_at IS NULL",
-            (rs,n)->rs.getObject(1,UUID.class));
-        if(guests.size()!=1) throw new BadRequestException("Dedicated walk-in customer is missing or ambiguous; no fallback is allowed");
-        return guests.get(0);
+        return guest.customerId();
     }
 
     public String manualMethod(String method) {

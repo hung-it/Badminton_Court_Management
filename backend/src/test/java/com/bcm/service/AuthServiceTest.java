@@ -18,12 +18,33 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class AuthServiceTest {
+
+    @Test
+    void legacyRefreshWithoutIdentityMustNotResolveReusedEmail() {
+        when(jwtUtil.validateToken("legacy")).thenReturn(true);
+        when(jwtUtil.isRefreshToken("legacy")).thenReturn(true);
+        when(jwtUtil.extractEmail("legacy")).thenReturn("reused@example.com");
+        assertThatThrownBy(() -> authService.refreshToken(new RefreshTokenRequest("legacy")))
+                .isInstanceOf(org.springframework.security.authentication.BadCredentialsException.class);
+        verify(userRepository, never()).findByEmailAndDeletedAtIsNull(any());
+    }
+
+    @Test
+    void registrationRejectsReservedGuestPhoneAndEmailBeforePersistence() {
+        for (var request : java.util.List.of(
+                RegisterRequest.builder().email("normal@example.com").phone("0000000000").build(),
+                RegisterRequest.builder().email(" GUEST@BCM.COM ").phone("0912345678").build())) {
+            assertThatThrownBy(() -> authService.register(request)).isInstanceOf(BadRequestException.class);
+        }
+        verifyNoInteractions(userRepository, customerRepository);
+    }
 
     private final UserRepository userRepository = mock(UserRepository.class);
     private final CustomerRepository customerRepository = mock(CustomerRepository.class);
@@ -59,7 +80,7 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("refreshToken throws BadRequestException (400) when token is not a refresh token")
+    @DisplayName("refreshToken rejects a non-refresh token with authentication failure")
     void refreshTokenThrowsBadRequestExceptionWhenTokenIsNotRefreshToken() {
         RefreshTokenRequest request = new RefreshTokenRequest("access-token-passed-as-refresh");
 
@@ -67,24 +88,23 @@ class AuthServiceTest {
         when(jwtUtil.isRefreshToken(request.getRefreshToken())).thenReturn(false);
 
         assertThatThrownBy(() -> authService.refreshToken(request))
-                .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("Invalid or expired refresh token");
+                .isInstanceOf(org.springframework.security.authentication.BadCredentialsException.class);
     }
 
     @Test
-    @DisplayName("refreshToken throws ResourceNotFoundException (404) when user is not found")
+    @DisplayName("refreshToken rejects an unavailable identity with authentication failure")
     void refreshTokenThrowsResourceNotFoundExceptionWhenUserNotFound() {
         String token = "valid-refresh-token";
         RefreshTokenRequest request = new RefreshTokenRequest(token);
 
         when(jwtUtil.validateToken(token)).thenReturn(true);
         when(jwtUtil.isRefreshToken(token)).thenReturn(true);
-        when(jwtUtil.extractEmail(token)).thenReturn("missing@example.com");
-        when(userRepository.findByEmailAndDeletedAtIsNull("missing@example.com")).thenReturn(Optional.empty());
+        var missingId = UUID.randomUUID();
+        when(jwtUtil.extractUserId(token)).thenReturn(missingId.toString());
+        when(userRepository.findById(missingId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.refreshToken(request))
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessageContaining("User not found");
+                .isInstanceOf(org.springframework.security.authentication.BadCredentialsException.class);
     }
 
     @Test

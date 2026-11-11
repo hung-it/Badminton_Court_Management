@@ -54,6 +54,10 @@ public class AuthService {
      */
     @Transactional
     public LoginResponse register(RegisterRequest request) {
+        if ("0000000000".equals(request.getPhone())
+                || "guest@bcm.com".equalsIgnoreCase(request.getEmail().strip())) {
+            throw new BadRequestException("Reserved POS guest identity");
+        }
         // Check if email already exists
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new DuplicateResourceException("Email already registered");
@@ -85,7 +89,7 @@ public class AuthService {
         // Generate tokens
         UserPrincipal principal = UserPrincipal.create(savedUser);
         String accessToken = jwtUtil.generateAccessToken(principal);
-        String refreshToken = jwtUtil.generateRefreshToken(savedUser.getEmail());
+        String refreshToken = jwtUtil.generateRefreshToken(savedUser.getId(), savedUser.getEmail());
 
         UserResponse userResponse = UserResponse.fromEntity(savedUser);
 
@@ -114,7 +118,7 @@ public class AuthService {
         UserPrincipal principal = authentication.getPrincipal() instanceof UserPrincipal p
                 ? p : UserPrincipal.create(user);
         String accessToken = jwtUtil.generateAccessToken(principal);
-        String refreshToken = jwtUtil.generateRefreshToken(user.getEmail());
+        String refreshToken = jwtUtil.generateRefreshToken(user.getId(), user.getEmail());
 
         UserResponse userResponse = UserResponse.fromEntity(user);
 
@@ -134,20 +138,22 @@ public class AuthService {
 
         // Validate refresh token
         if (!jwtUtil.validateToken(refreshToken) || !jwtUtil.isRefreshToken(refreshToken)) {
-            throw new BadRequestException("Invalid or expired refresh token");
+            throw new org.springframework.security.authentication.BadCredentialsException("Invalid or expired refresh token");
         }
 
-        // Extract email from refresh token
-        String email = jwtUtil.extractEmail(refreshToken);
-
-        // Get user
-        User user = userRepository.findByEmailAndDeletedAtIsNull(email)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        java.util.UUID userId;
+        try {
+            userId = java.util.UUID.fromString(jwtUtil.extractUserId(refreshToken));
+        } catch (IllegalArgumentException | NullPointerException ex) {
+            throw new org.springframework.security.authentication.BadCredentialsException("Refresh identity required");
+        }
+        User user = userRepository.findById(userId).filter(u -> u.getDeletedAt() == null)
+                .orElseThrow(() -> new org.springframework.security.authentication.BadCredentialsException("Account unavailable"));
 
         // Generate new tokens
         UserPrincipal principal = UserPrincipal.create(user);
         String newAccessToken = jwtUtil.generateAccessToken(principal);
-        String newRefreshToken = jwtUtil.generateRefreshToken(user.getEmail());
+        String newRefreshToken = jwtUtil.generateRefreshToken(user.getId(), user.getEmail());
 
         UserResponse userResponse = UserResponse.fromEntity(user);
 

@@ -49,7 +49,7 @@ class JwtAuthenticationFilterTest {
     @Test
     @DisplayName("Filter rejects Refresh Token presented in Authorization header with 401")
     void filterRejectsRefreshTokenInAuthorizationHeader() throws Exception {
-        String refreshToken = jwtUtil.generateRefreshToken("user@example.com");
+        String refreshToken = jwtUtil.generateRefreshToken(java.util.UUID.randomUUID(), "user@example.com");
 
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("Authorization", "Bearer " + refreshToken);
@@ -66,8 +66,8 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    @DisplayName("Filter performs stateless authentication from token claims without hitting DB")
-    void filterPerformsStatelessAuthenticationWithoutDatabaseLookup() throws Exception {
+    @DisplayName("Filter resolves current identity and roles")
+    void filterResolvesCurrentIdentity() throws Exception {
         String userId = UUID.randomUUID().toString();
         String email = "stateless@example.com";
         UserPrincipal principal = new UserPrincipal(
@@ -79,6 +79,7 @@ class JwtAuthenticationFilterTest {
         );
 
         String accessToken = jwtUtil.generateAccessToken(principal);
+        when(userDetailsService.loadUserByUsername(email)).thenReturn(principal);
 
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("Authorization", "Bearer " + accessToken);
@@ -98,7 +99,6 @@ class JwtAuthenticationFilterTest {
                 .containsExactly("ROLE_CUSTOMER");
 
         verify(filterChain).doFilter(request, response);
-        // CRITICAL: userDetailsService MUST NOT be touched when claims are present (stateless)
-        verifyNoInteractions(userDetailsService);
+        verify(userDetailsService).loadUserByUsername(email);
     }
 }

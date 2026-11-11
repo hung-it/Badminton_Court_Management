@@ -64,13 +64,15 @@ public class JwtUtil {
     }
 
     /**
-     * Generate refresh token with typ claim
+     * Generate refresh token bound to an immutable user identity.
+     * @param userId User identity used for refresh lookup
      * @param email User email
      * @return JWT refresh token
      */
-    public String generateRefreshToken(String email) {
+    public String generateRefreshToken(java.util.UUID userId, String email) {
         Map<String, Object> claims = new HashMap<>();
         claims.put(CLAIM_TOKEN_TYPE, TOKEN_TYPE_REFRESH);
+        claims.put(CLAIM_USER_ID, userId.toString());
         return createToken(claims, email, refreshTokenExpiration);
     }
 

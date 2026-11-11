@@ -13,7 +13,7 @@ import java.util.*;
 import java.time.LocalDateTime;
 @Service @RequiredArgsConstructor @Transactional(readOnly=true)
 public class AdminAccountService {
- private final JdbcTemplate jdbc; private final UserRepository users;
+ private final JdbcTemplate jdbc; private final UserRepository users; private final com.bcm.security.WalkInGuestIdentity guest;
  private static final String FROM=" from users u left join customers c on c.user_id=u.id left join staffs s on s.user_id=u.id ";
  private static final String SELECT="select u.id,u.full_name,u.email,u.phone,coalesce(c.address,u.address) address,u.created_at,u.deleted_at,c.id customer_id,s.id staff_id,s.position,"
   +"(select string_agg(r.role_name,',' order by case r.role_name when 'ADMIN' then 1 when 'STAFF' then 2 else 3 end) from user_roles ur join roles r on r.id=ur.role_id where ur.user_id=u.id) roles,"
@@ -26,8 +26,8 @@ public class AdminAccountService {
   v.put("customerId",rs.getObject("customer_id"));v.put("staffId",rs.getObject("staff_id"));
   String roles=rs.getString("roles");v.put("roles",roles==null?List.of():Arrays.asList(roles.split(",")));
   v.put("bookingCount",rs.getLong("booking_count"));v.put("totalSpent",rs.getBigDecimal("total_spent"));
-  boolean active=rs.getObject("deleted_at")==null,guest="0000000000".equals(rs.getString("phone"));
-  v.put("canEdit",active&&!guest);v.put("canLock",active&&!guest);return v;
+  boolean active=rs.getObject("deleted_at")==null,protectedGuest=guest.isGuest(rs.getObject("id",UUID.class));
+  v.put("canEdit",active&&!protectedGuest);v.put("canLock",active&&!protectedGuest);return v;
  }
  public Map<String,Object> list(String search,String role,String sort,int page){
   if(page<0||!List.of("","ADMIN","STAFF","CUSTOMER").contains(role)||!List.of("created","name").contains(sort))throw new BadRequestException("Invalid account filter");
@@ -47,7 +47,7 @@ public class AdminAccountService {
  @Transactional public void update(UUID id,AdminAccountUpdateRequest r){
   if("0000000000".equals(r.phone().strip()))throw new BadRequestException("Reserved POS guest phone");
   lockUser(id);var u=users.findById(id).orElseThrow();
-  if(u.getDeletedAt()!=null||"0000000000".equals(u.getPhone()))throw new BadRequestException("Account cannot be edited");
+  if(u.getDeletedAt()!=null||guest.isGuest(u.getId()))throw new BadRequestException("Account cannot be edited");
   String email=r.email().strip().toLowerCase(Locale.ROOT);
   if(jdbc.queryForObject("select count(*) from users where lower(email)=? and id<>?",Long.class,email,id)>0)throw new DuplicateResourceException("Email already registered");
   u.setFullName(r.fullName().strip());u.setEmail(email);u.setPhone(r.phone().strip());u.setAddress(r.address());users.saveAndFlush(u);
@@ -61,7 +61,7 @@ public class AdminAccountService {
   jdbc.queryForList("select id from roles where role_name='ADMIN' for update",UUID.class);
   if(jdbc.queryForObject("select count(*) from users u join user_roles ur on ur.user_id=u.id join roles r on r.id=ur.role_id where u.id=? and u.deleted_at is null and r.role_name='ADMIN'",Long.class,actor)==0)throw new AccessDeniedException("Active admin required");
   if(actor.equals(id))throw new BadRequestException("Cannot lock your own account");lockUser(id);var u=users.findById(id).orElseThrow();
-  if("0000000000".equals(u.getPhone()))throw new BadRequestException("POS guest account is protected");if(u.getDeletedAt()!=null)return;
+  if(guest.isGuest(u.getId()))throw new BadRequestException("POS guest account is protected");if(u.getDeletedAt()!=null)return;
   if(u.hasRole("ADMIN")&&jdbc.queryForObject("select count(distinct u.id) from users u join user_roles ur on ur.user_id=u.id join roles r on r.id=ur.role_id where r.role_name='ADMIN' and u.deleted_at is null",Long.class)<=1)throw new BadRequestException("Cannot lock last active admin");
   u.setDeletedAt(LocalDateTime.now());users.saveAndFlush(u);
   jdbc.update("update customers set deleted_at=?,updated_at=current_timestamp where user_id=?",u.getDeletedAt(),id);

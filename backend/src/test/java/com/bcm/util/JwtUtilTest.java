@@ -53,21 +53,22 @@ class JwtUtilTest {
     @DisplayName("Refresh token contains typ=REFRESH claim")
     void refreshTokenClaimsAreCorrectlyEmbedded() {
         String email = "refresh@example.com";
-        String token = jwtUtil.generateRefreshToken(email);
+        UUID userId = UUID.randomUUID();
+        String token = jwtUtil.generateRefreshToken(userId, email);
 
         assertThat(token).isNotBlank();
         assertThat(jwtUtil.extractEmail(token)).isEqualTo(email);
         assertThat(jwtUtil.extractTokenType(token)).isEqualTo(JwtUtil.TOKEN_TYPE_REFRESH);
         assertThat(jwtUtil.isRefreshToken(token)).isTrue();
         assertThat(jwtUtil.isAccessToken(token)).isFalse();
-        assertThat(jwtUtil.extractUserId(token)).isNull();
+        assertThat(jwtUtil.extractUserId(token)).isEqualTo(userId.toString());
     }
 
     @Test
     @DisplayName("Token type separation prevents type confusion")
     void tokenTypeConfusionIsPrevented() {
         String email = "user@example.com";
-        String refreshToken = jwtUtil.generateRefreshToken(email);
+        String refreshToken = jwtUtil.generateRefreshToken(java.util.UUID.randomUUID(), email);
         UserPrincipal principal = new UserPrincipal(
                 UUID.randomUUID().toString(),
                 email,

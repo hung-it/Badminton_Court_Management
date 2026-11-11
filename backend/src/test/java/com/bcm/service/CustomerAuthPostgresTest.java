@@ -49,6 +49,9 @@ class CustomerAuthPostgresTest {
     @Autowired CurrentCustomerService resolver;
     @Autowired CustomUserDetailsService principals;
     @Autowired JwtUtil jwt;
+    @Autowired com.bcm.service.AdminAccountService accounts;
+    @Autowired com.bcm.service.AdminCustomerService adminCustomers;
+    @Autowired com.bcm.security.WalkInGuestIdentity guest;
     private String email;
     @BeforeEach void prepare() { email = UUID.randomUUID() + "@phase6-auth.test"; }
     @AfterEach void cleanup() {
@@ -63,6 +66,63 @@ class CustomerAuthPostgresTest {
     }
     private String register() {
         return auth.register(request()).getUser().getId();
+    }
+    @Test void refreshAfterEmailReuseStillBelongsToOriginalUser() throws Exception {
+        var original=auth.register(request());
+        UUID originalId=UUID.fromString(original.getUser().getId());
+        jdbc.update("UPDATE users SET email=? WHERE id=?", "renamed-"+email,originalId);
+        try {
+            var replacement=auth.register(request());
+            var refreshed=auth.refreshToken(new com.bcm.dto.request.RefreshTokenRequest(original.getRefreshToken()));
+            assertThat(refreshed.getUser().getId()).isEqualTo(originalId.toString()).isNotEqualTo(replacement.getUser().getId());
+            assertThat(jwt.extractUserId(refreshed.getAccessToken())).isEqualTo(originalId.toString());
+            assertThat(refreshed.getUser().getEmail()).isEqualTo("renamed-"+email);
+            jdbc.update("UPDATE users SET deleted_at=CURRENT_TIMESTAMP WHERE id=?",originalId);
+            mvc.perform(post("/api/auth/refresh").contextPath("/api").contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsBytes(new com.bcm.dto.request.RefreshTokenRequest(refreshed.getRefreshToken()))))
+                    .andExpect(status().isUnauthorized());
+        } finally { jdbc.update("DELETE FROM users WHERE id=?",originalId); }
+    }
+    @Test void signedLegacyRefreshWithoutUidIsUnauthorized() throws Exception {
+        register();
+        String secret=(String)org.springframework.test.util.ReflectionTestUtils.getField(jwt,"secret");
+        var key=io.jsonwebtoken.security.Keys.hmacShaKeyFor(io.jsonwebtoken.io.Decoders.BASE64.decode(secret));
+        String legacy=io.jsonwebtoken.Jwts.builder().subject(email).claim("typ","REFRESH")
+                .expiration(new java.util.Date(System.currentTimeMillis()+60000)).signWith(key).compact();
+        mvc.perform(post("/api/auth/refresh").contextPath("/api").contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(new com.bcm.dto.request.RefreshTokenRequest(legacy))))
+                .andExpect(status().isUnauthorized());
+    }
+    @Test void spoofedGuestCanBeManagedWhileConfiguredGuestRemainsProtected() {
+        UUID fakeId=UUID.fromString(register()),adminId=UUID.randomUUID();
+        UUID fakeCustomer=jdbc.queryForObject("SELECT id FROM customers WHERE user_id=?",UUID.class,fakeId);
+        jdbc.update("UPDATE users SET phone='0000000000' WHERE id=?",fakeId);
+        jdbc.update("UPDATE customers SET phone='0000000000' WHERE id=?",fakeCustomer);
+        jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES (?,?,'test','P1 admin','0000000000')",adminId,adminId+"@p1-admin.invalid");
+        jdbc.update("INSERT INTO user_roles(user_id,role_id) SELECT ?,id FROM roles WHERE role_name='ADMIN'",adminId);
+        var principal=new com.bcm.security.UserPrincipal(adminId.toString(),adminId+"@p1-admin.invalid","unused",
+                java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN")),true);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal,null,principal.getAuthorities()));
+        try {
+            assertThat(accounts.detail(fakeId).get("canLock")).isEqualTo(true);
+            assertThat(adminCustomers.list(email,0,"created").get("totalElements")).isEqualTo(1L);
+            assertThat(accounts.detail(adminId).get("canEdit")).isEqualTo(true);
+            assertThat(accounts.detail(guest.userId()).get("canLock")).isEqualTo(false);
+            assertThatThrownBy(()->accounts.disable(guest.userId())).isInstanceOf(com.bcm.exception.BadRequestException.class);
+            accounts.disable(fakeId);
+            assertThat(jdbc.queryForObject("SELECT deleted_at IS NOT NULL FROM users WHERE id=?",Boolean.class,fakeId)).isTrue();
+        } finally {jdbc.update("DELETE FROM users WHERE id=?",adminId);}
+    }
+    @Test void configuredGuestValidationRejectsPrivilegedInactiveAndMissingProfiles() {
+        UUID id=UUID.fromString(register());
+        var configured=new com.bcm.security.WalkInGuestIdentity(jdbc,id.toString());
+        assertThat(configured.customerId()).isNotNull();
+        jdbc.update("INSERT INTO user_roles(user_id,role_id) SELECT ?,id FROM roles WHERE role_name='STAFF'",id);
+        assertThatThrownBy(configured::customerId).isInstanceOf(IllegalStateException.class);
+        jdbc.update("DELETE FROM user_roles WHERE user_id=? AND role_id IN (SELECT id FROM roles WHERE role_name='STAFF')",id);
+        jdbc.update("UPDATE customers SET deleted_at=CURRENT_TIMESTAMP WHERE user_id=?",id);
+        assertThatThrownBy(configured::customerId).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(()->new com.bcm.security.WalkInGuestIdentity(jdbc,UUID.randomUUID().toString()).customerId()).isInstanceOf(IllegalStateException.class);
     }
     @Test void customerRegistrationPersistsUserRoleAndDistinctCustomerAtomically() throws Exception {
         String response = mvc.perform(post("/api/auth/register").contextPath("/api").contentType(MediaType.APPLICATION_JSON)
