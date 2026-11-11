@@ -1,4 +1,4 @@
-﻿param([int]$Runs = 2)
+param([int]$Runs = 2)
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 Set-Location $repoRoot
@@ -25,7 +25,7 @@ DockerChecked cp db "${testContainer}:/tmp/db"
 $schemaExists = & docker exec $testContainer psql -U bcm_test -d bcm_regression_test -Atc "select to_regclass('public.users') is not null"
 if($LASTEXITCODE -ne 0){throw 'Cannot inspect test schema'}
 if($schemaExists -eq 'f') { DockerChecked exec $testContainer psql -U bcm_test -d bcm_regression_test -v ON_ERROR_STOP=1 -f /tmp/db/migration.sql }
-foreach($script in @('booking-ux-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql')) {
+foreach($script in @('upgrades/booking-ux-upgrade.sql','upgrades/product-promotions-upgrade.sql','upgrades/court-promotions-upgrade.sql')) {
  DockerChecked exec $testContainer psql -U bcm_test -d bcm_regression_test -v ON_ERROR_STOP=1 -f "/tmp/db/$script"
 }
 $env:BCM_TEST_DB_URL="jdbc:postgresql://127.0.0.1:${testPort}/bcm_regression_test"

@@ -42,8 +42,8 @@ WHERE NOT EXISTS (
 INSERT INTO products(category_id,name,type,unit,price,stock_quantity)
 SELECT c.id,v.name,v.type,v.unit,v.price,v.stock
 FROM (VALUES
-    ('Nước giải khát','Nước suối 500ml','GOODS','chai',10000,50),
-    ('Phụ kiện','Cầu lông tiêu chuẩn','GOODS','quả',25000,30),
+    ('Nước giải khát','Nước suối 500ml','GOODS','chai',10000,0),
+    ('Phụ kiện','Cầu lông tiêu chuẩn','GOODS','quả',25000,0),
     ('Thuê vợt','Thuê vợt theo lượt','SERVICE','lượt',20000,0)
 ) AS v(category,name,type,unit,price,stock)
 JOIN categories c ON lower(btrim(regexp_replace(btrim(c.category_name), '[[:space:]]+', ' ', 'g'))) = lower(btrim(regexp_replace(btrim(v.category), '[[:space:]]+', ' ', 'g')))

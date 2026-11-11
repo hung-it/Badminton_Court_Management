@@ -125,7 +125,7 @@ class BranchSeedPostgresTest {
             sql.execute("CREATE SCHEMA "+schema);
             try {
                 sql.execute("SET search_path TO "+schema+",public");
-                for(String script:new String[]{"migration.sql","booking-ux-upgrade.sql","branches-seed.sql"})sql.execute(file(script));
+                for(String script:new String[]{"migration.sql","upgrades/booking-ux-upgrade.sql","seeds/branches-seed.sql"})sql.execute(file(script));
                 assertThat(scalar(sql,"SELECT count(*) FROM courts")).isEqualTo("210");
                 assertThat(scalar(sql,"SELECT count(*) FROM courts WHERE branch_id IS NULL OR district IS NULL OR address IS NULL")).isEqualTo("0");
                 assertThat(scalar(sql,"SELECT count(DISTINCT branch_id) FROM courts")).isEqualTo("35");
@@ -134,7 +134,7 @@ class BranchSeedPostgresTest {
                 assertThat(scalar(sql,"SELECT count(*) FROM promotions WHERE code IN ('NEWMEMBER','KMKH10') AND valid_to IS NULL")).isEqualTo("2");
                 assertThat(scalar(sql,"SELECT count(*) FROM discount_rules WHERE voucher_code IN ('NEWMEMBER','KMKH10')")).isEqualTo("2");
                 String first=scalar(sql,"SELECT jsonb_agg(to_jsonb(c) ORDER BY id)::text FROM courts c");
-                sql.execute(file("booking-ux-upgrade.sql"));sql.execute(file("branches-seed.sql"));
+                sql.execute(file("upgrades/booking-ux-upgrade.sql"));sql.execute(file("seeds/branches-seed.sql"));
                 assertThat(scalar(sql,"SELECT jsonb_agg(to_jsonb(c) ORDER BY id)::text FROM courts c")).isEqualTo(first);
             } finally {sql.execute("ROLLBACK");sql.execute("SET search_path TO public");sql.execute("DROP SCHEMA "+schema+" CASCADE");}
         }

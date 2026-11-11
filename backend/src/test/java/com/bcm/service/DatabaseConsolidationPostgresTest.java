@@ -41,8 +41,8 @@ class DatabaseConsolidationPostgresTest {
                     if(schema.equals(oldSchema)) {
                         for(String stage:new String[]{upgrade("district"),upgrade("contact"),upgrade("court-metadata"),upgrade("branches"),seed("branches"),upgrade("promotions"),upgrade("checkout-release")})sql.execute(stage);
                     } else {
-                        sql.execute(Files.readString(Path.of("../db/booking-ux-upgrade.sql")));
-                        sql.execute(Files.readString(Path.of("../db/branches-seed.sql")));
+                        sql.execute(Files.readString(Path.of("../db/upgrades/booking-ux-upgrade.sql")));
+                        sql.execute(Files.readString(Path.of("../db/seeds/branches-seed.sql")));
                     }
                     assertThat(protectedData(sql)).isEqualTo(protectedBefore);
                     assertThat(scalar(sql,"SELECT count(*) FROM courts")).isEqualTo("210");

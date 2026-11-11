@@ -2,7 +2,7 @@
 
 ## Chạy và nâng cấp
 
-Database có sẵn: bảo đảm đã áp dụng các nâng cấp Booking/chi nhánh của develop, sao lưu rồi chạy `db/product-promotions-upgrade.sql` trước khi khởi động backend mới. Script chỉ thêm cột; chạy lại an toàn, không đổi hóa đơn cũ.
+Database có sẵn: bảo đảm đã áp dụng các nâng cấp Booking/chi nhánh của develop, sao lưu rồi chạy `db/upgrades/product-promotions-upgrade.sql` trước khi khởi động backend mới. Script chỉ thêm cột; chạy lại an toàn, không đổi hóa đơn cũ.
 
 Database mới: `migration.sql` → `booking-ux-upgrade.sql` → `branches-seed.sql` nếu dùng bộ dữ liệu chi nhánh của nhóm → `booking-ux-upgrade.sql` → `booking-ux-upgrade.sql` → `product-promotions-upgrade.sql`. `scripts/start-local-db.ps1` đã chạy bản nâng cấp khuyến mãi (DB local vẫn phải được chuẩn bị theo schema develop trước); Docker Compose mount cùng thứ tự khi volume mới. Volume Docker đã có dữ liệu không tự chạy lại init script.
 
