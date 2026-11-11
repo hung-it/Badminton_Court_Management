@@ -292,7 +292,7 @@ class PaymentAttemptPostgresTest {
                 .andExpect(jsonPath("$.paths['/bookings/{bookingId}/payments'].post.responses['201']").exists())
                 .andExpect(jsonPath("$.paths['/bookings/{bookingId}/payments'].post.responses['409']").exists())
                 .andExpect(jsonPath("$.paths['/bookings/{bookingId}/payments'].post.description").value(
-                        org.hamcrest.Matchers.containsString("checkoutReady=true")))
+                        org.hamcrest.Matchers.containsString("callback verification")))
                 .andExpect(jsonPath("$.components.schemas.CreatePaymentAttemptRequest.properties.amount").doesNotExist())
                 .andExpect(jsonPath("$.components.schemas.CreatePaymentAttemptRequest.properties.invoiceId").doesNotExist());
     }

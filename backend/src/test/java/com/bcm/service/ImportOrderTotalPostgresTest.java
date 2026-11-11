@@ -30,14 +30,17 @@ class ImportOrderTotalPostgresTest {
     @Autowired MasterDataService master;
     @Autowired org.springframework.test.web.servlet.MockMvc mvc;
     UUID supplier,category,product;
+    com.bcm.security.UserPrincipal actor;
     List<UUID> extraSuppliers=new ArrayList<>(),extraProducts=new ArrayList<>();
     @BeforeEach void setup() {
+        actor=com.bcm.TestActors.admin(jdbc);com.bcm.TestActors.authenticate(actor);
         supplier=UUID.randomUUID();category=UUID.randomUUID();product=UUID.randomUUID();
         jdbc.update("INSERT INTO suppliers(id,name) VALUES (?,'Import total test')",supplier);
         jdbc.update("INSERT INTO categories(id,category_name) VALUES (?,'Import total test')",category);
         jdbc.update("INSERT INTO products(id,category_id,name,type,price,stock_quantity) VALUES (?,?,'Import total test','GOODS',10000,0)",product,category);
     }
     @AfterEach void cleanup() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
         for(var id:extraSuppliers)jdbc.update("DELETE FROM import_orders WHERE supplier_id=?",id);
         for(var id:extraProducts)jdbc.update("DELETE FROM products WHERE id=?",id);
         for(var id:extraSuppliers)jdbc.update("DELETE FROM suppliers WHERE id=?",id);
@@ -61,6 +64,7 @@ class ImportOrderTotalPostgresTest {
         moveToImportCategory();
         jdbc.update("UPDATE products SET price=0,stock_quantity=5 WHERE id=?",product);
         var request=new com.bcm.dto.request.PosSaleRequest(null,null,null,"CASH",BigDecimal.ZERO,BigDecimal.ZERO,List.of(new com.bcm.dto.request.PosSaleItemRequest(product,1)));
+        request.setIdempotencyKey(UUID.randomUUID());request.setPaymentConfirmed(true);request.setExpectedTotal(BigDecimal.ZERO);
         assertThat(prices.sellable()).extracting(com.bcm.entity.Product::getId).doesNotContain(product);
         assertThatThrownBy(()->pos.quote(request)).hasMessageContaining("chưa được duyệt");
         assertThatThrownBy(()->pos.sell(request)).hasMessageContaining("chưa được duyệt");
@@ -80,7 +84,7 @@ class ImportOrderTotalPostgresTest {
         jdbc.update("UPDATE products SET price=0 WHERE id=?",product);
         int version=master.product(product).getVersion();
         var ready=new java.util.concurrent.CountDownLatch(2);var start=new java.util.concurrent.CountDownLatch(1);var pool=java.util.concurrent.Executors.newFixedThreadPool(2);
-        java.util.concurrent.Callable<Boolean> task=()->{ready.countDown();start.await();try{prices.approve(product,BigDecimal.TEN,version);return true;}catch(com.bcm.exception.DuplicateResourceException e){return false;}};
+        java.util.concurrent.Callable<Boolean> task=()->{com.bcm.TestActors.authenticate(actor);ready.countDown();start.await();try{prices.approve(product,BigDecimal.TEN,version);return true;}catch(com.bcm.exception.DuplicateResourceException e){return false;}};
         try{
             var one=pool.submit(task);var two=pool.submit(task);assertThat(ready.await(10,java.util.concurrent.TimeUnit.SECONDS)).isTrue();start.countDown();
             assertThat(List.of(one.get(20,java.util.concurrent.TimeUnit.SECONDS),two.get(20,java.util.concurrent.TimeUnit.SECONDS))).containsExactlyInAnyOrder(true,false);
@@ -88,14 +92,14 @@ class ImportOrderTotalPostgresTest {
     }
     @Test void manualApiAcceptsTypedNamesAndValidatesRequiredFields() throws Exception {
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/import-orders/manual").contextPath("/api")
-            .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN"))
+            .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(actor))
             .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
             .content("{\"supplierName\":\"Import total test\",\"productName\":\"Import total test\",\"quantity\":3,\"totalAmount\":\"100000\"}"))
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isCreated())
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.supplierId").value(supplier.toString()))
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.totalAmount").value(100000));
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/import-orders/manual").contextPath("/api")
-            .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN"))
+            .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(actor))
             .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
             .content("{\"supplierName\":\" \",\"productName\":\"\",\"quantity\":0,\"totalAmount\":-1}"))
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
@@ -124,7 +128,7 @@ class ImportOrderTotalPostgresTest {
         String name="Concurrent-"+supplier;
         var ready=new java.util.concurrent.CountDownLatch(2);var start=new java.util.concurrent.CountDownLatch(1);
         var pool=java.util.concurrent.Executors.newFixedThreadPool(2);
-        java.util.concurrent.Callable<com.bcm.dto.response.ImportOrderResponse> task=()->{ready.countDown();start.await();return imports.createManual(new com.bcm.dto.request.ManualImportOrderRequest(name,name,1,BigDecimal.TEN));};
+        java.util.concurrent.Callable<com.bcm.dto.response.ImportOrderResponse> task=()->{com.bcm.TestActors.authenticate(actor);ready.countDown();start.await();return imports.createManual(new com.bcm.dto.request.ManualImportOrderRequest(name,name,1,BigDecimal.TEN));};
         try {
             var one=pool.submit(task);var two=pool.submit(task);assertThat(ready.await(10,java.util.concurrent.TimeUnit.SECONDS)).isTrue();start.countDown();
             var first=one.get(20,java.util.concurrent.TimeUnit.SECONDS);var second=two.get(20,java.util.concurrent.TimeUnit.SECONDS);

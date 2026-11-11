@@ -123,47 +123,55 @@ class BookingPaymentLifecyclePostgresTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?", Integer.class, booking)).isZero();
     }
     @Test void staffCheckoutCannotBypassBookingPaymentWithCashOrUnverifiedTransfer() {
+        com.bcm.TestActors.authenticate(com.bcm.TestActors.admin(jdbc));
         assertThatThrownBy(() -> checkout.checkout(booking, "CASH")).isInstanceOf(com.bcm.exception.BadRequestException.class);
-        assertThatThrownBy(() -> checkout.checkout(booking, "BANK_TRANSFER")).isInstanceOf(com.bcm.exception.BadRequestException.class);
+        com.bcm.TestActors.authenticate(com.bcm.TestActors.admin(jdbc));
+            assertThatThrownBy(() -> checkout.checkout(booking, "BANK_TRANSFER")).isInstanceOf(com.bcm.exception.BadRequestException.class);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM invoices WHERE booking_id=?", Integer.class, booking)).isZero();
         assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?", String.class, booking)).isEqualTo("PENDING");
     }
     @Test void productOnlyCashSaleStillCommitsInvoiceAndStockOnPostgres() {
+        com.bcm.TestActors.authenticate(com.bcm.TestActors.admin(jdbc));
         UUID category = UUID.randomUUID(), product = UUID.randomUUID();
         jdbc.update("INSERT INTO categories(id,category_name) VALUES (?,'Lifecycle POS')", category);
         jdbc.update("INSERT INTO products(id,category_id,name,type,price,unit,stock_quantity) VALUES (?,?,'Lifecycle product','GOODS',10000,'piece',10)", product, category);
         try {
-            var invoice = pos.sell(new com.bcm.dto.request.PosSaleRequest(customer, null, null, "CASH",
+            var sale = new com.bcm.dto.request.PosSaleRequest(customer, null, null, "CASH",
                     java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO,
-                    List.of(new com.bcm.dto.request.PosSaleItemRequest(product, 1))));
+                    List.of(new com.bcm.dto.request.PosSaleItemRequest(product, 1)));
+            sale.setIdempotencyKey(UUID.randomUUID());sale.setPaymentConfirmed(true);sale.setExpectedTotal(new java.math.BigDecimal("10000"));
+            var invoice=pos.sell(sale);
             assertThat(invoice.getPaymentMethod()).isEqualTo("CASH");
             assertThat(invoice.getStatus()).isEqualTo("PAID");
             assertThat(invoice.getBookingId()).isNull();
             assertThat(jdbc.queryForObject("SELECT stock_quantity FROM products WHERE id=?", Integer.class, product)).isEqualTo(9);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?", Integer.class, booking)).isZero();
         } finally {
+            jdbc.update("DELETE FROM payment_transactions WHERE invoice_id IN (SELECT id FROM invoices WHERE customer_id=?)",customer);
             jdbc.update("DELETE FROM invoice_details WHERE product_id=?", product);
             jdbc.update("DELETE FROM invoices WHERE customer_id=?", customer);
             jdbc.update("DELETE FROM products WHERE id=?", product);
             jdbc.update("DELETE FROM categories WHERE id=?", category);
         }
     }
-    @Test void declaredTransferBlocksMethodSwitchAndNeverExpires() throws Exception {
-        pay(vnpayBody()).andExpect(status().isCreated());
-        pay("{\"paymentMethod\":\"VNPAY\"}").andExpect(status().isBadRequest());
+    @Test void pendingVnpayReuseHasABoundedGraceWindow() throws Exception {
+        var first=data(pay(vnpayBody()).andExpect(status().isCreated()));
+        assertThat(data(pay(vnpayBody()).andExpect(status().isCreated())).path("paymentAttemptId")).isEqualTo(first.path("paymentAttemptId"));
         org.mockito.Mockito.when(clock.instant()).thenReturn(NOW.plusSeconds(601));
         assertThat(expiration.expireBooking(booking)).isFalse();
-        pay(vnpayBody()).andExpect(status().isCreated());
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_details WHERE booking_id=?", Integer.class, booking)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT status FROM payment_transactions WHERE booking_id=?", String.class, booking)).isEqualTo("PENDING");
+        pay(vnpayBody()).andExpect(status().isBadRequest());
+        org.mockito.Mockito.when(clock.instant()).thenReturn(NOW.plusSeconds(901));
+        assertThat(expiration.expireBooking(booking)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_details WHERE booking_id=?",Integer.class,booking)).isZero();
+        assertThat(jdbc.queryForObject("SELECT status FROM payment_transactions WHERE booking_id=?",String.class,booking)).isEqualTo("PENDING");
     }
     @ParameterizedTest @ValueSource(longs = {600, 601})
     void rejectsAtAndAfterTenMinutes(long seconds) throws Exception {
         org.mockito.Mockito.when(clock.instant()).thenReturn(NOW.plusSeconds(seconds));
-        pay(vnpayBody()).andExpect(status().isConflict());
+        pay(vnpayBody()).andExpect(status().isBadRequest());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?", Integer.class, booking)).isZero();
         assertThat(expiration.expireBooking(booking)).isTrue();
-        pay(vnpayBody()).andExpect(status().isConflict());
+        pay(vnpayBody()).andExpect(status().isBadRequest());
     }
     @Test void acceptsOneSecondBeforeDeadlineAndRejectsForeignOwner() throws Exception {
         UUID other = UUID.randomUUID(), otherUser = UUID.randomUUID();
@@ -188,7 +196,7 @@ class BookingPaymentLifecyclePostgresTest {
             var payment = workers.submit(() -> { ready.countDown(); start.await(); return pay(vnpayBody()).andReturn().getResponse().getStatus(); });
             var expiry = workers.submit(() -> { ready.countDown(); start.await(); return expiration.expireBooking(booking); });
             assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue(); start.countDown();
-            assertThat(payment.get(20, TimeUnit.SECONDS)).isEqualTo(409);
+            assertThat(payment.get(20, TimeUnit.SECONDS)).isEqualTo(400);
             assertThat(expiry.get(20, TimeUnit.SECONDS)).isTrue();
             assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?", String.class, booking)).isEqualTo("EXPIRED");
             assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_details WHERE booking_id=?", Integer.class, booking)).isZero();
@@ -208,6 +216,7 @@ class BookingPaymentLifecyclePostgresTest {
             org.mockito.Mockito.when(clock.instant()).thenReturn(NOW.plusSeconds(901));
             assertThat(expiration.expireBooking(booking)).isTrue();
             assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_details WHERE booking_id=?", Integer.class, booking)).isZero();
+            com.bcm.TestActors.authenticate(com.bcm.TestActors.admin(jdbc));
             assertThatThrownBy(() -> checkout.checkout(booking, "BANK_TRANSFER"))
                     .isInstanceOf(com.bcm.exception.BadRequestException.class);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM invoices WHERE booking_id=?", Integer.class, booking)).isZero();

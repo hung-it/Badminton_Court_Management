@@ -120,11 +120,13 @@ class MasterDataIntegrationTest {
                         .asText();
         BookingFixture booking = persistBooking(UUID.fromString(court), UUID.fromString(slot), "PENDING");
         UUID b = booking.id();
-        for (String state : List.of("PENDING", "PAID", "CHECKED_IN")) {
+        for (String state : List.of("PENDING", "PAID")) {
             jdbc.update("update bookings set status=? where id=?", state, b);
             mvc.perform(delete("/admin/courts/" + court)).andExpect(status().isBadRequest());
         }
         jdbc.update("update bookings set status='COMPLETED' where id=?", b);
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->jdbc.update("update bookings set status='CHECKED_IN' where id=?",b))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         mvc.perform(delete("/admin/courts/" + court)).andExpect(status().isOk());
         assertThat(
                         jdbc.queryForObject(

@@ -201,6 +201,11 @@ class BookingModificationPostgresTest {
     }
     @ParameterizedTest @ValueSource(strings = {"PAID", "EXPIRED", "CHECKED_IN", "COMPLETED", "NO_SHOW"})
     void nonPendingBookingsCannotBeEdited(String state) throws Exception {
+        if(java.util.Set.of("CHECKED_IN","NO_SHOW").contains(state)) {
+            assertThatThrownBy(()->jdbc.update("UPDATE bookings SET status=? WHERE id=?",state,booking))
+                    .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+            return;
+        }
         jdbc.update("UPDATE bookings SET status=? WHERE id=?", state, booking);
         edit(booking, token, body(DATE, slots.get(1))).andExpect(status().isConflict());
         contact(booking, token, "{\"fullName\":\"New Name\",\"phone\":\"0912345678\"}").andExpect(status().isConflict());

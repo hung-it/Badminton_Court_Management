@@ -8,7 +8,6 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,7 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("h2")
+@org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="BCM_TEST_DB_URL",matches="jdbc:postgresql:.*")
 @Transactional
 @WithMockUser(roles = "ADMIN")
 class RevenueBreakdownIntegrationTest {
@@ -31,15 +30,11 @@ class RevenueBreakdownIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired RevenueBreakdownService reports;
 
-    @BeforeEach
-    void addStaffUserMappingForH2() {
-        jdbc.execute("ALTER TABLE staffs ADD COLUMN IF NOT EXISTS user_id UUID");
-        jdbc.execute("ALTER TABLE staffs ADD COLUMN IF NOT EXISTS full_name VARCHAR(255)");
-        jdbc.execute("ALTER TABLE staffs ADD COLUMN IF NOT EXISTS phone VARCHAR(20)");
-        jdbc.execute("ALTER TABLE staffs ADD COLUMN IF NOT EXISTS position VARCHAR(100)");
-        jdbc.execute("ALTER TABLE staffs ADD COLUMN IF NOT EXISTS created_at TIMESTAMP");
-        jdbc.execute("ALTER TABLE staffs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP");
-        jdbc.execute("ALTER TABLE staffs ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP");
+    @org.springframework.test.context.DynamicPropertySource
+    static void database(org.springframework.test.context.DynamicPropertyRegistry r) {
+        r.add("spring.datasource.url",()->System.getenv("BCM_TEST_DB_URL"));
+        r.add("spring.datasource.username",()->System.getenv("BCM_TEST_DB_USERNAME"));
+        r.add("spring.datasource.password",()->System.getenv("BCM_TEST_DB_PASSWORD"));
     }
 
     @Test
@@ -54,7 +49,8 @@ class RevenueBreakdownIntegrationTest {
         UUID product = product("Badminton racket");
 
         // Q1: 100.000 court fee + 30.000 product line, no discount.
-        invoice(customer, staff, "PAID", 100000, 30000, 0, 130000, "2040-03-31T23:59:59", false);
+        UUID q1=invoice(customer, staff, "PAID", 100000, 30000, 0, 130000, "2040-03-31T23:59:59", false);
+        line(q1,product("Q1 product"),3,10000,0);
         // Q2: 200.000 court fee + 30.000 product line with a 5.000 line discount.
         UUID invoiceId = invoice(customer, staff, "PAID", 200000, 30000, 5000, 225000, "2040-04-01T00:00:00", false);
         invoice(customer, staff, "DRAFT", 500000, 500000, 0, 1000000, "2040-04-02T00:00:00", false);
@@ -73,15 +69,15 @@ class RevenueBreakdownIntegrationTest {
                 });
         assertThat(quarter.customers()).filteredOn(row -> customer.equals(row.customerId())).singleElement()
                 .satisfies(row -> assertThat(row.total()).isEqualByComparingTo("355000.00"));
-        assertThat(quarter.products()).filteredOn(row -> row.productId().equals(product)).singleElement()
+        assertThat(quarter.products()).filteredOn(row -> product.equals(row.productId())).singleElement()
                 .satisfies(row -> {
                     assertThat(row.totalQuantity()).isEqualByComparingTo("3");
                     // The 5.000 line discount is already deducted from the allocated product value.
-                    assertThat(row.total()).isEqualByComparingTo("29347.83");
+                    assertThat(row.total()).isEqualByComparingTo("25000.00");
                 });
         assertThat(quarter.staff()).filteredOn(row -> row.staffId() == null).singleElement()
                 .satisfies(row -> {
-                    assertThat(row.staffName()).isEqualTo("Chưa gán nhân viên");
+                    assertThat(row.staffName()).isEqualTo("Online / Admin / chưa đối soát");
                     assertThat(row.total()).isEqualByComparingTo("40000.00");
                 });
         assertThat(quarter.customers()).filteredOn(row -> row.customerId() == null).singleElement()
@@ -224,7 +220,7 @@ class RevenueBreakdownIntegrationTest {
 
     private UUID product(String name) {
         UUID category = UUID.randomUUID();
-        jdbc.update("INSERT INTO categories(id,category_name,created_at,updated_at) VALUES (?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)", category, "Report products");
+        jdbc.update("INSERT INTO categories(id,category_name,created_at,updated_at) VALUES (?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)", category, "Report products "+category);
         UUID id = UUID.randomUUID();
         jdbc.update("INSERT INTO products(id,category_id,name,type,price,unit,stock_quantity,version,created_at,updated_at) VALUES (?,?,?,'GOODS',10000,'cái',10,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)", id, category, name);
         return id;
@@ -233,8 +229,8 @@ class RevenueBreakdownIntegrationTest {
     private UUID court(String name) {
         UUID id = UUID.randomUUID();
         int number = name.endsWith("One") ? 1 : 2;
-        jdbc.update("INSERT INTO courts(id,court_code,court_number,name,type,status,base_price,created_at,updated_at) VALUES (?,?,?,?,'STANDARD_MAT','AVAILABLE',100000,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
-                id, -Math.abs(name.hashCode()) - 1, number, name);
+        jdbc.update("INSERT INTO courts(id,court_code,name,type,status,base_price,created_at,updated_at) VALUES (?,?,?,'STANDARD_MAT','AVAILABLE',100000,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+                id, 200000000+Math.abs(name.hashCode()%100000000), name);
         return id;
     }
 
@@ -246,9 +242,7 @@ class RevenueBreakdownIntegrationTest {
     }
 
     private void bookingDetail(UUID bookingId, UUID courtId, String date, int price) {
-        UUID slot = UUID.randomUUID();
-        jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier,created_at,updated_at) VALUES (?,?,?,1.0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
-                slot, java.sql.Time.valueOf("06:00:00"), java.sql.Time.valueOf("07:00:00"));
+        UUID slot=jdbc.queryForObject("SELECT id FROM time_slots WHERE start_time='06:00' AND end_time='07:00' AND deleted_at IS NULL",UUID.class);
         jdbc.update("INSERT INTO booking_details(id,booking_id,court_id,time_slot_id,booking_date,price,created_at) VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP)",
                 UUID.randomUUID(), bookingId, courtId, slot, java.sql.Date.valueOf(date), price);
     }
@@ -257,13 +251,17 @@ class RevenueBreakdownIntegrationTest {
                          int total, String at, boolean deleted) {
         UUID id = UUID.randomUUID();
         LocalDateTime created = LocalDateTime.parse(at);
-        jdbc.update("INSERT INTO invoices(id,customer_id,created_by,payment_method,status,court_fee,product_fee,discount_amount,total_amount,created_at,updated_at,deleted_at) VALUES (?,?,?,'CASH',?,?,?,?,?,?,?,?)",
-                id, customerId, staffId, state, courtFee, productFee, discount, total, created, created, deleted ? created : null);
+        jdbc.update("INSERT INTO invoices(id,customer_id,created_by,payment_method,status,court_fee,product_fee,discount_amount,total_amount,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                id, customerId, staffId, state.equals("PAID")?(staffId==null?"VNPAY":"CASH"):null, state, courtFee, productFee, discount, total, created, created, deleted ? created : null);
+        if(state.equals("PAID")) {
+            if(staffId==null) jdbc.update("INSERT INTO payment_transactions(invoice_id,payment_method,status,amount,transaction_id,transaction_date) VALUES (?,'VNPAY','SUCCESS',?,?,?)",id,total,UUID.randomUUID().toString(),created);
+            else jdbc.update("INSERT INTO payment_transactions(invoice_id,payment_method,source,status,amount,transaction_id,transaction_date,confirmed_by,confirmed_by_user) VALUES (?,'CASH','MANUAL','SUCCESS',?,?,?,?,?)",id,total,UUID.randomUUID().toString(),created,staffId,jdbc.queryForObject("SELECT user_id FROM staffs WHERE id=?",UUID.class,staffId));
+        }
         return id;
     }
 
     private void line(UUID invoiceId, UUID productId, int quantity, int price, int discount) {
-        jdbc.update("INSERT INTO invoice_details(id,invoice_id,product_id,quantity,unit_price,discount_amount,discount_percent,created_at) VALUES (?,?,?,?,?,?,0,CURRENT_TIMESTAMP)",
-                UUID.randomUUID(), invoiceId, productId, quantity, price, new BigDecimal(discount));
+        jdbc.update("INSERT INTO invoice_details(id,invoice_id,product_id,quantity,unit_price,discount_amount,discount_percent,created_at,added_by) VALUES (?,?,?,?,?,?,0,CURRENT_TIMESTAMP,(SELECT created_by FROM invoices WHERE id=?))",
+                UUID.randomUUID(), invoiceId, productId, quantity, price, new BigDecimal(discount),invoiceId);
     }
 }

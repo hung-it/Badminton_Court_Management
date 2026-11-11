@@ -39,7 +39,11 @@ class FeatureAcceptanceTest {
  @Autowired MockMvc mvc; @Autowired ObjectMapper mapper; @Autowired JdbcTemplate db; @Autowired PasswordEncoder encoder;
  static final AtomicLong codes=new AtomicLong(80000000),transactions=new AtomicLong(10000);
  UUID uid,cid,court,slot,category,product; List<UUID> customers;
+ com.bcm.security.UserPrincipal staffActor,adminActor;
+ String providerDate;
  @BeforeEach void fixtures(){
+  staffActor=com.bcm.TestActors.staff(db);adminActor=com.bcm.TestActors.admin(db);
+  providerDate=java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
   assertThat(db.queryForObject("select current_database()",String.class)).isEqualTo("bcm_acceptance_test");
   uid=UUID.randomUUID();cid=UUID.randomUUID();court=UUID.randomUUID();category=UUID.randomUUID();product=UUID.randomUUID();customers=new ArrayList<>(List.of(cid));
   db.update("insert into users(id,email,password_hash,full_name,phone) values (?,?,'test','Acceptance','0912345678')",uid,uid+"@acceptance.invalid");
@@ -61,7 +65,7 @@ class FeatureAcceptanceTest {
   }
   db.update("delete from products where id=?",product);db.update("delete from categories where id=?",category);db.update("delete from courts where id=?",court);
  }
- RequestPostProcessor as(String role){return user(new UserPrincipal(uid.toString(),uid+"@acceptance.invalid","unused",List.of(new SimpleGrantedAuthority("ROLE_"+role)),true));}
+ RequestPostProcessor as(String role){if(role.equals("STAFF"))return user(staffActor);if(role.equals("ADMIN"))return user(adminActor);return user(new UserPrincipal(uid.toString(),uid+"@acceptance.invalid","unused",List.of(new SimpleGrantedAuthority("ROLE_"+role)),true));}
  JsonNode call(MockHttpServletRequestBuilder request,String role,int status)throws Exception{
   var response=mvc.perform(request.with(as(role))).andReturn().getResponse();
   assertThat(response.getStatus()).withFailMessage("Expected %s, got %s: %s",status,response.getStatus(),response.getContentAsString()).isEqualTo(status);
@@ -74,7 +78,7 @@ class FeatureAcceptanceTest {
  String state(UUID b){return db.queryForObject("select status from bookings where id=?",String.class,b);}
  int payments(UUID b){return db.queryForObject("select count(*) from payment_transactions where booking_id=?",Integer.class,b);}
  Map<String,String> fields(UUID attempt,String response,String amount){
-  var f=new TreeMap<String,String>();f.put("vnp_TmnCode","ACCEPT01");f.put("vnp_TxnRef",attempt.toString().replace("-",""));f.put("vnp_Amount",amount);f.put("vnp_BankCode","NCB");f.put("vnp_OrderInfo","Acceptance payment");f.put("vnp_ResponseCode",response);f.put("vnp_TransactionStatus",response.equals("00")?"00":"02");f.put("vnp_TransactionNo",Long.toString(transactions.incrementAndGet()));sign(f);return f;
+  var f=new TreeMap<String,String>();f.put("vnp_PayDate",providerDate);f.put("vnp_TmnCode","ACCEPT01");f.put("vnp_TxnRef",attempt.toString().replace("-",""));f.put("vnp_Amount",amount);f.put("vnp_BankCode","NCB");f.put("vnp_OrderInfo","Acceptance payment");f.put("vnp_ResponseCode",response);f.put("vnp_TransactionStatus",response.equals("00")?"00":"02");f.put("vnp_TransactionNo",Long.toString(transactions.incrementAndGet()));sign(f);return f;
  }
  void sign(Map<String,String> f){f.put("vnp_SecureHash",VnPaySigner.sign("acceptance-only-not-real",VnPaySigner.canonicalData(f)));}
  String ipn(Map<String,String> f)throws Exception{var r=get("/payments/vnpay/ipn");f.forEach(r::param);return mapper.readTree(mvc.perform(r).andReturn().getResponse().getContentAsString()).path("RspCode").asText();}
@@ -121,19 +125,20 @@ class FeatureAcceptanceTest {
   var f=fields(a,"00","10000000");f.put("vnp_SecureHash","0".repeat(128));assertThat(ipn(f)).isEqualTo("97");assertThat(ipn(fields(a,"00","100"))).isEqualTo("04");assertThat(state(b)).isEqualTo("PENDING");
   assertThat(ipn(fields(a,"24","10000000"))).isEqualTo("00");assertThat(db.queryForObject("select status from payment_transactions where id=?",String.class,a)).isEqualTo("FAILED");
   UUID retry=UUID.fromString(pay(b,"VNPAY",201).path("paymentAttemptId").asText());assertThat(retry).isNotEqualTo(a);
-  db.update("update bookings set expires_at=current_timestamp-interval '1 minute' where id=?",b);assertThat(ipn(fields(retry,"00","10000000"))).isEqualTo("99");assertThat(state(b)).isNotEqualTo("PAID");
+  db.update("update bookings set expires_at=current_timestamp-interval '6 minutes' where id=?",b);assertThat(expiration.expireBooking(b)).isTrue();assertThat(ipn(fields(retry,"00","10000000"))).isEqualTo("99");assertThat(state(b)).isNotEqualTo("PAID");
  }
  @Test void foreignBookingCannotPay()throws Exception{UUID b=book();db.update("update bookings set customer_id=(select id from customers where id<>? limit 1) where id=?",cid,b);try{pay(b,"VNPAY",403);}finally{db.update("update bookings set customer_id=? where id=?",cid,b);}assertThat(payments(b)).isZero();}
- Map<String,Object> sale(UUID b,int quantity,String method){var m=new HashMap<String,Object>();m.put("customerId",cid);if(b!=null)m.put("bookingId",b);m.put("paymentMethod",method);m.put("items",List.of(Map.of("productId",product,"quantity",quantity)));return m;}
+ Map<String,Object> sale(UUID b,int quantity,String method){var m=new HashMap<String,Object>();m.put("customerId",cid);if(b!=null)m.put("bookingId",b);m.put("paymentMethod",method);m.put("items",List.of(Map.of("productId",product,"quantity",quantity)));m.put("idempotencyKey",UUID.randomUUID());m.put("paymentConfirmed",true);m.put("expectedTotal",10000L*quantity);return m;}
  @ParameterizedTest @ValueSource(strings={"CASH","VNPAY"}) void posCheckoutInvoiceAndRevenue(String method)throws Exception{
   UUID retail=UUID.fromString(call(json(post("/pos/sales"),sale(null,2,method)),"STAFF",201).path("id").asText());
   assertThat(db.queryForObject("select stock_quantity from products where id=?",Integer.class,product)).isEqualTo(8);
   call(json(post("/pos/sales"),sale(null,99,method)),"STAFF",400);
   UUID b=book();db.update("update bookings set status='PAID' where id=?",b);db.update("insert into payment_transactions(booking_id,payment_method,status,amount,transaction_id,transaction_date) values (?,'VNPAY','SUCCESS',100000,'ACCEPTANCE-RECEIPT',current_timestamp)",b);
+  db.update("update booking_details set booking_date=? where booking_id=?",java.sql.Date.valueOf(LocalDate.now().minusDays(1)),b);
   UUID draft=UUID.fromString(call(json(post("/pos/sales"),sale(b,1,method)),"ADMIN",201).path("id").asText());
   var preview=call(get("/checkout/"+b),"STAFF",200);assertThat(preview.path("paidCourtAmount").decimalValue()).isEqualByComparingTo("100000");assertThat(preview.path("amountDue").decimalValue()).isEqualByComparingTo("10000");
-  UUID invoice=UUID.fromString(call(json(post("/checkout/"+b),Map.of("paymentMethod",method)),"STAFF",200).path("invoiceId").asText());
-  call(json(post("/checkout/"+b),Map.of("paymentMethod",method)),"STAFF",400);assertThat(state(b)).isEqualTo("COMPLETED");assertThat(db.queryForObject("select stock_quantity from products where id=?",Integer.class,product)).isEqualTo(7);
+  UUID invoice=UUID.fromString(call(json(post("/checkout/"+b),Map.of("paymentMethod",method,"paymentConfirmed",true,"expectedAmountDue",10000)),"STAFF",200).path("invoiceId").asText());
+  assertThat(call(json(post("/checkout/"+b),Map.of("paymentMethod",method)),"STAFF",200).path("invoiceId").asText()).isEqualTo(invoice.toString());assertThat(state(b)).isEqualTo("COMPLETED");assertThat(db.queryForObject("select stock_quantity from products where id=?",Integer.class,product)).isEqualTo(7);
   assertThat(db.queryForObject("select status from invoices where id=?",String.class,draft)).isEqualTo("CANCELLED");assertThat(db.queryForObject("select count(*) from invoice_details where invoice_id=?",Integer.class,invoice)).isEqualTo(1);
   db.update("update products set price=99999 where id=?",product);
   String invoiceBefore=db.queryForObject("select row_to_json(i)::text from invoices i where id=?",String.class,invoice);
@@ -141,7 +146,7 @@ class FeatureAcceptanceTest {
   assertThat(call(get("/analytics/invoices/"+retail),"ADMIN",200).path("invoice").path("bookingStatus").isNull()).isTrue();
   for(String search:List.of(invoice.toString(),b.toString())){var list=call(get("/analytics/invoices").param("from","2000-01-01").param("to","2099-12-31").param("search",search).param("method",method),"ADMIN",200);assertThat(list.path("totalElements").asInt()).isEqualTo(1);}
   assertThat(db.queryForObject("select row_to_json(i)::text from invoices i where id=?",String.class,invoice)).isEqualTo(invoiceBefore);
-  for(String st:List.of("DRAFT","CANCELLED"))db.update("insert into invoices(customer_id,payment_method,status,total_amount) values (?,?,?,999999)",cid,method,st);
+  for(String st:List.of("DRAFT","CANCELLED"))db.update("insert into invoices(customer_id,payment_method,status,total_amount) values (?,?,?,999999)",cid,null,st);
   db.update("insert into invoices(customer_id,payment_method,status,total_amount,deleted_at) values (?,?,'PAID',999999,current_timestamp)",cid,method);
   var page=call(get("/analytics/invoices").param("from","2000-01-01").param("to","2099-12-31").param("search","Acceptance").param("method",method),"ADMIN",200);assertThat(page.path("totalElements").asInt()).isEqualTo(2);
   assertThat(call(get("/analytics/invoices").param("from","2000-01-01").param("to","2099-12-31").param("search","Acceptance").param("page","1"),"ADMIN",200).path("invoices").size()).isZero();
@@ -163,9 +168,10 @@ class FeatureAcceptanceTest {
  }
  @ParameterizedTest @ValueSource(strings={"CASH","VNPAY"}) void unverifiedOrMismatchedCourtReceiptCannotBeTreatedAsPaid(String method)throws Exception{
   UUID b=book();db.update("update bookings set status='PAID' where id=?",b);
+  db.update("update booking_details set booking_date=current_date-1 where booking_id=?",b);
   call(get("/checkout/"+b),"STAFF",400);
   call(json(post("/checkout/"+b),Map.of("paymentMethod",method)),"STAFF",400);
-  db.update("insert into payment_transactions(booking_id,payment_method,status,amount,transaction_id,transaction_date) values (?,?,'SUCCESS',1,'MISMATCH',current_timestamp)",b,method);
+  db.update("insert into payment_transactions(booking_id,payment_method,status,amount,transaction_id,transaction_date,source,confirmed_by_user) values (?,?,'SUCCESS',1,'MISMATCH',current_timestamp,?,?)",b,method,method.equals("CASH")?"MANUAL":"GATEWAY",method.equals("CASH")?UUID.fromString(staffActor.getId()):null);
   call(json(post("/checkout/"+b),Map.of("paymentMethod",method)),"STAFF",400);
   assertThat(state(b)).isEqualTo("PAID");assertThat(payments(b)).isEqualTo(1);
   assertThat(db.queryForObject("select count(*) from invoices where booking_id=?",Integer.class,b)).isZero();
@@ -191,7 +197,7 @@ class FeatureAcceptanceTest {
   call(json(post("/bookings/"+b+"/promotion/apply"),Map.of("code","NEWMEMBER")),"CUSTOMER",409);
  }
  @Test void paidBookingCannotCreateAnotherPayment()throws Exception{UUID b=book();UUID a=UUID.fromString(pay(b,"VNPAY",201).path("paymentAttemptId").asText());assertThat(ipn(fields(a,"00","10000000"))).isEqualTo("00");pay(b,"VNPAY",400);assertThat(payments(b)).isEqualTo(1);}
- @Test void retailRepeatHasNoIdempotencyKeyInCurrentContract()throws Exception{
+ @Test void independentRetailSalesUseDifferentKeysAndCreateDistinctInvoices()throws Exception{
   UUID first=UUID.fromString(call(json(post("/pos/sales"),sale(null,2,"CASH")),"STAFF",201).path("id").asText());
   UUID second=UUID.fromString(call(json(post("/pos/sales"),sale(null,2,"CASH")),"STAFF",201).path("id").asText());
   assertThat(second).isNotEqualTo(first);assertThat(db.queryForObject("select stock_quantity from products where id=?",Integer.class,product)).isEqualTo(6);

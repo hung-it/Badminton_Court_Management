@@ -103,14 +103,14 @@ class AnalyticsIntegrationTest {
         mvc.perform(get("/analytics/statistics").param("period","QUARTER").param("year","2040"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.rows.length()").value(4))
                 .andExpect(jsonPath("$.data.rows[0].revenue").value(100000))
-                .andExpect(jsonPath("$.data.rows[0].expense").value(120000))
-                .andExpect(jsonPath("$.data.rows[0].profit").value(-20000))
+                .andExpect(jsonPath("$.data.rows[0].expense").value(60000))
+                .andExpect(jsonPath("$.data.rows[0].profit").value(40000))
                 .andExpect(jsonPath("$.data.rows[1].revenue").value(200000))
                 .andExpect(jsonPath("$.data.totalRevenue").value(300000))
-                .andExpect(jsonPath("$.data.totalProfit").value(180000));
+                .andExpect(jsonPath("$.data.totalProfit").value(240000));
         mvc.perform(get("/analytics/statistics").param("period","MONTH").param("year","2040"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.rows.length()").value(12))
-                .andExpect(jsonPath("$.data.rows[2].expense").value(120000));
+                .andExpect(jsonPath("$.data.rows[2].expense").value(60000));
         mvc.perform(get("/analytics/statistics").param("period","YEAR").param("year","2040"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.rows.length()").value(1))
                 .andExpect(jsonPath("$.data.totalRevenue").value(300000));

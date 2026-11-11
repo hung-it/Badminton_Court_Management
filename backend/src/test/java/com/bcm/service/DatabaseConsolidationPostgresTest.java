@@ -45,6 +45,9 @@ class DatabaseConsolidationPostgresTest {
                         sql.execute(Files.readString(Path.of("../db/seeds/branches-seed.sql")));
                     }
                     assertThat(protectedData(sql)).isEqualTo(protectedBefore);
+                    if(!schema.equals(oldSchema)) {
+                        assertThat(scalar(sql,"SELECT count(*) FROM payment_transactions WHERE source='GATEWAY' AND reference IS NULL AND confirmed_by IS NULL AND confirmed_by_user IS NULL")).isEqualTo("1");
+                    }
                     assertThat(scalar(sql,"SELECT count(*) FROM courts")).isEqualTo("210");
                     assertThat(scalar(sql,"SELECT count(*) FROM branches")).isEqualTo("35");
                     assertThat(scalar(sql,"SELECT court_fee||'/'||discount_amount||'/'||final_amount FROM bookings")).isEqualTo("720000.00/0.00/720000.00");
@@ -66,7 +69,7 @@ class DatabaseConsolidationPostgresTest {
         return scalar(sql,"SELECT jsonb_build_object("
             +"'bookings',(SELECT jsonb_agg(to_jsonb(b)-'contact_full_name'-'contact_phone'-'discount_amount'-'promotion_code'-'requested_voucher'-'final_amount'-'checkout_release_at' ORDER BY id) FROM bookings b),"
             +"'details',(SELECT jsonb_agg(to_jsonb(d) ORDER BY id) FROM booking_details d),"
-            +"'payments',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM payment_transactions p),"
+            +"'payments',(SELECT jsonb_agg(to_jsonb(p)-'source'-'reference'-'confirmed_by'-'confirmed_by_user' ORDER BY id) FROM payment_transactions p),"
             +"'customers',(SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM customers c),"
             +"'slots',(SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM time_slots s))::text");
     }

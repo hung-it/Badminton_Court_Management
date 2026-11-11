@@ -31,6 +31,6 @@ public class PaymentInitiationService {
         var checkout = vnpay.initiate(checked, remoteAddress);
         var current = attempts.recheckForInitiation(checked.paymentAttemptId()); // suppress checkout if deadline/state changed
         return new PaymentAttemptResponse(current.paymentAttemptId(), current.bookingId(), current.paymentMethod(),
-                current.status(), current.amount(), current.bookingExpiresAt(), checkout);
+                current.status(), current.amount(), current.bookingExpiresAt(), checkout, current.bookingStatus());
     }
 }

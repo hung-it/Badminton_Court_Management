@@ -190,7 +190,7 @@ class CheckoutHoldPostgresTest {
     @Test void alreadyExpiredBookingCanBeReplacedWithoutChangingLatePaymentHistory() throws Exception {
         var old=create(null); action(old,"leave");
         jdbc.update("INSERT INTO payment_transactions(booking_id,payment_method,status,amount) VALUES (?,'VNPAY','PENDING',400000)",old);
-        time(600); job.expireDueBookings(); state(old,"EXPIRED",0);
+        time(901); job.expireDueBookings(); state(old,"EXPIRED",0);
         var before=jdbc.queryForMap("SELECT * FROM payment_transactions WHERE booking_id=?",old);
         var next=create(old); state(next,"PENDING",4); state(old,"EXPIRED",0);
         assertThat(jdbc.queryForMap("SELECT * FROM payment_transactions WHERE booking_id=?",old)).isEqualTo(before);

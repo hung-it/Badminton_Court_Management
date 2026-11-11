@@ -228,7 +228,7 @@ class BookingHistoryPostgresTest {
         insertPayment(low, id, "VNPAY", "REFUNDED", NOW, "history-refunded-" + id);
         insertPayment(high, id, "VNPAY", "SUCCESS", NOW, "history-success-" + id);
         UUID latest = payment(id, "VNPAY", "PENDING", NOW.plusDays(1), null);
-        jdbc.update("INSERT INTO invoices(id,booking_id,customer_id,payment_method,total_amount) VALUES (?,?,?,'VNPAY',11.06)",
+        jdbc.update("INSERT INTO invoices(id,booking_id,customer_id,product_fee,total_amount) VALUES (?,?,?,11.06,11.06)",
                 invoice, id, customerA);
         jdbc.update("INSERT INTO payment_transactions(invoice_id,payment_method,status,amount) VALUES (?,'VNPAY','SUCCESS',11.06)", invoice);
         var result = history.detail(id);

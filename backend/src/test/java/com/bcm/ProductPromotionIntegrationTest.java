@@ -10,7 +10,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -19,10 +18,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("h2")
+@org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="BCM_TEST_DB_URL",matches="jdbc:postgresql:.*")
 @Transactional
 @WithMockUser(roles="ADMIN")
 class ProductPromotionIntegrationTest {
+    @org.springframework.test.context.DynamicPropertySource
+    static void database(org.springframework.test.context.DynamicPropertyRegistry r) {
+        r.add("spring.datasource.url",()->System.getenv("BCM_TEST_DB_URL"));
+        r.add("spring.datasource.username",()->System.getenv("BCM_TEST_DB_USERNAME"));
+        r.add("spring.datasource.password",()->System.getenv("BCM_TEST_DB_PASSWORD"));
+    }
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
     @Autowired JdbcTemplate jdbc;
@@ -30,6 +35,7 @@ class ProductPromotionIntegrationTest {
     LocalDate today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
 
     @BeforeEach void fixture() {
+        jdbc.execute("ALTER TABLE staffs ADD COLUMN IF NOT EXISTS user_id UUID");
         UUID category = UUID.randomUUID(); product = UUID.randomUUID();
         jdbc.update("insert into categories(id,category_name,created_at) values (?,?,CURRENT_TIMESTAMP)",category,"Promo test "+category);
         jdbc.update("insert into products(id,category_id,name,type,unit,price,stock_quantity,version,created_at) values (?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)",
@@ -44,7 +50,7 @@ class ProductPromotionIntegrationTest {
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).get("data");
     }
     Map<String,Object> cart(int quantity) {
-        return new LinkedHashMap<>(Map.of("paymentMethod","CASH","items",List.of(Map.of("productId",product,"quantity",quantity))));
+        return new LinkedHashMap<>(Map.of("paymentMethod","CASH","idempotencyKey",UUID.randomUUID(),"paymentConfirmed",true,"expectedTotal",0,"items",List.of(Map.of("productId",product,"quantity",quantity))));
     }
     JsonNode quote(Map<String,Object> body) throws Exception {
         return mapper.readTree(mvc.perform(post("/pos/quote").contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(body)))
@@ -82,7 +88,8 @@ class ProductPromotionIntegrationTest {
     @Test void salePersistsDiscountSnapshotAndLaterEditsDoNotChangeInvoice() throws Exception {
         Map<String,Object> original=campaign("Ưu đãi ban đầu",10,10,today,today,true);
         JsonNode promotion=create(original);
-        JsonNode invoice=mapper.readTree(mvc.perform(post("/pos/sales").contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(cart(10))))
+        var sale=cart(10);sale.put("expectedTotal",quote(sale).get("totalAmount").decimalValue());
+        JsonNode invoice=mapper.readTree(mvc.perform(post("/pos/sales").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(TestActors.admin(jdbc))).contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(sale)))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).get("data");
         UUID invoiceId=UUID.fromString(invoice.get("id").asText());
         assertThat(invoice.get("discountAmount").decimalValue()).isEqualByComparingTo("10000");
@@ -113,7 +120,7 @@ class ProductPromotionIntegrationTest {
         create(campaign("Tự động",10,10,today,today,true));
         var request=cart(10); request.put("discount_amount",1);
         int count=jdbc.queryForObject("select count(*) from invoices",Integer.class);
-        mvc.perform(post("/pos/sales").contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(request))).andExpect(status().isBadRequest());
+        mvc.perform(post("/pos/sales").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(TestActors.admin(jdbc))).contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(request))).andExpect(status().isBadRequest());
         // A caught service failure joins this test transaction; rollback is checked with a real
         // PostgreSQL request transaction by the live verifier, not by reading this shared transaction.
         assertThat(jdbc.queryForObject("select count(*) from invoices",Integer.class)).isEqualTo(count);

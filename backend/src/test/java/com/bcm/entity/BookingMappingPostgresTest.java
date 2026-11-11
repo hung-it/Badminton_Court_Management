@@ -195,6 +195,13 @@ class BookingMappingPostgresTest {
         PaymentTransaction payment = newPayment();
         payment.setBooking(booking);
         payment.setPaymentMethod(method);
+        if(method==PaymentMethod.CASH) {
+            payment.setSource("MANUAL");payment.setStatus(PaymentStatus.SUCCESS);
+            payment.setConfirmedBy(staffId);
+            payment.setConfirmedByUser(jdbc.queryForObject("SELECT user_id FROM staffs WHERE id=?",UUID.class,staffId));
+            payment.setTransactionId("COUNTER-"+UUID.randomUUID());
+            payment.setTransactionDate(LocalDateTime.of(2030,1,15,9,30));
+        }
         transactions.saveAndFlush(payment);
         entityManager.clear();
 
@@ -202,9 +209,12 @@ class BookingMappingPostgresTest {
         assertThat(loaded.getBooking().getId()).isEqualTo(booking.getId());
         assertThat(loaded.getInvoice()).isNull();
         assertThat(loaded.getPaymentMethod()).isEqualTo(method);
-        assertThat(loaded.getStatus()).isEqualTo(PaymentStatus.PENDING);
-        assertThat(loaded.getTransactionId()).isNull();
-        assertThat(loaded.getTransactionDate()).isNull();
+        assertThat(loaded.getStatus()).isEqualTo(method==PaymentMethod.CASH?PaymentStatus.SUCCESS:PaymentStatus.PENDING);
+        if(method==PaymentMethod.VNPAY) {
+            assertThat(loaded.getTransactionId()).isNull();assertThat(loaded.getTransactionDate()).isNull();
+        } else {
+            assertThat(loaded.getConfirmedByUser()).isNotNull();assertThat(loaded.getTransactionDate()).isNotNull();
+        }
         assertThat(loaded.getNote()).isNull();
         assertThat(loaded.getAmount()).isEqualByComparingTo("154320.98");
         assertThat(loaded.getCreatedAt()).isNotNull();
@@ -215,9 +225,9 @@ class BookingMappingPostgresTest {
     void roundTripsPaymentStatusesAndInvoiceReference(PaymentStatus status) {
         UUID invoiceId = UUID.randomUUID();
         jdbc.update("""
-                INSERT INTO invoices (id, customer_id, payment_method, total_amount)
+                INSERT INTO invoices (id, customer_id, product_fee, total_amount)
                 VALUES (?, ?, ?, ?)
-                """, invoiceId, customerId, "VNPAY", new BigDecimal("154320.98"));
+                """, invoiceId, customerId, new BigDecimal("154320.98"), new BigDecimal("154320.98"));
         PaymentTransaction payment = newPayment();
         payment.setInvoice(entityManager.getReference(Invoice.class, invoiceId));
         payment.setStatus(status);

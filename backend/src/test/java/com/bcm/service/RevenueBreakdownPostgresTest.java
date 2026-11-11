@@ -53,10 +53,12 @@ class RevenueBreakdownPostgresTest {
                 product, category);
         UUID invoice = UUID.randomUUID();
         LocalDateTime at = LocalDateTime.parse("2087-03-31T23:59:59");
-        jdbc.update("INSERT INTO invoices(id,customer_id,created_by,payment_method,status,court_fee,product_fee,discount_amount,total_amount,created_at,updated_at) VALUES (?,?,?,'CASH','PAID',0,1.01,0,1.01,?,?)",
+        jdbc.update("INSERT INTO invoices(id,customer_id,created_by,payment_method,status,court_fee,product_fee,discount_amount,total_amount,created_at,updated_at) VALUES (?,?,?,'CASH','PAID',0,1.11,0.10,1.01,?,?)",
                 invoice, customer, staff, at, at);
-        jdbc.update("INSERT INTO invoice_details(invoice_id,product_id,quantity,unit_price,discount_amount,discount_percent) VALUES (?,?,3,0.37,0.11,9.91)",
+        jdbc.update("INSERT INTO invoice_details(invoice_id,product_id,quantity,unit_price,discount_amount,discount_percent) VALUES (?,?,3,0.37,0.10,9.01)",
                 invoice, product);
+        jdbc.update("INSERT INTO payment_transactions(invoice_id,payment_method,source,status,amount,transaction_id,transaction_date,confirmed_by,confirmed_by_user) VALUES (?,'CASH','MANUAL','SUCCESS',1.01,?,?,?,?)",
+                invoice,UUID.randomUUID().toString(),at,staff,user);
 
         var report = breakdown.report("QUARTER", 2087);
         assertThat(report.staff()).filteredOn(row -> staff.equals(row.staffId())).singleElement()
@@ -66,7 +68,7 @@ class RevenueBreakdownPostgresTest {
         assertThat(report.products()).filteredOn(row -> product.equals(row.productId())).singleElement()
                 .satisfies(row -> {
                     assertThat(row.totalQuantity()).isEqualByComparingTo("3");
-                    assertThat(row.total()).isEqualByComparingTo("1.00");
+                    assertThat(row.total()).isEqualByComparingTo("1.01");
                 });
         assertThat(report.staff().stream().map(RevenueBreakdownResponse.StaffRow::total)
                 .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add))

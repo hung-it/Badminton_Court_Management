@@ -71,8 +71,8 @@ public class PaymentAttemptService {
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
         requireOwner(booking, trustedCustomerId);
         // Configuration validation is local only, before persistence and after ownership.
-        validateConfiguration.run();
         requireEligible(booking);
+        validateConfiguration.run();
         if (reuse) {
             var pending = payments.findFirstByBookingIdAndStatusOrderByCreatedAtAscIdAsc(bookingId, PaymentStatus.PENDING);
             if (pending.isPresent()) {
