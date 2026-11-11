@@ -88,6 +88,29 @@ class P1MasterDataConcurrencyPostgresTest {
             jdbc.update("DELETE FROM time_slots WHERE id=?",replacement);
         }
     }
+    @RepeatedTest(10) void differentCourtsCanBookTheSameMultipleSlotsWithoutSerializing() throws Exception {
+        UUID otherCourt=UUID.randomUUID(),otherSlot=UUID.randomUUID();
+        jdbc.update("INSERT INTO courts(id,court_code,name,base_price) VALUES (?,100090002,'P1 other court',100000)",otherCourt);
+        jdbc.update("INSERT INTO time_slots(id,start_time,end_time,price_multiplier) VALUES (?,'01:00','02:00',1)",otherSlot);
+        var ready=new CountDownLatch(2);var release=new CountDownLatch(1);var pool=Executors.newFixedThreadPool(2);
+        try {
+            var a=new CreateBookingRequest(owner,List.of(new CreateBookingRequest.Detail(date,court,slot),new CreateBookingRequest.Detail(date,court,otherSlot)));
+            var b=new CreateBookingRequest(owner,List.of(new CreateBookingRequest.Detail(date,otherCourt,otherSlot),new CreateBookingRequest.Detail(date,otherCourt,slot)));
+            var first=pool.submit(()->new TransactionTemplate(transactions).execute(status->{booking.createBooking(a);ready.countDown();await(release);return true;}));
+            var second=pool.submit(()->new TransactionTemplate(transactions).execute(status->{booking.createBooking(b);ready.countDown();await(release);return true;}));
+            try {
+                assertThat(ready.await(10,TimeUnit.SECONDS)).as("shared slot locks permit both independent courts before either transaction commits").isTrue();
+            } finally {release.countDown();}
+            assertThat(first.get(10,TimeUnit.SECONDS)).isTrue();
+            assertThat(second.get(10,TimeUnit.SECONDS)).isTrue();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_details WHERE court_id IN (?,?)",Integer.class,court,otherCourt)).isEqualTo(4);
+        } finally {
+            release.countDown();pool.shutdown();assertThat(pool.awaitTermination(15,TimeUnit.SECONDS)).isTrue();
+            jdbc.update("DELETE FROM bookings WHERE customer_id=?",owner);
+            jdbc.update("DELETE FROM courts WHERE id=?",otherCourt);
+            jdbc.update("DELETE FROM time_slots WHERE id=?",otherSlot);
+        }
+    }
     void assertNoBooking() {assertThat(jdbc.queryForObject("SELECT count(*) FROM bookings WHERE customer_id=?",Integer.class,owner)).isZero();}
 
     /** Independent committed transactions; the second must actually wait for a PostgreSQL row lock. */
