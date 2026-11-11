@@ -35,6 +35,34 @@ for(const url of [web,admin])assert.equal(new URL(url).hostname,'127.0.0.1');
   await page.getByRole('button',{name:'Lưu mật khẩu',exact:true}).click();
   await expect(page.getByRole('status')).toContainText('thành công');
   assert.equal(password.currentPassword.length,80);
+  const signup=await browser.newPage();signup.on('pageerror',e=>errors.push(e.message));
+  let registration;
+  await signup.route('**/api/**',route=>{
+   if(new URL(route.request().url()).pathname==='/api/auth/register'){
+    registration=route.request().postDataJSON();
+    return route.fulfill({status:409,json:{success:false,message:'Fixture email already registered'}});
+   }
+   return route.fulfill({json:{success:true,data:[]}});
+  });
+  await signup.goto(web+'/register');
+  await signup.getByLabel('Họ và tên *',{exact:true}).fill('P2 Customer');
+  await signup.getByLabel('Email *',{exact:true}).fill('p2@example.test');
+  await signup.getByLabel('Số điện thoại *',{exact:true}).fill('0912345678');
+  await signup.getByRole('checkbox').first().check();
+  const fillSignupPassword=async value=>{
+   await signup.getByLabel('Mật khẩu *',{exact:true}).fill(value);
+   await signup.getByLabel('Xác nhận mật khẩu *',{exact:true}).fill(value);
+   await signup.getByRole('button',{name:'Tạo tài khoản',exact:true}).click();
+  };
+  await fillSignupPassword('short12');
+  await expect(signup.getByText('Mật khẩu phải có ít nhất 8 ký tự.',{exact:true})).toBeVisible();
+  assert.equal(registration,undefined);
+  await fillSignupPassword('ắ'.repeat(25));
+  await expect(signup.getByText('Mật khẩu không được vượt quá 72 byte UTF-8.',{exact:true})).toBeVisible();
+  assert.equal(registration,undefined);
+  await fillSignupPassword('ắ'.repeat(24));
+  await expect(signup.getByRole('alert')).toContainText('Dữ liệu đã tồn tại.');
+  assert.equal(Buffer.byteLength(registration.password,'utf8'),72);
   const desk=await browser.newPage();desk.on('pageerror',e=>errors.push(e.message));
   await desk.addInitScript(()=>sessionStorage.setItem('bcm-session',JSON.stringify({accessToken:'fixture',user:{id:'admin',roles:['ADMIN'],fullName:'Admin'}})));
   const court={id:'court-p2',branchId:'branch-p2',courtNumber:1,courtCode:101,name:'Wood court',type:'WOODEN_FLOOR',status:'AVAILABLE',basePrice:100000};
@@ -59,6 +87,6 @@ for(const url of [web,admin])assert.equal(new URL(url).hostname,'127.0.0.1');
   await dialog.getByRole('button',{name:'Lưu thay đổi',exact:true}).click();
   await expect(dialog).toHaveCount(0);assert.equal(saved.type,'WOODEN_FLOOR');assert.equal(Number(saved.basePrice),120000);
   assert.deepEqual(errors,[]);
-  console.log('PASS: discounted history and breakdown, legacy password submission, UTF-8 limit, wooden court retained, zero court price rejected, no page errors');
+  console.log('PASS: discounted history and breakdown, legacy password submission, UTF-8 limits in registration and change password, wooden court retained, zero court price rejected, no page errors');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

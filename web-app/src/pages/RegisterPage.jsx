@@ -244,7 +244,7 @@ export default function RegisterPage() {
                 required
               />
 
-              {/* M3: backend yêu cầu min 6 ký tự, không bắt hoa/thường/số. */}
+              {/* Backend yêu cầu min 8 ký tự và tối đa 72 byte UTF-8. */}
               <AuthField
                 label="Mật khẩu *"
                 icon={LockKeyhole}
