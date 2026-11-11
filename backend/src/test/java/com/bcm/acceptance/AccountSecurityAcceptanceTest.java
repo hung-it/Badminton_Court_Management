@@ -28,22 +28,36 @@ class AccountSecurityAcceptanceTest {
  @Test void uniqueUsersRoleOrderProfilesAndPagination()throws Exception{String token=login(admin);var all=request(get("/admin/accounts").param("search",batch),token,200);assertThat(all.path("totalElements").asInt()).isEqualTo(4);assertThat(all.path("accounts").size()).isEqualTo(4);assertThat(all.toString()).doesNotContain("passwordHash","password_hash","accessToken");var row=request(get("/admin/accounts/"+multi),token,200);assertThat(row.path("roles").toString()).isEqualTo("[\"ADMIN\",\"STAFF\"]");assertThat(row.path("staffId").isNull()).isTrue();assertThat(request(get("/admin/accounts/"+staff),token,200).path("position").asText()).isEqualTo("Reception");assertThat(request(get("/admin/accounts").param("search",batch).param("role","STAFF"),token,200).path("totalElements").asInt()).isEqualTo(2);assertThat(request(get("/admin/accounts").param("search",batch).param("page","1"),token,200).path("accounts").size()).isZero();}
  @Test void realJwtRolesGuardAllReportsAndOperations()throws Exception{for(UUID id:List.of(staff,customer)){String token=login(id);for(String path:List.of("/admin/accounts","/analytics/statistics","/analytics/revenue-breakdown"))request(get(path),token,403);request(delete("/admin/accounts/"+admin),token,403);}request(get("/admin/accounts"),null,401);String token=login(admin);request(get("/analytics/statistics"),token,200);request(get("/analytics/revenue-breakdown"),token,200);token=login(staff);request(get("/pos/products"),token,200);request(get("/checkout/active-bookings"),token,200);}
  @Test void updateSynchronizesProfilesButNeverPasswordOrRoles()throws Exception{String token=login(admin),before=db.queryForObject("select password_hash from users where id=?",String.class,customer);var update=Map.of("fullName","Updated","email",customer+"@accounts-acceptance.invalid","phone","0987654321","address","New address","password","AttackerPassword!","roles",List.of("ADMIN"));request(body(put("/admin/accounts/"+customer),update),token,200);assertThat(db.queryForObject("select full_name from customers where id=?",String.class,customerProfile)).isEqualTo("Updated");assertThat(db.queryForObject("select password_hash from users where id=?",String.class,customer)).isEqualTo(before);assertThat(request(get("/admin/accounts/"+customer),token,200).path("roles").toString()).isEqualTo("[\"CUSTOMER\"]");var duplicate=new HashMap<String,Object>(update);duplicate.put("email",admin+"@accounts-acceptance.invalid");request(body(put("/admin/accounts/"+customer),duplicate),token,409);request(body(put("/admin/accounts/"+staff),update),token,409);var staffUpdate=new HashMap<String,Object>(update);staffUpdate.put("email",staff+"@accounts-acceptance.invalid");request(body(put("/admin/accounts/"+staff),staffUpdate),token,200);assertThat(db.queryForObject("select full_name from staffs where id=?",String.class,staffProfile)).isEqualTo("Updated");}
- @Test void locksRejectLoginAndPreviouslyIssuedAccessAndRefreshTokens()throws Exception{String actor=login(admin);var session=request(body(post("/auth/login"),Map.of("email",staff+"@accounts-acceptance.invalid","password","Acceptance123!")),null,200);String old=session.path("accessToken").asText();request(delete("/admin/accounts/"+admin),actor,400);request(delete("/admin/accounts/"+staff),actor,200);request(get("/pos/products"),old,401);request(body(post("/auth/refresh"),Map.of("refreshToken",session.path("refreshToken").asText())),null,404);request(body(post("/auth/login"),Map.of("email",staff+"@accounts-acceptance.invalid","password","Acceptance123!")),null,401);assertThat(db.queryForObject("select deleted_at is not null from staffs where id=?",Boolean.class,staffProfile)).isTrue();request(delete("/admin/accounts/"+customer),actor,200);assertThat(db.queryForObject("select deleted_at is not null from customers where id=?",Boolean.class,customerProfile)).isTrue();}
+ @Test void locksRejectLoginAndPreviouslyIssuedAccessAndRefreshTokens()throws Exception{String actor=login(admin);var session=request(body(post("/auth/login"),Map.of("email",customer+"@accounts-acceptance.invalid","password","Acceptance123!")),null,200);String old=session.path("accessToken").asText();request(delete("/admin/accounts/"+admin),actor,400);request(delete("/admin/accounts/"+staff),actor,400);request(delete("/admin/accounts/"+customer),actor,200);request(get("/users/me"),old,401);request(body(post("/auth/refresh"),Map.of("refreshToken",session.path("refreshToken").asText())),null,404);request(body(post("/auth/login"),Map.of("email",customer+"@accounts-acceptance.invalid","password","Acceptance123!")),null,401);assertThat(db.queryForObject("select deleted_at is not null from staffs where id=?",Boolean.class,staffProfile)).isFalse();request(delete("/admin/accounts/"+customer),actor,200);assertThat(db.queryForObject("select deleted_at is not null from customers where id=?",Boolean.class,customerProfile)).isTrue();}
  @Test void staleElevatedClaimsDoNotBypassCurrentDatabaseRoles()throws Exception{String token=login(multi);db.update("delete from user_roles where user_id=? and role_id=(select id from roles where role_name='ADMIN')",multi);request(get("/admin/accounts"),token,403);request(get("/analytics/statistics"),token,403);request(get("/pos/products"),token,200);}
- @Test void concurrentAdminCrossLocksLeaveAnActiveAdmin()throws Exception{
+ @Test void concurrentCustomerLocksAreIdempotent()throws Exception{
   String a=login(admin),b=login(multi);
-  var others=db.queryForList("select distinct u.id from users u join user_roles ur on ur.user_id=u.id join roles r on r.id=ur.role_id where r.role_name='ADMIN' and u.deleted_at is null and u.id not in (?,?)",UUID.class,admin,multi);
   var pool=java.util.concurrent.Executors.newFixedThreadPool(2);
   try{
-   for(UUID id:others)db.update("update users set deleted_at=current_timestamp where id=?",id);
    var gate=new java.util.concurrent.CountDownLatch(1);
-   var first=pool.submit(()->{gate.await();return mvc.perform(delete("/admin/accounts/"+multi).header("Authorization","Bearer "+a)).andReturn().getResponse().getStatus();});
-   var second=pool.submit(()->{gate.await();return mvc.perform(delete("/admin/accounts/"+admin).header("Authorization","Bearer "+b)).andReturn().getResponse().getStatus();});
-   gate.countDown();var statuses=List.of(first.get(20,java.util.concurrent.TimeUnit.SECONDS),second.get(20,java.util.concurrent.TimeUnit.SECONDS));
-   assertThat(statuses.stream().filter(x->x==200).count()).isEqualTo(1);
-   assertThat(statuses).allMatch(x->x==200||x==401||x==403);
-   assertThat(db.queryForObject("select count(*) from users where id in (?,?) and deleted_at is null",Long.class,admin,multi)).isEqualTo(1);
-  }finally{pool.shutdownNow();for(UUID id:others)db.update("update users set deleted_at=null where id=?",id);}
+   var first=pool.submit(()->{gate.await();return mvc.perform(delete("/admin/accounts/"+customer).header("Authorization","Bearer "+a)).andReturn().getResponse().getStatus();});
+   var second=pool.submit(()->{gate.await();return mvc.perform(delete("/admin/accounts/"+customer).header("Authorization","Bearer "+b)).andReturn().getResponse().getStatus();});
+   gate.countDown();assertThat(java.util.List.of(first.get(20,java.util.concurrent.TimeUnit.SECONDS),second.get(20,java.util.concurrent.TimeUnit.SECONDS))).containsOnly(200);
+   assertThat(db.queryForObject("select deleted_at is not null from users where id=?",Boolean.class,customer)).isTrue();
+   assertThat(db.queryForObject("select count(*) from users where id in (?,?) and deleted_at is null",Long.class,admin,multi)).isEqualTo(2);
+  }finally{pool.shutdownNow();}
  }
-
+ @Test void concurrentLockUnlockKeepsProfilesConsistentAndTokensRevoked()throws Exception{
+  String a=login(admin),b=login(multi);
+  var session=request(body(post("/auth/login"),Map.of("email",customer+"@accounts-acceptance.invalid","password","Acceptance123!")),null,200);
+  var pool=java.util.concurrent.Executors.newFixedThreadPool(2);
+  try{
+   for(int attempt=0;attempt<3;attempt++){
+    var gate=new java.util.concurrent.CountDownLatch(1);
+    var first=pool.submit(()->{gate.await();return mvc.perform(delete("/admin/accounts/"+customer).header("Authorization","Bearer "+a)).andReturn().getResponse().getStatus();});
+    var second=pool.submit(()->{gate.await();return mvc.perform(post("/admin/accounts/"+customer+"/unlock").header("Authorization","Bearer "+b)).andReturn().getResponse().getStatus();});
+    gate.countDown();assertThat(List.of(first.get(20,java.util.concurrent.TimeUnit.SECONDS),second.get(20,java.util.concurrent.TimeUnit.SECONDS))).containsOnly(200);
+    assertThat(db.queryForObject("select (u.deleted_at is null)=(c.deleted_at is null) from users u join customers c on c.user_id=u.id where u.id=?",Boolean.class,customer)).isTrue();
+   }
+   request(post("/admin/accounts/"+customer+"/unlock"),a,200);
+   request(get("/users/me"),session.path("accessToken").asText(),401);
+   request(body(post("/auth/refresh"),Map.of("refreshToken",session.path("refreshToken").asText())),null,400);
+   login(customer);
+  }finally{pool.shutdownNow();}
+ }
 }

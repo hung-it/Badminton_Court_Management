@@ -23,6 +23,12 @@ public class UserPrincipal implements UserDetails {
     private String password;
     private Collection<? extends GrantedAuthority> authorities;
     private boolean enabled;
+    private Long tokenVersion;
+
+    public UserPrincipal(String id, String email, String password,
+                         Collection<? extends GrantedAuthority> authorities, boolean enabled) {
+        this(id, email, password, authorities, enabled, 0L);
+    }
 
     /**
      * Create UserPrincipal from User entity
@@ -37,7 +43,8 @@ public class UserPrincipal implements UserDetails {
                 user.getEmail(),
                 user.getPasswordHash(),
                 authorities,
-                true // User is enabled by default
+                user.getDeletedAt() == null,
+                user.getTokenVersion()
         );
     }
 

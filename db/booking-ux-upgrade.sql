@@ -316,3 +316,27 @@ ALTER TABLE bookings DROP CONSTRAINT IF EXISTS bookings_status_check;
 ALTER TABLE bookings ADD CONSTRAINT bookings_status_check CHECK(status IN ('PENDING','PAID','COMPLETED','EXPIRED'));
 COMMIT;
 -- END SECTION: booking-statuses
+
+-- BEGIN SECTION: account-token-version
+-- Apply this section alone to an existing database, after a verified full backup.
+-- Constant default preserves all current user/profile/transaction values.
+BEGIN;
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '30s';
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS token_version BIGINT NOT NULL DEFAULT 0;
+DO $account_token_version$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_attribute a JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+        WHERE a.attrelid='public.users'::regclass AND a.attname='token_version'
+          AND NOT a.attisdropped AND a.atttypid='bigint'::regtype AND a.attnotnull
+          AND pg_get_expr(d.adbin,d.adrelid)='0'
+    ) THEN
+        RAISE EXCEPTION 'BLOCKED: unexpected users.token_version definition; inspect before upgrading';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.users'::regclass AND conname='chk_users_token_version') THEN
+        ALTER TABLE public.users ADD CONSTRAINT chk_users_token_version CHECK (token_version >= 0);
+    END IF;
+END $account_token_version$;
+COMMIT;
+-- END SECTION: account-token-version

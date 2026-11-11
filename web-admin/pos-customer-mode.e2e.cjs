@@ -8,7 +8,7 @@ const productId='22222222-2222-4222-8222-222222222222';
  try{
  const page=await browser.newPage({viewport:{width:1366,height:768}});
  const sales=[];const checkouts=[];
- const preview={bookingId,court_fee:200000,product_fee:20000,courtDiscount:0,productDiscount:0,total_amount:220000,paidCourtAmount:200000,amountDue:20000};
+ const preview={bookingId,court_fee:200000,product_fee:20000,courtDiscount:0,productDiscount:0,total_amount:220000,paidCourtAmount:200000,amountDue:20000,checkoutEligible:true,latestEndAt:'2026-10-30T11:00:00'};
  await page.route('**/api/**',async route=>{
   const req=route.request(),path=new URL(req.url()).pathname;
   let data=[];
@@ -27,7 +27,7 @@ const productId='22222222-2222-4222-8222-222222222222';
    if(req.method()==='POST'){
     checkouts.push(req.postDataJSON());
     data={...data,invoiceId:'combined-invoice'};
-   }else data={...data,paidCourtAmount:0,amountDue:data.total_amount,courtReceiptRequired:true};
+   }
   }
   return route.fulfill({json:{success:true,data}});
  });
@@ -46,17 +46,18 @@ const productId='22222222-2222-4222-8222-222222222222';
  assert.equal(await page.getByText('Tổng bill dự kiến:',{exact:true}).count(),0);
  assert.equal(await page.getByText('Tiền sân đã thanh toán:',{exact:true}).count(),0);
  await add.click();
- await page.getByText('CHỜ ĐỐI SOÁT TIỀN SÂN:',{exact:true}).waitFor();
+ await page.getByText('TỔNG BILL SAU GIẢM:',{exact:true}).waitFor();
  assert.equal(sales[0].bookingId,bookingId);
  assert.equal(sales[0].courtFee,0);
- assert.match(await page.locator('.invoice-paper .total-line').innerText(),/Chưa xác nhận/);
+ assert.match(await page.locator('.invoice-paper .total-line').innerText(),/230\.000/);
+ assert.match(await page.locator('.invoice-paper').innerText(),/Còn phải thu:\s*30\.000/);
  const confirm=page.getByRole('button',{name:'✓ Xác nhận & thu tiền',exact:true});
  assert.equal(await confirm.isDisabled(),true);
  await page.getByRole('checkbox').check();
- assert.match(await page.locator('.invoice-paper .total-line').innerText(),/30\.000/);
+ assert.equal(await confirm.isEnabled(),true);
  await confirm.click();
  await page.getByText(/Kết toán thành công! Hóa đơn combined-invoice/).waitFor();
- assert.equal(checkouts[0].courtReceiptConfirmed,true);
+ assert.equal(checkouts[0].paymentConfirmed,true);assert.equal(checkouts[0].expectedAmountDue,30000);assert.equal(checkouts[0].paymentMethod,'CASH');
  assert.equal(await page.getByRole('dialog').count(),0);
  await page.getByRole('button',{name:'Bán tại quầy',exact:true}).click();
  await page.getByLabel('Khách vãng lai',{exact:true}).check();
@@ -64,10 +65,12 @@ const productId='22222222-2222-4222-8222-222222222222';
  await page.getByRole('button',{name:'Thêm +',exact:true}).click();
  const cash=page.getByRole('button',{name:'✓ Thu tiền hàng (CASH)',exact:true});
  await cash.waitFor();
+ assert.equal(await cash.isDisabled(),true);
+ await page.getByRole('checkbox').check();
  await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent==='✓ Thu tiền hàng (CASH)'&&!b.disabled));
  await cash.click();
  await page.getByText('Bán hàng thành công! Hóa đơn chỉ gồm hàng hóa, không kèm tiền sân.',{exact:true}).waitFor();
- assert.equal(sales.length,2);assert.equal(sales[1].bookingId,null);assert.equal(sales[1].courtFee,0);
+ assert.equal(sales.length,2);assert.equal(sales[1].bookingId,null);assert.equal(sales[1].courtFee,0);assert.equal(sales[1].paymentConfirmed,true);assert.equal(sales[1].expectedTotal,10000);
  console.log('PASS: invalid UUID blocked, booking bill combined, walk-in sale detached.');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

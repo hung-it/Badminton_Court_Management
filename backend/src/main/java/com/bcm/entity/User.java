@@ -34,6 +34,12 @@ public class User extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String address;
 
+    // Revocation epoch is independent of ordinary profile/audit timestamps.
+    // Only the row-locked account lifecycle service advances it via SQL.
+    @Column(name = "token_version", nullable = false, updatable = false)
+    @Builder.Default
+    private Long tokenVersion = 0L;
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "user_roles",

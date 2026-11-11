@@ -15,4 +15,5 @@ public class AdminAccountController {
  @GetMapping("/{id}") public ApiResponse<?> detail(@PathVariable UUID id){return ApiResponse.success(service.detail(id));}
  @PutMapping("/{id}") public ApiResponse<?> update(@PathVariable UUID id,@Valid @RequestBody AdminAccountUpdateRequest r){service.update(id,r);return ApiResponse.success("Account updated");}
  @DeleteMapping("/{id}") public ApiResponse<?> disable(@PathVariable UUID id){service.disable(id);return ApiResponse.success("Account locked");}
+ @PostMapping("/{id}/unlock") public ApiResponse<?> unlock(@PathVariable UUID id){service.unlock(id);return ApiResponse.success("Account unlocked");}
 }

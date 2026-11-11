@@ -12,7 +12,7 @@ import java.util.*;
 import java.time.LocalDateTime;
 @Service @RequiredArgsConstructor @Transactional(readOnly=true)
 public class AdminCustomerService {
- private final CustomerRepository customers; private final UserRepository users;
+ private final AdminAccountService accounts; private final CustomerRepository customers; private final UserRepository users;
  private final RoleRepository roles; private final PasswordEncoder encoder; private final JdbcTemplate jdbc;
  public Map<String,Object> list(String search,int page,String sort) {
   if(page<0) throw new BadRequestException("Invalid page");
@@ -29,7 +29,7 @@ public class AdminCustomerService {
  }
  private Customer active(UUID id) {return customers.findById(id).filter(c->c.getDeletedAt()==null && !"0000000000".equals(c.getPhone())).orElseThrow(()->new ResourceNotFoundException("Customer not found"));}
  @Transactional public UUID save(UUID id,AdminCustomerRequest r) {
-  if("0000000000".equals(r.phone().trim())) throw new BadRequestException("Reserved POS guest phone");
+  if("0000000000".equals(r.phone().replaceAll("[^0-9]",""))) throw new BadRequestException("Reserved POS guest phone");
   Customer c=id==null?new Customer():active(id); User u=id==null?new User():c.getUser();
   if(id==null && (r.password()==null||r.password().isBlank())) throw new BadRequestException("Password required");
   String email=r.email().trim().toLowerCase(Locale.ROOT);
@@ -40,8 +40,7 @@ public class AdminCustomerService {
   users.saveAndFlush(u);c.setUser(u);c.setFullName(u.getFullName());c.setPhone(u.getPhone());c.setAddress(u.getAddress());return customers.saveAndFlush(c).getId();
  }
  @Transactional public void disable(UUID id) {
-  Customer c=active(id);User u=c.getUser();
-  if(u.hasRole("ADMIN")||u.hasRole("STAFF")) throw new BadRequestException("Managed staff account");
-  c.setDeletedAt(LocalDateTime.now());u.setDeletedAt(c.getDeletedAt());customers.flush();
+  Customer c=customers.findById(id).orElseThrow(()->new ResourceNotFoundException("Customer not found"));
+  accounts.disable(c.getUser().getId());
  }
 }

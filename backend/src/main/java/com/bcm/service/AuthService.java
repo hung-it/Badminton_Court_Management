@@ -85,7 +85,7 @@ public class AuthService {
         // Generate tokens
         UserPrincipal principal = UserPrincipal.create(savedUser);
         String accessToken = jwtUtil.generateAccessToken(principal);
-        String refreshToken = jwtUtil.generateRefreshToken(savedUser.getEmail());
+        String refreshToken = jwtUtil.generateRefreshToken(principal);
 
         UserResponse userResponse = UserResponse.fromEntity(savedUser);
 
@@ -114,7 +114,7 @@ public class AuthService {
         UserPrincipal principal = authentication.getPrincipal() instanceof UserPrincipal p
                 ? p : UserPrincipal.create(user);
         String accessToken = jwtUtil.generateAccessToken(principal);
-        String refreshToken = jwtUtil.generateRefreshToken(user.getEmail());
+        String refreshToken = jwtUtil.generateRefreshToken(principal);
 
         UserResponse userResponse = UserResponse.fromEntity(user);
 
@@ -146,8 +146,11 @@ public class AuthService {
 
         // Generate new tokens
         UserPrincipal principal = UserPrincipal.create(user);
+        if (!jwtUtil.validateToken(refreshToken, principal)) {
+            throw new BadRequestException("Invalid or revoked refresh token");
+        }
         String newAccessToken = jwtUtil.generateAccessToken(principal);
-        String newRefreshToken = jwtUtil.generateRefreshToken(user.getEmail());
+        String newRefreshToken = jwtUtil.generateRefreshToken(principal);
 
         UserResponse userResponse = UserResponse.fromEntity(user);
 
