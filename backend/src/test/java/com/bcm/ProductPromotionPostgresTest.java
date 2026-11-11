@@ -42,8 +42,8 @@ class ProductPromotionPostgresTest extends ProductPromotionIntegrationTest {
     @DynamicPropertySource
     static void postgres(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", () -> System.getenv("BCM_PROMOTION_TEST_DB_URL"));
-        registry.add("spring.datasource.username", () -> "postgres");
-        registry.add("spring.datasource.password", () -> "");
+        registry.add("spring.datasource.username", () -> System.getenv().getOrDefault("BCM_PROMOTION_TEST_DB_USERNAME", "postgres"));
+        registry.add("spring.datasource.password", () -> System.getenv().getOrDefault("BCM_PROMOTION_TEST_DB_PASSWORD", ""));
         registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
         registry.add("spring.jpa.properties.hibernate.dialect", () -> "org.hibernate.dialect.PostgreSQLDialect");
