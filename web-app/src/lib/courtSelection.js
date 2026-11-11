@@ -1,4 +1,15 @@
 // Explicit court/hour choices only; availability always comes from the backend grid.
+export const venueKey = court => court.branchId || court.id;
+
+export function venueRepresentatives(courts) {
+  const representatives = new Map();
+  const ordered = [...courts].sort((a, b) =>
+    (a.branchCourtNumber ?? a.courtCode ?? 0) - (b.branchCourtNumber ?? b.courtCode ?? 0)
+    || (a.courtCode ?? 0) - (b.courtCode ?? 0) || a.id.localeCompare(b.id));
+  for (const court of ordered) if (!representatives.has(venueKey(court))) representatives.set(venueKey(court), court);
+  return [...representatives.values()];
+}
+
 export function unionSlots(courts, available) {
   const slots = new Map();
   for (const court of courts) for (const slot of available.get(court.id) || []) {

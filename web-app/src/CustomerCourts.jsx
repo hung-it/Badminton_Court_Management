@@ -6,7 +6,7 @@ import {useBookingClock} from './lib/useBookingClock';
 import {isFutureSlot, nextBookingDate} from './lib/bookingTime';
 import {courtReferencePrice, compareCourts, courtBadge} from './lib/courtPresentation';
 import BranchCourtPicker from './BranchCourtPicker';
-import {matchingHours, filterHours, reconcileVenue, toggleCourt, toggleFilterHour, selectedPairs} from './lib/courtSelection';
+import {matchingHours, filterHours, reconcileVenue, toggleCourt, toggleFilterHour, selectedPairs, venueKey, venueRepresentatives} from './lib/courtSelection';
 import {courtImageSource} from './lib/courtImages';
 import {sortBookingDetails, bookingTimeLabel, courtLabel} from './lib/bookingPresentation';
 
@@ -121,6 +121,7 @@ export default function CustomerCourts() {
   const [districts, setDistricts] = useState([]);
   const [districtSearch, setDistrictSearch] = useState('');
   const requestVersion = useRef(0);
+  const venues = useMemo(() => venueRepresentatives(courts), [courts]);
   const eligibleSlots = useMemo(() => slots.filter(slot => isFutureSlot(date, slot.startTime, bookingClock.nowMs)), [slots, date, bookingClock.nowMs]);
   const eligibleKey = eligibleSlots.map(slot => slot.id).join('|');
   const activeFilterSlot = eligibleSlots.some(slot => slot.id === selectedSlot) ? selectedSlot : '';
@@ -215,26 +216,26 @@ export default function CustomerCourts() {
     if (availability?.date !== date) return;
     let nextSelections = Object.fromEntries(Object.entries(courtSelections).filter(([id]) => courts.some(court => court.id === id)));
     const nextFilters = {...hourFilters};
-    for (const venue of courts.filter(court => !court.branchId || court.branchCourtNumber === 1)) {
+    for (const venue of venues) {
       const siblings = courts.filter(court => venue.branchId ? court.branchId === venue.branchId : court.id === venue.id);
-      const result = reconcileVenue(siblings, nextSelections, hourFilters[venue.id] || [], validAvailableSlots);
+      const result = reconcileVenue(siblings, nextSelections, hourFilters[venueKey(venue)] || [], validAvailableSlots);
       nextSelections = result.selections;
-      if (Object.hasOwn(hourFilters, venue.id)) nextFilters[venue.id] = result.hours;
+      if (Object.hasOwn(hourFilters, venueKey(venue))) nextFilters[venueKey(venue)] = result.hours;
     }
     if (JSON.stringify(nextSelections) !== JSON.stringify(courtSelections)) setCourtSelections(nextSelections);
     if (JSON.stringify(nextFilters) !== JSON.stringify(hourFilters)) setHourFilters(nextFilters);
-  }, [availableKey, date, availability, courtSelections, hourFilters, courts]);
-  const visibleCourts = useMemo(() => courts.filter(court => !court.branchId || court.branchCourtNumber === 1).filter(court => {
+  }, [availableKey, date, availability, courtSelections, hourFilters, courts, venues]);
+  const visibleCourts = useMemo(() => venues.filter(court => {
     const term = query.trim().toLocaleLowerCase('vi');
     const availableSlots = courts.filter(item => item.id === court.id || (court.branchId && item.branchId === court.branchId)).flatMap(item => validAvailableSlots.get(item.id) || []);
     const slotAvailable = activeFilterSlot ? availableSlots.some(slot => slot.timeSlotId === activeFilterSlot) : availableSlots.length > 0;
     const price = referencePrices[court.id];
     return (!term || `${court.name} ${court.courtNumber}`.toLocaleLowerCase('vi').includes(term))
-      && (!courtFilter || court.id === courtFilter)
+      && (!courtFilter || courts.some(item => item.id === courtFilter && venueKey(item) === venueKey(court)))
       && (!districts.length || districts.includes(court.district))
       && (!onlyAvailable || slotAvailable)
       && (!maxPrice || (price != null && Number(price) <= Number(maxPrice)));
-  }).sort((left, right) => compareCourts(left, right, sortOrder, referencePrices)), [validAvailableSlots, courts, courtFilter, districts, maxPrice, onlyAvailable, query, referencePrices, activeFilterSlot, sortOrder]);
+  }).sort((left, right) => compareCourts(left, right, sortOrder, referencePrices)), [validAvailableSlots, courts, courtFilter, districts, maxPrice, onlyAvailable, query, referencePrices, activeFilterSlot, sortOrder, venues]);
 
   async function startCheckout(court, selected) {
     if (checkingCourt || bookingSubmit.current) return;
@@ -369,7 +370,7 @@ export default function CustomerCourts() {
               const siblings = courts.filter(item => cardCourt.branchId ? item.branchId === cardCourt.branchId : item.id === cardCourt.id);
               const chosen = siblings.filter(item => Object.hasOwn(courtSelections, item.id));
               const court = chosen[0] || cardCourt;
-              const requestedHours = hourFilters[cardCourt.id] || [];
+              const requestedHours = hourFilters[venueKey(cardCourt)] || [];
               const pairs = selectedPairs(siblings, courtSelections, validAvailableSlots, date);
               const ready = pairs.length > 0;
               const cardSlot = (courtSelections[court.id] ?? [])[0] || '';
@@ -382,7 +383,7 @@ export default function CustomerCourts() {
               const pairSlots = pairs.map(pair => validAvailableSlots.get(pair.courtId)?.find(slot => slot.timeSlotId === pair.timeSlotId));
               const total = pairSlots.every(slot => slot?.price != null && Number.isFinite(Number(slot.price)))
                 ? pairSlots.reduce((sum, slot) => sum + Math.round(Number(slot.price) * 100), 0) / 100 : null;
-              return <article className="customer-court-card" data-court-id={cardCourt.id} data-active-court-id={chosen[0]?.id || ''} data-branch-id={cardCourt.branchId} key={cardCourt.id}>
+              return <article className="customer-court-card" data-court-id={cardCourt.id} data-active-court-id={chosen[0]?.id || ''} data-branch-id={cardCourt.branchId} key={venueKey(cardCourt)}>
                 <div className="customer-court-image"><CourtIllustration court={court} catalog={courts}/><span className="customer-court-number">{courtBadge(cardCourt.id)}</span></div>
                 <div className="customer-court-info">
                   <div className="customer-court-location"><Icon name="pin" size={15}/> {cardCourt.district || 'Chưa cập nhật quận / huyện'}</div>
@@ -396,7 +397,7 @@ export default function CustomerCourts() {
                     return <label className={selectedIds.has(slot.timeSlotId) ? 'customer-slot-chip selected' : 'customer-slot-chip'} key={`${cardCourt.id}:${slot.timeSlotId}`}><input type="checkbox" value={slot.timeSlotId} disabled={!bookingClock.ready || loading || Boolean(checkingCourt) || Boolean(availabilityError)} checked={selectedIds.has(slot.timeSlotId)} onChange={event => {
                     const checked = event.target.checked;
                     setNotice('');
-                    setHourFilters(current => ({...current, [cardCourt.id]: checked ? [...new Set([...(current[cardCourt.id] || []), slot.timeSlotId])] : (current[cardCourt.id] || []).filter(id => id !== slot.timeSlotId)}));
+                    setHourFilters(current => ({...current, [venueKey(cardCourt)]: checked ? [...new Set([...(current[venueKey(cardCourt)] || []), slot.timeSlotId])] : (current[venueKey(cardCourt)] || []).filter(id => id !== slot.timeSlotId)}));
                     setCourtSelections(current => toggleFilterHour(current, siblings, slot.timeSlotId, checked, validAvailableSlots));
                   }}/>{shortTime(slot.startTime)} – {shortTime(slot.endTime)} · {priceLabel}</label>;
                   }) : <span className="customer-no-slots">Không còn khung giờ trống trong ngày</span>}</div>
