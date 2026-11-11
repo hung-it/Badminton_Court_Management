@@ -49,6 +49,11 @@ function BookingDetail({detail, loading, error, onRetry}) {
   if (!detail) return null;
 
   return <div className="history-detail">
+    <section aria-label="Tiền sân sau ưu đãi">
+      <p>Giá sân gốc: <strong>{formatVND(detail.courtFee)}</strong></p>
+      <p>Ưu đãi tiền sân: <strong>−{formatVND(detail.discountAmount ?? 0)}</strong></p>
+      <p>Tiền sân sau ưu đãi: <strong>{formatVND(detail.finalAmount ?? detail.courtFee)}</strong></p>
+    </section>
     <div className="history-detail__columns">
       <section>
         <h3>Khung giờ đã đặt</h3>
@@ -209,7 +214,8 @@ export default function CustomerBookingHistory() {
               </span>
               <span className="history-card__meta">
                 <span className={`history-status history-status--${String(booking.status || '').toLowerCase()}`}>{statusLabel(booking.status)}</span>
-                <strong>{formatVND(booking.courtFee)}</strong>
+                <strong>{formatVND(booking.finalAmount ?? booking.courtFee)}</strong>
+                <small>Tiền sân sau ưu đãi</small>
               </span>
             </button>
             {expanded && <BookingDetail detail={detailState?.data} loading={Boolean(detailState?.loading)} error={detailState?.error}

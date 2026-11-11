@@ -93,8 +93,10 @@ public class CheckoutService {
                     })
                     .collect(Collectors.joining("; "));
 
-            String customerName = b.getCustomer() != null ? b.getCustomer().getFullName() : "Khách vãng lai";
-            String customerPhone = b.getCustomer() != null ? b.getCustomer().getPhone() : "";
+            String customerName = org.springframework.util.StringUtils.hasText(b.getContactFullName())
+                    ? b.getContactFullName() : b.getCustomer() != null ? b.getCustomer().getFullName() : "Khách vãng lai";
+            String customerPhone = org.springframework.util.StringUtils.hasText(b.getContactPhone())
+                    ? b.getContactPhone() : b.getCustomer() != null ? b.getCustomer().getPhone() : "";
             String fullId = b.getId().toString();
             String shortId = fullId.substring(0, 8);
 

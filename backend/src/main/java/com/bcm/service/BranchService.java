@@ -22,7 +22,7 @@ public class BranchService {
 
     public List<BranchResponse> list() {
         var counts = courts.findByDeletedAtIsNullOrderByCourtCodeAsc().stream()
-            .filter(c -> c.getBranchId() != null && c.getStatus() == CourtStatus.AVAILABLE)
+            .filter(c -> c.getBranchId() != null && c.getStatus() == CourtStatus.AVAILABLE && c.getBasePrice().signum() > 0)
             .collect(Collectors.groupingBy(Court::getBranchId, Collectors.counting()));
         return branches.findByActiveTrueAndDeletedAtIsNullOrderByCodeAsc().stream()
             .map(b -> new BranchResponse(b.getId(), b.getCode(), b.getName(), b.getDistrict(), b.getAddress(), counts.getOrDefault(b.getId(), 0L)))
@@ -32,6 +32,6 @@ public class BranchService {
     public List<Court> courts(UUID branchId) {
         if (!branches.existsByIdAndActiveTrueAndDeletedAtIsNull(branchId)) throw new ResourceNotFoundException("Branch not found");
         return courts.findByBranchIdAndDeletedAtIsNullOrderByBranchCourtNumberAsc(branchId).stream()
-            .filter(c -> c.getStatus() == CourtStatus.AVAILABLE).toList();
+            .filter(c -> c.getStatus() == CourtStatus.AVAILABLE && c.getBasePrice().signum() > 0).toList();
     }
 }

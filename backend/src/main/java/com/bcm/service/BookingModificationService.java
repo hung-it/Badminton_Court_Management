@@ -65,7 +65,7 @@ public class BookingModificationService {
         // Same Court locks as createBooking; Booking -> Court, never lock another existing Booking.
         var court = courts.findAllForBookingWithLock(courtIds).get(0);
         requireEditable(booking); // The wait for a Court lock must not allow a late edit.
-        if (court.getStatus() != CourtStatus.AVAILABLE || court.getDeletedAt() != null) {
+        if (court.getStatus() != CourtStatus.AVAILABLE || court.getDeletedAt() != null || court.getBasePrice().signum() <= 0) {
             throw new BadRequestException("Court is not available for booking");
         }
         var selected = slots.findForBookingWithLock(request.timeSlotIds());

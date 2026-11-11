@@ -244,6 +244,8 @@ public class PosService {
             if(line.getStockDeducted()==null) throw new BadRequestException("Legacy inventory provenance requires review");
             if(Boolean.TRUE.equals(line.getStockDeducted())) {
                 var product=productRepository.findByIdForPriceApproval(line.getProductId()).orElseThrow();
+                if (product.getType()!=ProductType.GOODS)
+                    throw new com.bcm.exception.DuplicateResourceException("Inventory type changed; reconcile draft before restoring stock");
                 product.setStockQuantity(Math.addExact(product.getStockQuantity(),line.getQuantity()));
                 line.setStockDeducted(false);
             }

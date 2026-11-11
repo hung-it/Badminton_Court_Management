@@ -64,6 +64,7 @@ public class MasterDataService {
     }
 
     public Court saveCourt(UUID id, CourtRequest r) {
+        if (r.basePrice().signum() <= 0) throw new BadRequestException("Giá sân phải lớn hơn 0");
         Court c = id == null ? new Court() : courts.findAllForBookingWithLock(List.of(id)).stream()
             .filter(v->v.getDeletedAt()==null).findFirst().orElseThrow(()->new ResourceNotFoundException("Không tìm thấy sân"));
         if(id!=null && r.status()!=CourtStatus.AVAILABLE && c.getStatus()!=r.status()) {
@@ -202,7 +203,14 @@ public class MasterDataService {
         category(r.categoryId());
         if (r.type() == ProductType.SERVICE && r.stockQuantity() != 0)
             throw new BadRequestException("Dịch vụ phải có tồn kho bằng 0");
-        Product p = id == null ? new Product() : product(id);
+        Product p = id == null ? new Product() : products.findByIdForPriceApproval(id)
+                .filter(v -> v.getDeletedAt() == null)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy sản phẩm"));
+        if (id != null && p.getType() != r.type() && Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT EXISTS(SELECT 1 FROM invoice_details d JOIN invoices i ON i.id=d.invoice_id WHERE d.product_id=? AND i.status='DRAFT')",
+                Boolean.class,id))) {
+            throw new DuplicateResourceException("Sản phẩm còn hóa đơn nháp; hãy hủy hoặc kết toán trước khi đổi loại");
+        }
         boolean managedTarget=productPrices.managed(r.categoryId());
         if(id==null&&managedTarget&&r.price().signum()!=0)throw new BadRequestException("Tạo hàng nhập kho với giá 0, sau đó dùng Duyệt giá niêm yết");
         if(id!=null){
@@ -236,7 +244,7 @@ public class MasterDataService {
     public Map<String, Object> quote(UUID courtId, UUID slotId) {
         Court c = court(courtId);
         TimeSlot s = slot(slotId);
-        if (c.getStatus() != CourtStatus.AVAILABLE)
+        if (c.getStatus() != CourtStatus.AVAILABLE || c.getBasePrice().signum() <= 0)
             throw new BadRequestException("Sân không hoạt động");
         return Map.of(
                 "courtId",
