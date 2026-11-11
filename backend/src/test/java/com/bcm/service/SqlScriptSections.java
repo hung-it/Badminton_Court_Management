@@ -9,12 +9,12 @@ final class SqlScriptSections {
     private SqlScriptSections() { }
 
     static String upgrade(String section) throws Exception {
-        return (section.equals("court-numbers") ? "" : read("booking-ux-upgrade.sql", "court-numbers"))
-                + read("booking-ux-upgrade.sql", section);
+        return (section.equals("court-numbers") ? "" : read("upgrades/booking-ux-upgrade.sql", "court-numbers"))
+                + read("upgrades/booking-ux-upgrade.sql", section);
     }
 
     static String seed(String section) throws Exception {
-        return read("branches-seed.sql", section);
+        return read("seeds/branches-seed.sql", section);
     }
 
     static String read(String file, String section) throws Exception {

@@ -23,7 +23,7 @@ Backend của cả 4 thành viên đã hoàn tất và **đã chạy pass toàn 
 
 1. **H2 không hỗ trợ `EXTRACT(YEAR FROM ...)`** → dùng `SUBSTRING(CAST(created_at AS VARCHAR),1,4)` để tương thích cả H2 và PostgreSQL.
 2. **`Invoice` không có quan hệ với `Staff`** (`Staff` là entity `@Immutable` chỉ map `id`) → mọi truy vấn báo cáo dùng `JdbcTemplate`, không sửa entity của module khác.
-3. **`invoice_details.discount_amount` không có trong `db/migration.sql`** mà đến từ `db/product-promotions-upgrade.sql` → DB test PostgreSQL phải nạp đủ chuỗi 7 script của docker-compose, nếu không sẽ lỗi cột không tồn tại.
+3. **`invoice_details.discount_amount` không có trong `db/migration.sql`** mà đến từ `db/upgrades/product-promotions-upgrade.sql` → DB test PostgreSQL phải nạp đủ chuỗi 7 script của docker-compose, nếu không sẽ lỗi cột không tồn tại.
 4. **Checkout lưu `product_fee` là giá gộp, `discount_amount` header đã gộp cả giảm giá dòng** → không thể dùng `product_fee` làm mẫu số phân bổ; phải bám `invoice_details` và `invoices.total_amount`.
 5. **`bookings.court_fee` là tổng của booking, một booking có nhiều `booking_details`** → phải chia `court_fee` cho từng sân theo tỷ lệ `booking_details.price`.
 6. **`invoices.customer_id` NOT NULL** → nhóm "Khách vãng lai" chỉ xuất hiện khi khách hàng bị xóa mềm, không phải khi `customer_id` NULL.
@@ -52,7 +52,7 @@ Backend của cả 4 thành viên đã hoàn tất và **đã chạy pass toàn 
 
 ### Database
 
-- `db/revenue-breakdown-sample.sql`: chuyển sang `ON CONFLICT DO UPDATE` (chạy lại được, không nhân bản), bổ sung dữ liệu 2026 gồm 3 thu ngân, 4 khách hàng, 5 sản phẩm, 3 sân, 4 booking (có booking 2 sân) và 12 hóa đơn trải đều 4 quý.
+- `db/seeds/revenue-breakdown-sample.sql`: chuyển sang `ON CONFLICT DO UPDATE` (chạy lại được, không nhân bản), bổ sung dữ liệu 2026 gồm 3 thu ngân, 4 khách hàng, 5 sản phẩm, 3 sân, 4 booking (có booking 2 sân) và 12 hóa đơn trải đều 4 quý.
 
 ## 4. Quy tắc nghiệp vụ đã chốt
 
@@ -67,7 +67,7 @@ Backend của cả 4 thành viên đã hoàn tất và **đã chạy pass toàn 
 | Việc | Trạng thái |
 |---|---|
 | Chạy 289 test PostgreSQL (`BCM_TEST_DB_*`) | Chưa chạy — lệnh bị chặn vì kết nối container DB dùng chung; cần bạn cho phép hoặc tự chạy |
-| Nạp seed vào DB dev để xem số liệu thật | Chưa nạp — cần bạn cho phép ghi vào DB dev (`db/revenue-breakdown-sample.sql`) |
+| Nạp seed vào DB dev để xem số liệu thật | Chưa nạp — cần bạn cho phép ghi vào DB dev (`db/seeds/revenue-breakdown-sample.sql`) |
 | Build lại image Docker backend | Chưa chạy — chờ xác nhận để tránh restart dịch vụ đang chạy |
 | Rà soát code của 3 thành viên còn lại | Đã rà qua khi đọc luồng POS/Checkout/Analytics; chưa có phát hiện nghiêm trọng nào khác |
 
@@ -85,7 +85,7 @@ cd web-admin && npm run build                                    # pass
 cd web-admin && node revenue-breakdown.e2e.cjs                   # PASS
 
 # Seed: kiểm tra cú pháp trên PostgreSQL thật, không lưu dữ liệu
-{ echo "BEGIN;"; sed 's/^BEGIN;//; s/^COMMIT;//' db/revenue-breakdown-sample.sql; echo "ROLLBACK;"; } \
+{ echo "BEGIN;"; sed 's/^BEGIN;//; s/^COMMIT;//' db/seeds/revenue-breakdown-sample.sql; echo "ROLLBACK;"; } \
   | docker exec -i bcm-postgres psql -U bcm_admin -d badminton_court_db -v ON_ERROR_STOP=1
 ```
 

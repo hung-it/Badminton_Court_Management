@@ -26,25 +26,25 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ./db/booking-ux-upgrade.sql
+        source: ./db/upgrades/booking-ux-upgrade.sql
         target: /docker-entrypoint-initdb.d/02-booking-ux-upgrade.sql
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ./db/branches-seed.sql
+        source: ./db/seeds/branches-seed.sql
         target: /docker-entrypoint-initdb.d/03-branches-seed.sql
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ./db/product-promotions-upgrade.sql
+        source: ./db/upgrades/product-promotions-upgrade.sql
         target: /docker-entrypoint-initdb.d/06-product-promotions-upgrade.sql
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ./db/court-promotions-upgrade.sql
+        source: ./db/upgrades/court-promotions-upgrade.sql
         target: /docker-entrypoint-initdb.d/07-court-promotions-upgrade.sql
         read_only: true
         bind:

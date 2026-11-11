@@ -213,4 +213,67 @@ BEGIN
     END LOOP;
     RAISE NOTICE 'Demo inventory work queue ready: existing approvals, dates and stock preserved';
 END $inventory$;
+
+-- v1.2 live checkout examples, one set per explicit seed run date. Never replay
+-- finished/expired examples or shift their dates. Normal application jobs apply.
+DO $checkout$
+DECLARE
+    stamp timestamp := localtimestamp;
+    play_date date := current_date;
+    slot_id uuid; court_id uuid; booking_id uuid; customer_id uuid; invoice_id uuid;
+    actor uuid := pg_temp.demo_id('staff-2');
+    actor_user uuid := pg_temp.demo_id('user-2');
+    water_id uuid; water_price numeric; court_price numeric; multiplier numeric;
+    i integer;
+BEGIN
+    SELECT id,price_multiplier INTO slot_id,multiplier FROM time_slots
+    WHERE deleted_at IS NULL AND start_time<=localtime ORDER BY start_time DESC LIMIT 1;
+    IF slot_id IS NULL THEN
+        play_date:=current_date-1;
+        SELECT id,price_multiplier INTO STRICT slot_id,multiplier FROM time_slots
+        WHERE deleted_at IS NULL ORDER BY end_time DESC LIMIT 1;
+    END IF;
+    FOR i IN 1..3 LOOP
+        booking_id:=pg_temp.demo_id('live-checkout-'||current_date||'-'||i);
+        IF EXISTS(SELECT 1 FROM bookings WHERE id=booking_id) THEN CONTINUE; END IF;
+        -- Serialize with booking creation on the actual Court row; the unique
+        -- slot index is still the final protection. Never overwrite occupied slots.
+        SELECT c.id,round(c.base_price*multiplier,2) INTO STRICT court_id,court_price
+        FROM courts c WHERE c.status='AVAILABLE' AND c.deleted_at IS NULL AND c.base_price>0
+        AND NOT EXISTS(SELECT 1 FROM booking_details d
+            WHERE d.court_id=c.id AND d.time_slot_id=slot_id AND d.booking_date=play_date)
+        ORDER BY c.court_code LIMIT 1 FOR UPDATE OF c;
+        customer_id:=pg_temp.demo_id('customer-'||(6+i));
+        INSERT INTO bookings(id,customer_id,status,court_fee,expires_at,created_by,updated_by,
+            created_at,updated_at,contact_full_name,contact_phone)
+        SELECT booking_id,customer_id,CASE WHEN i=3 THEN 'PENDING' ELSE 'PAID' END,
+            court_price,stamp+interval '10 minutes',actor,actor,stamp,stamp,
+            c.full_name,c.phone FROM customers c WHERE c.id=customer_id;
+        INSERT INTO booking_details(id,booking_id,court_id,time_slot_id,booking_date,price,created_at)
+        VALUES(pg_temp.demo_id('live-slot-'||current_date||'-'||i),booking_id,court_id,slot_id,play_date,court_price,stamp);
+        IF i<>3 THEN
+            INSERT INTO payment_transactions(id,booking_id,payment_method,transaction_id,status,amount,
+                transaction_date,created_at,note,source,confirmed_by,confirmed_by_user,reference)
+            VALUES(pg_temp.demo_id('live-receipt-'||current_date||'-'||i),booking_id,'CASH',
+                'DEMO-LIVE-'||current_date||'-'||i,'SUCCESS',court_price,stamp,stamp,
+                '[DEMO] Trả sân - đã thu tiền sân giả lập','MANUAL',actor,actor_user,'DEMO-LIVE-'||current_date||'-'||i);
+        END IF;
+        IF i=2 THEN
+            SELECT id,price INTO STRICT water_id,water_price FROM products
+            WHERE name='Nước suối 500ml' AND type='GOODS' AND deleted_at IS NULL FOR UPDATE;
+            UPDATE products SET stock_quantity=stock_quantity-2,version=version+1 WHERE id=water_id AND stock_quantity>=2;
+            IF NOT FOUND THEN RAISE EXCEPTION 'Demo checkout requires two bottles in stock'; END IF;
+            invoice_id:=pg_temp.demo_id('live-pos-'||current_date);
+            INSERT INTO invoices(id,booking_id,customer_id,status,payment_method,court_fee,product_fee,
+                total_amount,created_by,updated_by,created_by_user,created_at,updated_at)
+            VALUES(invoice_id,booking_id,customer_id,'DRAFT',NULL,0,2*water_price,2*water_price,
+                actor,actor,actor_user,stamp,stamp);
+            INSERT INTO invoice_details(id,invoice_id,product_id,product_name,quantity,unit_price,note,
+                added_by,added_by_user,stock_deducted,created_at)
+            VALUES(pg_temp.demo_id('live-pos-line-'||current_date),invoice_id,water_id,'Nước suối 500ml',
+                2,water_price,'[DEMO] Trả sân - tiền nước chờ thu',actor,actor_user,true,stamp);
+        END IF;
+    END LOOP;
+    RAISE NOTICE 'Checkout demo ready; paid receipts, pending POS and ten-minute unpaid hold follow normal lifecycle';
+END $checkout$;
 COMMIT;

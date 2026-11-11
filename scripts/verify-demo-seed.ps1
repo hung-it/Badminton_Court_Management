@@ -30,7 +30,7 @@ for ($attempt=0; $attempt -lt 30; $attempt++) {
 }
 if (!$ready) { throw 'QA PostgreSQL did not become ready' }
 Checked @('exec',$Container,'createdb','-U','bcm_admin',$database)
-foreach ($file in @('migration.sql','booking-ux-upgrade.sql','branches-seed.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql')) {
+foreach ($file in @('migration.sql','upgrades/booking-ux-upgrade.sql','seeds/branches-seed.sql','upgrades/product-promotions-upgrade.sql','upgrades/court-promotions-upgrade.sql')) {
     SqlFile (Join-Path $root "db/$file")
 }
 Checked @('cp',(Join-Path $root 'db/demo-seed.sql'),"${Container}:/tmp/demo-seed-$run.sql")
@@ -63,7 +63,7 @@ try {
 } finally {
     if (!$gate.WaitForExit(15000)) { throw 'Seed lock holder did not finish' }
 }
-SqlFile (Join-Path $root 'db/verify-demo-seed.sql')
+SqlFile (Join-Path $root 'db/checks/verify-demo-seed.sql')
 $tables = @('users','roles','user_roles','customers','staffs','categories','products','suppliers','import_orders',
     'import_order_details','bookings','booking_details','invoices','invoice_details','payment_transactions',
     'promotions','discount_rules','customer_voucher_usage','branches','courts','time_slots')

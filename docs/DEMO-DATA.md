@@ -51,6 +51,9 @@ mang quyền ADMIN; bốn nhân viên mang quyền STAFF. Guest nằm trong mư�
   điện giải, 20 quấn cán. Chúng xuất hiện trong bộ lọc “Hôm nay” khi mới khởi tạo.
   Duyệt phiếu mới cộng tồn kho; seed không cộng trước. Tổng cộng 15 phiếu nhập.
 - 100 booking COMPLETED với chi tiết sân, snapshot giá và phiếu thu tiền sân.
+- Thêm 3 booking Trả sân đang thao tác được ở ngày chạy seed: hai PAID, một PENDING.
+  Tổng DB mới: 103 booking; 151 hóa đơn (150 PAID lịch sử và 1 POS DRAFT);
+  252 phiếu thu demo. Phiếu POS giữ snapshot hai chai nước và đã trừ kho đúng một lần.
 - 150 hóa đơn PAID: 100 checkout đặt sân, 50 bán hàng độc lập; 200 dòng bán hàng/dịch vụ.
 - 250 phiếu thu CASH/MANUAL giả lập, có actor và nhãn `[DEMO]`. Hóa đơn tiền sân
   tính cả phiếu thu theo booking và phần hàng/dịch vụ theo invoice, không thu tiền sân lần hai.
@@ -91,7 +94,7 @@ rollback toàn bộ, không ghi đè tài khoản khác. Guest có sẵn đượ
 nguyên mật khẩu; sản phẩm có sẵn giữ tồn ban đầu và được cộng/trừ đúng phần giao dịch mới.
 Do đó số đếm chính xác ở trên dành cho DB mới, không phải DB đã có dữ liệu.
 
-Để kiểm tra một **DB demo mới riêng**, chạy `db/verify-demo-seed.sql` bằng psql
+Để kiểm tra một **DB demo mới riêng**, chạy `db/checks/verify-demo-seed.sql` bằng psql
 với `ON_ERROR_STOP=1`. Script chỉ đọc, kiểm tra số lượng, 12 tháng, đối chiếu tổng
 tiền/phiếu thu, tồn kho và tồn lịch sử. Không dùng kiểm tra số đếm này cho DB vận hành.
 
@@ -148,3 +151,35 @@ kho khi muốn thực sự cộng lượng hàng tương ứng vào tồn demo.
 Các thay đổi nhập thủ công sau khi chạy không tự đi vào Git. Nếu muốn chuyển chúng
 sang máy khác, cần bổ sung seed có chủ đích hoặc backup/restore riêng. Để người khác
 nhận bộ seed này, commit/push các file thay đổi rồi họ pull đúng nhánh.
+
+## Nhập kho và Trả sân qua ngày — v1.2 ngày 11/11/2026
+
+Phiếu nhập ngày 10/11 không bị mất sau khi khởi động: bộ lọc Hôm nay ngày 11/11
+đã ẩn chúng. Nhập kho nay mặc định Tất cả; vẫn có Hôm nay, Tuần này, Tháng này,
+lọc theo tháng và khoảng ngày. Các màn hình khác giữ nguyên bộ lọc cũ.
+Không đổi ngày hoặc tạo thêm phiếu nhập giả chỉ để làm đầy bộ lọc Hôm nay.
+
+Ba booking mới dùng sân AVAILABLE còn trống trong template đang diễn ra, hoặc ca
+gần nhất đã bắt đầu nếu ngoài giờ mở cửa. Giá lấy từ giá sân × hệ số khung giờ.
+Mỗi ca khóa Court và tuân unique slot; thiếu sân/sản phẩm/tồn kho sẽ rollback seed.
+
+1. Khách demo 2: PAID, tiền sân CASH đã thu giả lập, không còn tiền hàng cần thu.
+2. Khách demo 3: PAID, tiền sân CASH đã thu giả lập, POS DRAFT hai chai nước cần thu khi kết toán.
+3. Khách demo 4: PENDING, chưa có phiếu thu; dùng nút Thu tiền tại quầy rồi Kết toán.
+
+PENDING có hạn giữ 10 phút kể từ lần nạp. Hết hạn thì EXPIRED theo nghiệp vụ.
+PAID không có POS sẽ tự kết toán sau giờ kết thúc + 3 tiếng nếu job đang bật;
+booking có POS DRAFT được giữ để nhân viên xử lý. Hoàn tất sẽ rời danh sách Trả sân.
+Đây là dữ liệu để thao tác, không phải bản ghi luôn hiện vĩnh viễn.
+
+UUID có ngày chạy seed và số kịch bản, chỉ tạo một bộ mỗi ngày khi **chủ động nạp seed**.
+Chạy lại cùng ngày không đổi lịch, không trừ kho hoặc thu tiền lần nữa, không hồi sinh
+đơn hoàn tất/hết hạn. Không có tác vụ tự nạp thêm demo hằng ngày. Docker chỉ tự nạp
+trên volume mới; với volume cũ, sao lưu rồi chạy lại demo-seed.sql theo hướng dẫn trên.
+
+Kiểm chứng bổ sung: seed PostgreSQL (lần đầu đồng thời, fingerprint khi chạy lại,
+giữ dữ liệu đã sửa) PASS; `web-admin/inventory-history.e2e.cjs` PASS với API giả lập;
+build admin PASS. `scripts/verify-checkout-demo.mjs` chạy trên backend QA riêng cổng
+58098 PASS cả ba luồng thu tiền/kết toán, hai request retry đồng thời và không trừ kho lần hai.
+Full Maven verify vẫn baseline 509 tests, 5 failures, 29 errors, 337 skipped.
+DB chính đã sao lưu tại `backups/before-checkout-demo-20261111-065000.dump` trước khi nạp.

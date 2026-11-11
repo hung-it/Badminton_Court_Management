@@ -252,7 +252,11 @@ Badminton_Court_Management/
 │   └── src/                           # Master Data admin screens
 │
 ├── db/                                # Database scripts
-│   ├── init.sql                       # Initial schema
+│   ├── migration.sql                  # Initial schema
+│   ├── demo-seed.sql                  # Complete demo dataset
+│   ├── upgrades/                      # Schema upgrades and legacy compatibility
+│   ├── seeds/                         # Branch catalog and optional report samples
+│   ├── checks/                        # Demo data verification
 │   └── README.md                      # Database documentation
 │
 ├── docs/                              # Project documentation

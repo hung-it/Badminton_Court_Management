@@ -68,7 +68,7 @@ export default function App(){
 
  // Inventory state
  const [importOrders,setImportOrders]=useState([]);
- const [inventoryPeriod,setInventoryPeriod]=useState('DAY'),[inventoryMonth,setInventoryMonth]=useState('');
+ const [inventoryPeriod,setInventoryPeriod]=useState('ALL'),[inventoryMonth,setInventoryMonth]=useState('');
  const [inventoryRange,setInventoryRange]=useState({});
  const visibleImportOrders=importOrders.filter(o=>inPeriod(o.importDate,inventoryPeriod,inventoryMonth,undefined,inventoryRange));
  const [suppliers,setSuppliers]=useState([]);
@@ -448,7 +448,7 @@ useEffect(()=>{
  {/* INVENTORY PANEL */}
  {tab==='inventory'&&<div className="inventory-panel">
   <div className="page-heading"><div><span className="eyebrow">INVENTORY</span><h1>Nhập kho</h1></div><button className="primary" onClick={()=>{setImportForm({supplierName:'',productName:'',quantity:'',totalAmount:''});setError('');setImportModalOpen(true);}}>＋ Tạo phiếu nhập</button></div>
-  <PeriodFilter period={inventoryPeriod} month={inventoryMonth} range={inventoryRange} onRangeChange={r=>{setInventoryMonth('');setInventoryRange(r)}} onChange={(p,m)=>{setInventoryRange({});setInventoryPeriod(p);setInventoryMonth(m)}}/>
+  <PeriodFilter showAll period={inventoryPeriod} month={inventoryMonth} range={inventoryRange} onRangeChange={r=>{setInventoryMonth('');setInventoryRange(r)}} onChange={(p,m)=>{setInventoryRange({});setInventoryPeriod(p);setInventoryMonth(m)}}/>
   <div className="stats three-stats">
    <div><span>Số phiếu nhập kho</span><strong>{visibleImportOrders.length}</strong></div>
    <div><span>Số nhà cung cấp</span><strong>{new Set(visibleImportOrders.map(o=>o.supplierId)).size}</strong></div>

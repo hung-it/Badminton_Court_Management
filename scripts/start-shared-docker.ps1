@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $runtimeDir = Join-Path $root '.tools/shared-docker'
 New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null
@@ -42,7 +42,7 @@ Assert-DockerExit 'Backup archive validation failed; no upgrades applied.'
 Assert-DockerExit 'Cannot preserve backup on host; no upgrades applied.'
 # Mount init chỉ chạy cho volume mới. Volume đang có cần các migration cộng thêm, chạy lại an toàn.
 foreach ($migration in @('booking-ux-upgrade.sql','product-promotions-upgrade.sql','court-promotions-upgrade.sql')) {
-    & $docker cp (Join-Path $root "db/$migration") "bcm-postgres:/tmp/bcm-$migration"
+    & $docker cp (Join-Path $root "db/upgrades/$migration") "bcm-postgres:/tmp/bcm-$migration"
     Assert-DockerExit "Không copy được $migration."
     $upgradeCommand = 'psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/bcm-' + $migration
     & $docker exec bcm-postgres sh -c $upgradeCommand

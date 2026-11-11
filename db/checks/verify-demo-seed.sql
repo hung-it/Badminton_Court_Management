@@ -15,7 +15,11 @@ BEGIN
        OR (SELECT count(*) FROM import_orders WHERE status='DRAFT')<>3
        OR (SELECT count(*) FROM import_orders)<>15
        OR (SELECT count(*) FROM bookings WHERE status='COMPLETED')<>100
+       OR (SELECT count(*) FROM bookings WHERE status='PAID')<>2
+       OR (SELECT count(*) FROM bookings WHERE status='PENDING')<>1
+       OR (SELECT count(*) FROM bookings)<>103
        OR (SELECT count(*) FROM invoices WHERE status='PAID')<>150
+       OR (SELECT count(*) FROM invoices WHERE status='DRAFT')<>1
        OR (SELECT count(*) FROM promotions WHERE code LIKE 'DEMO-OFF-%' AND NOT is_active)<>3 THEN
         RAISE EXCEPTION 'Demo dataset counts do not match';
     END IF;
@@ -24,12 +28,12 @@ BEGIN
     END IF;
     IF EXISTS(SELECT 1 FROM invoices i WHERE i.product_fee<>(SELECT sum(d.quantity*d.unit_price) FROM invoice_details d WHERE d.invoice_id=i.id)
         OR i.total_amount<>i.court_fee+i.product_fee-i.discount_amount
-        OR i.total_amount<>(SELECT coalesce(sum(p.amount),0) FROM payment_transactions p WHERE p.status='SUCCESS'
-            AND (p.invoice_id=i.id OR p.booking_id=i.booking_id))) THEN
+        OR (i.status='PAID' AND i.total_amount<>(SELECT coalesce(sum(p.amount),0) FROM payment_transactions p WHERE p.status='SUCCESS'
+            AND (p.invoice_id=i.id OR p.booking_id=i.booking_id)))) THEN
         RAISE EXCEPTION 'Invoice lines/totals/receipts do not reconcile';
     END IF;
     IF EXISTS(SELECT 1 FROM bookings b WHERE b.court_fee<>(SELECT sum(d.price) FROM booking_details d WHERE d.booking_id=b.id)
-        OR b.final_amount<>(SELECT sum(p.amount) FROM payment_transactions p WHERE p.booking_id=b.id AND p.status='SUCCESS')) THEN
+        OR (b.status IN ('PAID','COMPLETED') AND b.final_amount<>coalesce((SELECT sum(p.amount) FROM payment_transactions p WHERE p.booking_id=b.id AND p.status='SUCCESS'),0))) THEN
         RAISE EXCEPTION 'Court fee snapshot or booking receipt mismatch';
     END IF;
     IF EXISTS(SELECT 1 FROM import_orders o WHERE o.total_amount<>(SELECT sum(d.quantity*d.import_price) FROM import_order_details d WHERE d.import_order_id=o.id)) THEN
@@ -56,6 +60,10 @@ BEGIN
     END IF;
     IF EXISTS(SELECT 1 FROM booking_details GROUP BY booking_date,court_id,time_slot_id HAVING count(*)>1) THEN
         RAISE EXCEPTION 'Duplicate court slot';
+    END IF;
+    IF EXISTS(SELECT 1 FROM bookings WHERE status='PENDING' AND expires_at<=localtimestamp)
+       OR EXISTS(SELECT 1 FROM invoices WHERE status='DRAFT' AND payment_method IS NOT NULL) THEN
+        RAISE EXCEPTION 'Checkout demo hold/draft is invalid';
     END IF;
     RAISE NOTICE 'Demo counts, calendar coverage, snapshots, inventory, receipts and audits verified';
 END $verify$;
