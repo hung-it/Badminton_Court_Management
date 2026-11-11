@@ -28,7 +28,7 @@ public class AdminAccountService {
   String roles=rs.getString("roles");v.put("roles",roles==null?List.of():Arrays.asList(roles.split(",")));
   v.put("bookingCount",rs.getLong("booking_count"));v.put("totalSpent",rs.getBigDecimal("total_spent"));
   boolean active=rs.getObject("deleted_at")==null,guest="0000000000".equals(rs.getString("phone"));
-  boolean customer=!guest&&v.get("customerId")!=null&&v.get("roles") instanceof List<?> codes&&codes.contains("CUSTOMER")&&!codes.contains("ADMIN")&&!codes.contains("STAFF");
+  boolean customer=!guest&&v.get("customerId")!=null&&v.get("roles") instanceof List<?> codes&&codes.size()==1&&codes.contains("CUSTOMER");
   v.put("canEdit",active&&!guest);v.put("canLock",active&&customer);v.put("canUnlock",!active&&customer);return v;
  }
  public Map<String,Object> list(String search,String role,String sort,int page){
@@ -69,7 +69,7 @@ public class AdminAccountService {
   // A concurrent request may have changed this already-managed entity while we waited.
   entityManager.refresh(u);
   if("0000000000".equals(u.getPhone())||jdbc.queryForObject("select count(*) from customers where user_id=? and phone='0000000000'",Long.class,id)>0)throw new BadRequestException("POS guest account is protected");
-  if(!u.hasRole("CUSTOMER")||u.hasRole("ADMIN")||u.hasRole("STAFF")||jdbc.queryForObject("select count(*) from customers where user_id=?",Long.class,id)==0)throw new BadRequestException("Only customer accounts can be locked");
+  if(u.getRoles().size()!=1||!u.hasRole("CUSTOMER")||jdbc.queryForObject("select count(*) from customers where user_id=?",Long.class,id)==0)throw new BadRequestException("Only customer accounts can be locked");
   var customer=jdbc.queryForMap("select deleted_at from customers where user_id=? for update",id);
   if((u.getDeletedAt()!=null)==locked&&(customer.get("deleted_at")!=null)==locked)return;
   LocalDateTime now=LocalDateTime.now();
