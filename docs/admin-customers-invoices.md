@@ -1,5 +1,9 @@
 # CASH / VNPAY cleanup completed — 2026-11-05
 
+Latest integration and verification: [Develop sync review — 2026-11-12](develop-sync-review-2026-11-12.md).
+The historical user-management full-suite failures recorded below are superseded
+by that review's configured PostgreSQL regression and separate acceptance runs.
+
 **Current contract:** CUSTOMER booking payments use VNPAY only. POS/Checkout use CASH or VNPAY. `PaymentMethod` is exactly `CASH, VNPAY`; no deprecated value or conversion alias remains. Earlier blocked-removal reports below are historical and superseded by the explicit development-data deletion authorization in this task.
 
 ## Backup and reviewed data migration
@@ -438,3 +442,92 @@ Phần này thay thế mô tả menu Khách hàng/Doanh thu cũ ở các biên b
 
 Mở Web Admin tại `http://127.0.0.1:5173/?tab=accounts`, dùng ADMIN hiện có `admin@bcm.com` với mật khẩu do nhóm đang quản lý. Kết quả nghiệm thu chi tiết: [feature-acceptance-report.md](feature-acceptance-report.md).
 
+
+
+## Nghiệm thu Tạo – Xem – Khóa CUSTOMER — 2026-11-11
+
+Phạm vi đợt này theo yêu cầu trực tiếp: `feature/user-management`, HEAD
+`273af4e0de8d81680a72940f73d5672861a0e5ea`. Working tree ban đầu có nhiều thay đổi
+đã stage và conflict riêng `web-admin/src/App.jsx`. Giữ các thay đổi local, giải quyết
+conflict bằng cách giữ sidebar disabled/khóa cùng nút đổi mật khẩu có sẵn.
+Chỉ stage App.jsx để đánh dấu đã giải quyết conflict; không commit/push/merge.
+
+### Kết quả trong phạm vi
+
+- **PASS — Tạo:** tái sử dụng POST `/api/admin/customers`, transaction tạo User,
+  Customer và role CUSTOMER; PasswordEncoder/BCrypt, validation, từ chối email trùng
+  và SĐT POS guest. Request gửi roles ADMIN không được nâng quyền. Bổ sung chặn
+  mật khẩu vượt 72 byte UTF-8 để không bị BCrypt cắt ngắn mật khẩu đa byte.
+- **PASS — Xem:** GET `/api/admin/customers` giữ tìm tên/email/SĐT, sort và trang 20
+  dòng; bao gồm khách đã khóa, bổ sung `deletedAt`. GET
+  `/api/admin/customers/{customerId}` trả hồ sơ, `userId`, trạng thái và lịch sử
+  kể cả sau khóa; không trả password/hash. Loại guest và profile mang ADMIN/STAFF
+  khỏi hai API khách hàng này. Trang Tài khoản tiếp tục dùng GET `/api/admin/accounts`
+  và `/api/admin/accounts/{userId}` hiện có, giữ bộ lọc role và phân trang.
+- **PASS — Khóa:** dùng DELETE `/api/admin/accounts/{userId}` hoặc
+  `/api/admin/customers/{customerId}` hiện có. Kiểm tra ADMIN đang hoạt động,
+  CUSTOMER thuần và guest; soft delete cả User/Customer, tăng token_version một lần.
+  Khóa lặp không thay đổi version; không xóa lịch sử. UI chỉ còn Chi tiết và Khóa,
+  xác nhận/hủy trước DELETE, sau khóa hiện Đã khóa và nút Khóa disabled.
+- **PASS — Phân quyền:** API/JWT thật qua MockMvc trên PostgreSQL chứng minh STAFF
+  bị từ chối tạo/xem/khóa tài khoản, thống kê/doanh thu; được đọc POS, Checkout,
+  GET danh sách/chi tiết hóa đơn và khoản thanh toán. POST/PUT/DELETE/refund hóa đơn
+  bị từ chối. CUSTOMER không vào quản trị. Giữ nguyên SecurityConfig,
+  AnalyticsController, AuthService và cơ chế JWT hiện có vì đã đáp ứng.
+- **PASS — Phiên sau khóa:** login bị từ chối, access token đã cấp bị từ chối,
+  refresh token cũ không cấp phiên mới. Test trên PostgreSQL cũng xác nhận giữ nguyên
+  Booking/Invoice/PaymentTransaction không rỗng thuộc khách vừa khóa.
+- **PASS — Web:** ADMIN mở menu bình thường; STAFF thấy đủ 12 menu, mục thiếu quyền
+  disabled, màu xám, có 🔒 và title “Chức năng chỉ dành cho Quản lý”. POS, Checkout,
+  Hóa đơn, Khuyến mãi vẫn mở được; URL/path/query/popstate không mở tab khóa.
+  CUSTOMER hiện màn hình đăng nhập quản trị. Kiểm tra browser dùng API fixtures,
+  không gửi request ghi vào PostgreSQL. Không tạo UI Sửa/Đổi role/Đổi mật khẩu
+  khách hàng/Mở khóa. Các API sửa/mở khóa đã tồn tại từ HEAD không được mở rộng
+  trong đợt này; nút đổi mật khẩu riêng của người đang đăng nhập được giữ từ local.
+
+### PostgreSQL và backup
+
+- Dùng duy nhất container `bcm-postgres`, PostgreSQL 15.19, database
+  `badminton_court_db`, host port 5433; 21 bảng public. Trước/sau: users 2,
+  customers 1 (POS guest), roles 3, user_roles 2, staffs 0, bookings 1,
+  booking_details 0, invoices 0, payment_transactions 0.
+- **Không cần migration.** Schema đã có users/customers.deleted_at,
+  users.token_version, UNIQUE email/FK user_roles/customers. Không sửa SQL/seed,
+  staffs.position, role dữ liệu thật hoặc mô hình giao dịch.
+- Backup trước khi test ghi: `.backups/bcm-user-management-before-20261111.dump`,
+  custom pg_dump, 80.519 byte, pg_restore --list đọc được 155 TOC entries.
+  SHA256 `d174ac083862deb9a78f71144ad720ac0dd84e66c06308ab8c4dcb0f1e5a372a`.
+- Test PostgreSQL chỉ chạy lớp AdminCustomerPostgresTest đang có, kế thừa
+  @Transactional: fixture UUID mới, mọi thay đổi rollback; tắt seed, expiration,
+  auto-checkout; ddl-auto=validate, SQL init=never. Không chạy suite có cleanup
+  xóa/commit trên DB thật. Số dòng và checksum toàn bộ 21 bảng trước/sau giống nhau;
+  bằng chứng `.backups/bcm-user-management-{before,after}.json`.
+- Không tạo container/database/volume mới. **UNVERIFIED:** chưa diễn tập restore
+  backup hoặc browser nối backend thật xuyên suốt; không có STAFF thật trong DB.
+
+### Lệnh kiểm chứng
+
+Dùng JAVA_HOME trỏ JDK 17 hiện có; Maven offline dùng cache hiện có.
+
+- **PASS:** `mvn -o -B -f backend/pom.xml -DskipTests compile`.
+- **PASS:** `mvn -o -B -f backend/pom.xml -Dtest=AdminCustomerPostgresTest,JwtAuthenticationFilterTest -Dspring.jpa.hibernate.ddl-auto=validate -Dspring.sql.init.mode=never -Dbcm.seed.enabled=false -Dbooking.auto-checkout.enabled=false -Dbooking.expiration-enabled=false test`
+  với BCM_TEST_DB_URL/USERNAME/PASSWORD cho DB đang có: 16 tests,
+  0 failure/error/skipped (12 PostgreSQL + 4 JWT filter).
+- **PASS:** `npm run build` trong web-admin.
+- **PASS:** `node web-admin/revenue-invoices.e2e.cjs` cho ADMIN/STAFF/CUSTOMER,
+  desktop và viewport nhỏ, UI fixtures; chỉ GET ở hóa đơn.
+- **PASS:** `git diff --check`, `git diff --cached --check`, không còn unmerged file.
+- **NEED FIX — Full suite:** `mvn -o -B -f backend/pom.xml verify`:
+  532 tests, 5 failures, 32 errors, 345 skipped. 26 errors từ hai suite acceptance
+  yêu cầu bcm_acceptance_test không tồn tại; 6 errors fixture H2 thiếu token_version.
+  5 failures gồm hai test account dùng SQL PostgreSQL trên H2, một kỳ vọng expense
+  thống kê và hai test promotion bị 403. Không sửa module ngoài scope để làm xanh
+  full suite. Test lịch sử giao dịch mới chỉ chạy trên PostgreSQL; không dùng H2
+  làm bằng chứng cho SQL/khóa của PostgreSQL.
+- Log hiện tại: `%TEMP%/bcm-user-management-{compile,postgres,verify}.log`;
+  test reports trong backend/target/surefire-reports.
+
+File sửa riêng trong đợt này: AdminCustomerService.java,
+AdminCustomerIntegrationTest.java, web-admin/src/App.jsx,
+web-admin/src/Accounts.jsx, web-admin/revenue-invoices.e2e.cjs và tài liệu này.
+Không tạo source/test/SQL/CSS/config mới.

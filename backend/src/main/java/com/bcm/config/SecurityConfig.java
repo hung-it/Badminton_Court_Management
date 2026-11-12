@@ -71,6 +71,10 @@ public class SecurityConfig {
 
                         .requestMatchers(HttpMethod.GET, "/payments/vnpay/ipn", "/payments/vnpay/return").permitAll()
 
+                        // Only these read-only invoice routes are available to cashiers.
+                        .requestMatchers(HttpMethod.GET, "/analytics/invoices", "/analytics/invoices/*").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers("/analytics/invoices", "/analytics/invoices/**").hasRole("ADMIN")
+
                         // Admin-only endpoints
                         .requestMatchers("/admin/**").hasRole("ADMIN")
 

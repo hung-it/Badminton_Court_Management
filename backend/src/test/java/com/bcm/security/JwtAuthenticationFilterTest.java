@@ -49,7 +49,7 @@ class JwtAuthenticationFilterTest {
     @Test
     @DisplayName("Filter rejects Refresh Token presented in Authorization header with 401")
     void filterRejectsRefreshTokenInAuthorizationHeader() throws Exception {
-        String refreshToken = jwtUtil.generateRefreshToken(java.util.UUID.randomUUID(), "user@example.com");
+        String refreshToken = jwtUtil.generateRefreshToken(new UserPrincipal(UUID.randomUUID().toString(), "user@example.com", "hash", List.of(), true));
 
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("Authorization", "Bearer " + refreshToken);
@@ -66,8 +66,8 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    @DisplayName("Filter resolves current identity and roles")
-    void filterResolvesCurrentIdentity() throws Exception {
+    @DisplayName("Filter reloads current account state before accepting access claims")
+    void filterReloadsCurrentAccountState() throws Exception {
         String userId = UUID.randomUUID().toString();
         String email = "stateless@example.com";
         UserPrincipal principal = new UserPrincipal(
@@ -78,6 +78,8 @@ class JwtAuthenticationFilterTest {
                 true
         );
 
+        principal.setTokenVersion(0L);
+        when(userDetailsService.loadUserByUsername(email)).thenReturn(principal);
         String accessToken = jwtUtil.generateAccessToken(principal);
         when(userDetailsService.loadUserByUsername(email)).thenReturn(principal);
 
@@ -100,5 +102,24 @@ class JwtAuthenticationFilterTest {
 
         verify(filterChain).doFilter(request, response);
         verify(userDetailsService).loadUserByUsername(email);
+    }
+
+    @Test void unlockedAccountRejectsAccessTokenFromBeforeLock() throws Exception {
+        var principal=new UserPrincipal(UUID.randomUUID().toString(),"restored@test.invalid","hash",List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER")),true,0L);
+        String token=jwtUtil.generateAccessToken(principal);
+        principal.setTokenVersion(1L);
+        when(userDetailsService.loadUserByUsername(principal.getUsername())).thenReturn(principal);
+        var request=new MockHttpServletRequest();request.addHeader("Authorization","Bearer "+token);
+        filter.doFilter(request,new MockHttpServletResponse(),mock(FilterChain.class));
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test void lockedAccountCannotUsePreviouslyIssuedAccessToken() throws Exception {
+        var principal=new UserPrincipal(UUID.randomUUID().toString(),"locked@test.invalid","hash",List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER")),true);
+        String token=jwtUtil.generateAccessToken(principal);principal.setEnabled(false);
+        when(userDetailsService.loadUserByUsername(principal.getUsername())).thenReturn(principal);
+        var request=new MockHttpServletRequest();request.addHeader("Authorization","Bearer "+token);
+        filter.doFilter(request,new MockHttpServletResponse(),mock(FilterChain.class));
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
 }

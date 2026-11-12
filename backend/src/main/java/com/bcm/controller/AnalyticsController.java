@@ -51,6 +51,7 @@ public class AnalyticsController {
     }
 
     @GetMapping("/invoices")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
     @Operation(summary="Lịch sử hóa đơn PAID trong kỳ doanh thu, 20 hóa đơn mỗi trang", description="from/to lọc khoảng ngày bao gồm cả hai ngày, ưu tiên hơn period/date; phải truyền đủ cả hai.")
     public ApiResponse<com.bcm.dto.response.InvoiceReportResponse.History> invoices(
             @RequestParam(defaultValue="DAY") String period,
@@ -63,6 +64,7 @@ public class AnalyticsController {
     }
 
     @GetMapping("/invoices/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
     @Operation(summary="Chi tiết hóa đơn doanh thu", description="Giá, số lượng và giảm giá lấy từ dữ liệu hóa đơn đã lưu; Tên sản phẩm dùng snapshot; dòng cũ thiếu snapshot được đánh dấu. Trả kèm khoản thu và actor xác nhận.")
     public ApiResponse<com.bcm.dto.response.InvoiceReportResponse> invoice(@org.springframework.web.bind.annotation.PathVariable java.util.UUID id) {
         return ApiResponse.success(analyticsService.invoice(id));

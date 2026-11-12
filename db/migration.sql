@@ -17,6 +17,7 @@ CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
+    token_version BIGINT NOT NULL DEFAULT 0 CONSTRAINT chk_users_token_version CHECK (token_version >= 0),
     full_name VARCHAR(255) NOT NULL,
     phone VARCHAR(20) NOT NULL,
     address TEXT,

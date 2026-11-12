@@ -91,7 +91,7 @@ public class AuthService {
         // Generate tokens
         UserPrincipal principal = UserPrincipal.create(savedUser);
         String accessToken = jwtUtil.generateAccessToken(principal);
-        String refreshToken = jwtUtil.generateRefreshToken(savedUser.getId(), savedUser.getEmail());
+        String refreshToken = jwtUtil.generateRefreshToken(principal);
 
         UserResponse userResponse = UserResponse.fromEntity(savedUser);
 
@@ -121,7 +121,7 @@ public class AuthService {
         UserPrincipal principal = authentication.getPrincipal() instanceof UserPrincipal p
                 ? p : UserPrincipal.create(user);
         String accessToken = jwtUtil.generateAccessToken(principal);
-        String refreshToken = jwtUtil.generateRefreshToken(user.getId(), user.getEmail());
+        String refreshToken = jwtUtil.generateRefreshToken(principal);
 
         UserResponse userResponse = UserResponse.fromEntity(user);
 
@@ -155,8 +155,11 @@ public class AuthService {
 
         // Generate new tokens
         UserPrincipal principal = UserPrincipal.create(user);
+        if (!jwtUtil.validateToken(refreshToken, principal)) {
+            throw new org.springframework.security.authentication.BadCredentialsException("Invalid or revoked refresh token");
+        }
         String newAccessToken = jwtUtil.generateAccessToken(principal);
-        String newRefreshToken = jwtUtil.generateRefreshToken(user.getId(), user.getEmail());
+        String newRefreshToken = jwtUtil.generateRefreshToken(principal);
 
         UserResponse userResponse = UserResponse.fromEntity(user);
 

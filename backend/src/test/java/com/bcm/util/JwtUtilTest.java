@@ -14,6 +14,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class JwtUtilTest {
 
+    @Test
+    void refreshSurvivesEmailChangeButCannotFollowReusedEmailOrRevokedVersion() {
+        var original = new UserPrincipal(UUID.randomUUID().toString(), "old@example.test", "hash", List.of(), true, 0L);
+        String refresh = jwtUtil.generateRefreshToken(original);
+        String access = jwtUtil.generateAccessToken(original);
+        var renamed = new UserPrincipal(original.getId(), "new@example.test", "hash", List.of(), true, 0L);
+        var replacement = new UserPrincipal(UUID.randomUUID().toString(), original.getUsername(), "hash", List.of(), true, 0L);
+        assertThat(jwtUtil.validateToken(refresh, renamed)).isTrue();
+        assertThat(jwtUtil.validateToken(access, renamed)).isFalse();
+        assertThat(jwtUtil.validateToken(refresh, replacement)).isFalse();
+        renamed.setTokenVersion(2L);
+        assertThat(jwtUtil.validateToken(refresh, renamed)).isFalse();
+    }
+
     private JwtUtil jwtUtil;
     private static final String TEST_SECRET = "dGhpc2lzYXZlcnlzZWN1cmVzZWNyZXRrZXlmb3JiYWRtaW50b25jb3VydG1hbmFnZW1lbnRzeXN0ZW0xMjM0NTY3ODkw";
 
@@ -54,7 +68,7 @@ class JwtUtilTest {
     void refreshTokenClaimsAreCorrectlyEmbedded() {
         String email = "refresh@example.com";
         UUID userId = UUID.randomUUID();
-        String token = jwtUtil.generateRefreshToken(userId, email);
+        String token = jwtUtil.generateRefreshToken(new UserPrincipal(userId.toString(), email, "hash", List.of(), true));
 
         assertThat(token).isNotBlank();
         assertThat(jwtUtil.extractEmail(token)).isEqualTo(email);
@@ -68,7 +82,7 @@ class JwtUtilTest {
     @DisplayName("Token type separation prevents type confusion")
     void tokenTypeConfusionIsPrevented() {
         String email = "user@example.com";
-        String refreshToken = jwtUtil.generateRefreshToken(java.util.UUID.randomUUID(), email);
+        String refreshToken = jwtUtil.generateRefreshToken(new UserPrincipal(UUID.randomUUID().toString(), email, "hash", List.of(), true));
         UserPrincipal principal = new UserPrincipal(
                 UUID.randomUUID().toString(),
                 email,
@@ -82,5 +96,50 @@ class JwtUtilTest {
         assertThat(jwtUtil.isAccessToken(refreshToken)).isFalse();
         // Access token cannot be accepted as refresh token
         assertThat(jwtUtil.isRefreshToken(accessToken)).isFalse();
+    }
+    @Test void accountVersionAndIdentityBindBothTokenTypes() {
+        var principal=new UserPrincipal(UUID.randomUUID().toString(),"customer@test.invalid","hash",List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER")),true,0L);
+        var tokens=List.of(jwtUtil.generateAccessToken(principal),jwtUtil.generateRefreshToken(principal));
+        for(String token:tokens) assertThat(jwtUtil.validateToken(token,principal)).isTrue();
+        principal.setTokenVersion(1L);
+        for(String token:tokens) assertThat(jwtUtil.validateToken(token,principal)).isFalse();
+        principal.setTokenVersion(0L);principal.setId(UUID.randomUUID().toString());
+        for(String token:tokens) assertThat(jwtUtil.validateToken(token,principal)).isFalse();
+        assertThat(jwtUtil.validateToken(io.jsonwebtoken.Jwts.builder().subject(principal.getUsername()).claim("typ","REFRESH").expiration(new java.util.Date(System.currentTimeMillis()+60000)).signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(io.jsonwebtoken.io.Decoders.BASE64.decode(TEST_SECRET))).compact(),principal)).isFalse();
+    }
+
+    @Test void profileTimestampChangesDoNotInvalidateEitherTokenType() {
+        var user=new com.bcm.entity.User();user.setId(UUID.randomUUID());user.setEmail("precision@test.invalid");user.setPasswordHash("hash");user.setRoles(java.util.Set.of());
+        user.setUpdatedAt(java.time.LocalDateTime.parse("2026-11-11T12:00:00.123999700"));
+        var tokens=List.of(jwtUtil.generateAccessToken(UserPrincipal.create(user)),jwtUtil.generateRefreshToken(UserPrincipal.create(user)));
+        user.setFullName("Changed name");user.setAddress("Changed address");
+        user.setUpdatedAt(java.time.LocalDateTime.parse("2026-12-12T14:10:09.124000"));
+        for(String token:tokens)assertThat(jwtUtil.validateToken(token,UserPrincipal.create(user))).isTrue();
+    }
+    @Test void legacyTimestampVersionIsRejectedWithoutThrowing() {
+        var principal=new UserPrincipal(UUID.randomUUID().toString(),"legacy@test.invalid","hash",List.of(),true,0L);
+        String legacy=io.jsonwebtoken.Jwts.builder().subject(principal.getUsername())
+                .claim("uid",principal.getId()).claim("ver","2026-11-11T12:00:00.123456")
+                .expiration(new java.util.Date(System.currentTimeMillis()+60000))
+                .signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(io.jsonwebtoken.io.Decoders.BASE64.decode(TEST_SECRET))).compact();
+        assertThat(jwtUtil.validateToken(legacy,principal)).isFalse();
+    }
+    @Test void unversionedJwtIsRejectedForExistingAccount() {
+        var principal=new UserPrincipal(UUID.randomUUID().toString(),"unversioned@test.invalid","hash",List.of(),true,0L);
+        for(String type:List.of(JwtUtil.TOKEN_TYPE_ACCESS,JwtUtil.TOKEN_TYPE_REFRESH)) {
+            String legacy=io.jsonwebtoken.Jwts.builder().subject(principal.getUsername())
+                    .claim("uid",principal.getId()).claim("typ",type)
+                    .expiration(new java.util.Date(System.currentTimeMillis()+60000))
+                    .signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(io.jsonwebtoken.io.Decoders.BASE64.decode(TEST_SECRET))).compact();
+            assertThat(jwtUtil.validateToken(legacy,principal)).isFalse();
+        }
+    }
+
+    @Test void bigintEpochRetainsExactPrecision() {
+        var principal=new UserPrincipal(UUID.randomUUID().toString(),"bigint@test.invalid","hash",List.of(),true,9007199254740993L);
+        var tokens=List.of(jwtUtil.generateAccessToken(principal),jwtUtil.generateRefreshToken(principal));
+        for(String token:tokens)assertThat(jwtUtil.validateToken(token,principal)).isTrue();
+        principal.setTokenVersion(9007199254740994L);
+        for(String token:tokens)assertThat(jwtUtil.validateToken(token,principal)).isFalse();
     }
 }

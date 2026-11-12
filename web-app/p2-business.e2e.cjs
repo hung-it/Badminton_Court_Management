@@ -37,6 +37,7 @@ for(const url of [web,admin])assert.equal(new URL(url).hostname,'127.0.0.1');
   await expect(page.getByRole('status')).toContainText('thành công');
   assert.equal(password.currentPassword.length,80);
   const signup=await browser.newPage();signup.on('pageerror',e=>errors.push(e.message));
+  await signup.route('https://fonts.googleapis.com/**',r=>r.fulfill({body:'',contentType:'text/css'}));
   let registration;
   await signup.route('**/api/**',route=>{
    if(new URL(route.request().url()).pathname==='/api/auth/register'){
@@ -65,6 +66,7 @@ for(const url of [web,admin])assert.equal(new URL(url).hostname,'127.0.0.1');
   await expect(signup.getByRole('alert')).toContainText('Dữ liệu đã tồn tại.');
   assert.equal(Buffer.byteLength(registration.password,'utf8'),72);
   const desk=await browser.newPage();desk.on('pageerror',e=>errors.push(e.message));
+  await desk.route('https://fonts.googleapis.com/**',r=>r.fulfill({body:'',contentType:'text/css'}));
   await desk.addInitScript(()=>sessionStorage.setItem('bcm-session',JSON.stringify({accessToken:'fixture',user:{id:'admin',roles:['ADMIN'],fullName:'Admin'}})));
   const court={id:'court-p2',branchId:'branch-p2',courtNumber:1,courtCode:101,name:'Wood court',type:'WOODEN_FLOOR',status:'AVAILABLE',basePrice:100000};
   let saved;

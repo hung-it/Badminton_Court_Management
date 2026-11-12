@@ -103,7 +103,7 @@ class FeatureAcceptanceTest {
   assertThat(db.queryForObject("select count(*) from invoices where customer_id=?",Integer.class,c)).isEqualTo(1);
   assertThat(db.queryForObject("select deleted_at is not null from users where id=?",Boolean.class,row.get("id"))).isTrue();
  }
- @ParameterizedTest @ValueSource(strings={"STAFF","CUSTOMER"}) void managementAuthorization(String role)throws Exception{call(get("/admin/customers"),role,403);call(get("/analytics/invoices"),role,403);}
+ @ParameterizedTest @ValueSource(strings={"STAFF","CUSTOMER"}) void managementAuthorization(String role)throws Exception{call(get("/admin/customers"),role,403);call(get("/analytics/invoices"),role,"STAFF".equals(role)?200:403);call(post("/analytics/invoices"),role,403);}
  @Test void bookingHoldExpiryAndPastSlot()throws Exception{
   UUID b=book();assertThat(state(b)).isEqualTo("PENDING");assertThat(db.queryForObject("select count(*) from booking_details where booking_id=? and court_id=? and time_slot_id=?",Integer.class,b,court,slot)).isEqualTo(1);
   call(json(post("/bookings"),bookingBody(LocalDate.now().plusDays(7))),"CUSTOMER",409);

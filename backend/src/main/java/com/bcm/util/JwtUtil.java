@@ -37,6 +37,7 @@ public class JwtUtil {
     public static final String TOKEN_TYPE_REFRESH = "REFRESH";
     public static final String CLAIM_USER_ID = "uid";
     public static final String CLAIM_ROLES = "roles";
+    public static final String CLAIM_TOKEN_VERSION = "ver";
 
     /**
      * Generate access token for authenticated user with typ, uid, and roles claims
@@ -49,6 +50,7 @@ public class JwtUtil {
 
         if (userDetails instanceof com.bcm.security.UserPrincipal principal) {
             claims.put(CLAIM_USER_ID, principal.getId());
+            claims.put(CLAIM_TOKEN_VERSION, principal.getTokenVersion());
             java.util.List<String> roles = principal.getAuthorities().stream()
                     .map(org.springframework.security.core.GrantedAuthority::getAuthority)
                     .toList();
@@ -63,17 +65,12 @@ public class JwtUtil {
         return createToken(claims, userDetails.getUsername(), accessTokenExpiration);
     }
 
-    /**
-     * Generate refresh token bound to an immutable user identity.
-     * @param userId User identity used for refresh lookup
-     * @param email User email
-     * @return JWT refresh token
-     */
-    public String generateRefreshToken(java.util.UUID userId, String email) {
+    public String generateRefreshToken(com.bcm.security.UserPrincipal principal) {
         Map<String, Object> claims = new HashMap<>();
         claims.put(CLAIM_TOKEN_TYPE, TOKEN_TYPE_REFRESH);
-        claims.put(CLAIM_USER_ID, userId.toString());
-        return createToken(claims, email, refreshTokenExpiration);
+        claims.put(CLAIM_USER_ID, principal.getId());
+        claims.put(CLAIM_TOKEN_VERSION, principal.getTokenVersion());
+        return createToken(claims, principal.getUsername(), refreshTokenExpiration);
     }
 
     /**
@@ -151,8 +148,20 @@ public class JwtUtil {
      * @return true if valid
      */
     public Boolean validateToken(String token, UserDetails userDetails) {
-        final String email = extractEmail(token);
-        return (email.equals(userDetails.getUsername()) && !isTokenExpired(token));
+        if (!(userDetails instanceof com.bcm.security.UserPrincipal principal) || !principal.isEnabled()
+                || principal.getTokenVersion() == null) return false;
+        try {
+            Claims claims = extractAllClaims(token);
+            // Refresh follows immutable identity when an email changes; access still binds its subject.
+            boolean subjectMatches = TOKEN_TYPE_REFRESH.equalsIgnoreCase(claims.get(CLAIM_TOKEN_TYPE, String.class))
+                    || principal.getUsername().equals(claims.getSubject());
+            return subjectMatches && !isTokenExpired(token)
+                    && principal.getId().equals(claims.get(CLAIM_USER_ID, String.class))
+                    && principal.getTokenVersion().equals(claims.get(CLAIM_TOKEN_VERSION, Long.class));
+        } catch (io.jsonwebtoken.JwtException | IllegalArgumentException ex) {
+            // Legacy timestamp versions and malformed/missing epochs fail closed.
+            return false;
+        }
     }
 
     /**
