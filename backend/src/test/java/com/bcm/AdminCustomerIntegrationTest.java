@@ -29,6 +29,15 @@ class AdminCustomerIntegrationTest {
    jdbc.execute("alter table staffs add column if not exists "+column);
  }
  AdminCustomerRequest request(String email){return new AdminCustomerRequest("Test customer",email,"0912345678","Address","Password123!");}
+ @Test @WithMockUser(roles="STAFF") void guestInvoiceDoesNotExposeReservedPhone()throws Exception{
+  UUID guestUser=UUID.fromString(System.getenv().getOrDefault("BCM_POS_GUEST_USER_ID","00000000-0000-4000-8000-00000000b001"));
+  UUID customer=jdbc.queryForObject("select id from customers where user_id=?",UUID.class,guestUser);
+  UUID invoice=UUID.randomUUID();
+  jdbc.update("insert into invoices(id,customer_id,status,court_fee,product_fee,discount_amount,total_amount,created_at,updated_at) values (?,?,'PAID',0,0,0,0,current_timestamp,current_timestamp)",invoice,customer);
+  mvc.perform(get("/analytics/invoices/"+invoice)).andExpect(status().isOk())
+   .andExpect(jsonPath("$.data.invoice.customerId").value(customer.toString()))
+   .andExpect(jsonPath("$.data.invoice.customerPhone").isEmpty());
+ }
  @Test void createsSynchronizedAccountAndDisablesWithoutDeletingHistory(){
   String email=UUID.randomUUID()+"@example.com";UUID id=service.save(null,request(email));
   assertThat(service.list(email,0,"created").get("totalElements")).isEqualTo(1L);
@@ -71,7 +80,11 @@ class AdminCustomerIntegrationTest {
    .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("password"))));
   mvc.perform(get("/analytics/invoices/"+invoice).header("Authorization","Bearer "+st))
    .andExpect(status().isOk()).andExpect(jsonPath("$.data.invoice.id").value(invoice.toString()))
+   .andExpect(jsonPath("$.data.invoice.customerId").value(profile.toString()))
+   .andExpect(jsonPath("$.data.invoice.customerPhone").value("0912345678"))
    .andExpect(jsonPath("$.data.receipts[0].amount").value(100));
+  mvc.perform(get("/analytics/invoices").param("search",invoice.toString()).header("Authorization","Bearer "+st))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.data.invoices[0].customerId").value(profile.toString()));
   assertThat(history).isEqualTo(java.util.List.of(jdbc.queryForList("select * from bookings where id=?",booking),jdbc.queryForList("select * from invoices where id=?",invoice),jdbc.queryForList("select * from payment_transactions where id=?",payment)));
   assertThat(jdbc.queryForObject("select count(*) from users u join customers c on c.user_id=u.id where u.id=?",Long.class,user)).isEqualTo(1L);
  }

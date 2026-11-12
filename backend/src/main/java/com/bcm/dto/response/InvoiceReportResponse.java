@@ -14,7 +14,8 @@ public record InvoiceReportResponse(Summary invoice, List<Item> items, List<Cour
         UUID confirmedBy,UUID confirmedByUser,String actorName,LocalDateTime confirmedAt,String reference) {}
     public record Summary(UUID id, UUID bookingId, String customerName, LocalDateTime createdAt,
             String paymentMethod, BigDecimal courtFee, BigDecimal productFee,
-            BigDecimal discountAmount, BigDecimal totalAmount, String invoiceStatus, String bookingStatus, List<String> paymentMethods) {}
+            BigDecimal discountAmount, BigDecimal totalAmount, String invoiceStatus, String bookingStatus, List<String> paymentMethods,
+            UUID customerId, String customerPhone) {}
     public record Item(UUID productId, String name, int quantity, BigDecimal unitPrice,
             BigDecimal discountAmount, String promotionName, BigDecimal totalAmount) {}
     public record CourtLine(String name, LocalDate date, LocalTime startTime, LocalTime endTime, BigDecimal price) {}

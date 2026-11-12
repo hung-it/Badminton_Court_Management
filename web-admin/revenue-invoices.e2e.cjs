@@ -9,7 +9,7 @@ const admin=process.env.ADMIN_TEST_URL||'http://127.0.0.1:5173';
    const page=await browser.newPage({viewport:{width:1366,height:900}});
  await page.route("https://fonts.googleapis.com/**",r=>r.fulfill({body:"",contentType:"text/css"}));
    const requests=[];let fail=false,failLock=false,failUnlock=false,holdMutation=null;
-   const invoice={id:'11111111-1111-4111-8111-111111111111',customerName:'Khách kiểm thử',createdAt:'2026-11-11T10:00:00',courtFee:200000,productFee:30000,discountAmount:5000,totalAmount:225000,invoiceStatus:'PAID'};
+   const invoice={id:'11111111-1111-4111-8111-111111111111',customerId:'33333333-3333-4333-8333-333333333333',customerPhone:'0912345678',customerName:'Khách kiểm thử',createdAt:'2026-11-11T10:00:00',courtFee:200000,productFee:30000,discountAmount:5000,totalAmount:225000,invoiceStatus:'PAID'};
    const customer={id:'22222222-2222-4222-8222-222222222222',fullName:'Khách kiểm thử',email:'customer@ui.test',phone:'0912345678',address:'Test',roles:['CUSTOMER'],createdAt:'2026-11-11T10:00:00',deletedAt:null,canLock:true,canUnlock:false,customerId:'customer-profile',bookingCount:0,totalSpent:0,bookings:[],invoices:[]};
    await page.route('**/api/**',async route=>{
     const r=route.request(),u=new URL(r.url());requests.push({method:r.method(),path:u.pathname,body:r.postDataJSON()});let data=[];
@@ -41,7 +41,7 @@ const admin=process.env.ADMIN_TEST_URL||'http://127.0.0.1:5173';
    const nav=page.locator('.sidebar button.nav');assert.equal(await nav.count(),12);
    if(role==='STAFF'){
     for(const name of ['Tài khoản','Thống kê','Doanh thu theo đối tượng','Nhập kho','Sân cầu']){
-     const b=nav.filter({hasText:name});assert(await b.isDisabled());assert.match(await b.innerText(),/🔒/);assert.equal(await b.getAttribute('title'),'Chức năng chỉ dành cho Quản lý');
+     const b=nav.filter({hasText:name});assert(await b.isDisabled());assert.doesNotMatch(await b.innerText(),/🔒/);assert.equal(await b.getAttribute('title'),'Chức năng chỉ dành cho Quản lý');
     }
     for(const name of ['Bán tại quầy','Trả sân','Hóa đơn','Khuyến mãi'])assert(await page.getByRole('button',{name,exact:true}).isEnabled());
     for(const url of ['/?tab=statistics','/accounts','/?tab=revenue-breakdown']){
@@ -91,12 +91,13 @@ const admin=process.env.ADMIN_TEST_URL||'http://127.0.0.1:5173';
     assert(requests.filter(r=>r.path.endsWith('/unlock')).every(r=>r.method==='POST'));
 
    }
-   await page.getByRole('button',{name:'Hóa đơn',exact:true}).click();await page.getByRole('button',{name:'Chi tiết',exact:true}).click();
-   const dialog=page.getByRole('dialog');await dialog.getByText('Nước suối',{exact:true}).waitFor();assert.match(await dialog.innerText(),/225.000/);assert.match(await dialog.innerText(),/Thu ngân/);assert.equal(await dialog.getByRole('button').count(),2);
+   await page.getByRole('button',{name:'Hóa đơn',exact:true}).click();await page.getByRole('columnheader',{name:'Mã khách hàng',exact:true}).waitFor();await page.getByRole('cell',{name:invoice.customerId,exact:true}).waitFor();assert.equal(await page.getByRole('cell',{name:invoice.customerName,exact:true}).count(),0);await page.getByRole('button',{name:'Chi tiết',exact:true}).click();
+   const dialog=page.getByRole('dialog');await dialog.locator('.invoice-detail-phone').filter({hasText:invoice.customerPhone}).waitFor();assert.equal(await dialog.locator('.invoice-detail-customer strong').innerText(),invoice.customerName);assert.equal(await dialog.locator('h2').evaluate(e=>getComputedStyle(e).fontSize),'20px');await dialog.getByText('Nước suối',{exact:true}).waitFor();assert.match(await dialog.innerText(),/225.000/);assert.match(await dialog.innerText(),/Thu ngân/);assert.equal(await dialog.getByRole('button').count(),2);
+   require('node:fs').mkdirSync('.tools/invoice-detail-ui',{recursive:true});await page.screenshot({path:'.tools/invoice-detail-ui/'+role+'-desktop.png',fullPage:true});
    await page.keyboard.press('Escape');await page.getByRole('button',{name:'Trang sau',exact:true}).click();await page.getByText('Trang 2 / 2',{exact:true}).waitFor();
    await page.getByLabel('Tìm hóa đơn',{exact:true}).fill('none');await page.getByText('Chưa có hóa đơn đã thanh toán trong kỳ này.',{exact:true}).waitFor();
    await page.getByLabel('Tìm hóa đơn',{exact:true}).fill('');await page.getByRole('button',{name:'Chi tiết',exact:true}).waitFor();
-   await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Chi tiết',exact:true}).click();await page.getByRole('dialog').getByText('Nước suối',{exact:true}).waitFor();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.getByRole('button',{name:'Đóng',exact:true}).click();
+   await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Chi tiết',exact:true}).click();await page.getByRole('dialog').getByText('Nước suối',{exact:true}).waitFor();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));require('node:fs').mkdirSync('.tools/invoice-detail-ui',{recursive:true});await page.screenshot({path:'.tools/invoice-detail-ui/'+role+'-mobile.png',fullPage:true});await page.getByRole('button',{name:'Đóng',exact:true}).click();invoice.customerPhone=null;await page.getByRole('button',{name:'Chi tiết',exact:true}).click();await page.getByRole('dialog').getByText('Nước suối',{exact:true}).waitFor();assert.equal(await page.getByRole('dialog').locator('.invoice-detail-phone').innerText(),'');await page.getByRole('button',{name:'Đóng',exact:true}).click();invoice.customerPhone='0912345678';
    fail=true;await page.getByRole('button',{name:'Làm mới',exact:true}).click();await page.getByText('Không tải được lịch sử',{exact:true}).waitFor();
    assert(requests.filter(r=>r.path.startsWith('/api/analytics/invoices')).every(r=>r.method==='GET'));
    if(role==='STAFF')assert(!requests.some(r=>r.path.startsWith('/api/admin/')||r.path==='/api/analytics/statistics'||r.path==='/api/analytics/revenue-breakdown'));

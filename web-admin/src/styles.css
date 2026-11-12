@@ -137,3 +137,23 @@
 @media(max-width:760px){.admin-records .record-filters{grid-template-columns:minmax(0,1fr)}.admin-records .record-heading{gap:12px}.admin-records .record-heading .count{margin-left:0}.customer-dialog{max-height:90dvh}.admin-records .dialog-foot button{min-height:42px}}
 
 @media(max-width:760px){.accounts-panel .record-filters{grid-template-columns:minmax(0,1fr)}}
+.dialog.invoice-detail{width:960px;max-width:100%;font-size:14px;line-height:1.55;color:#243b32;padding:24px}
+.invoice-detail .dialog-head{margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #e0e6db;gap:16px}
+.invoice-detail .dialog-head h2{font-size:20px;line-height:1.35;font-weight:700;letter-spacing:0}
+.invoice-detail .dialog-head button{font-size:20px;line-height:1;padding:8px;flex-shrink:0}
+.invoice-detail .invoice-detail-meta{display:grid;grid-template-columns:1fr 1fr;gap:18px 24px;margin:0 0 24px;padding:20px;background:#f6f8f4;border:1px solid #e4e9e0;border-radius:10px}
+.invoice-detail-meta>div{min-width:0}.invoice-detail-meta dt{font-size:12px;line-height:1.5;font-weight:500;color:#68796c;margin-bottom:5px}
+.invoice-detail-meta dd{margin:0;font-size:14px;line-height:1.6;overflow-wrap:anywhere}.invoice-detail-meta strong{font-size:14px;font-weight:600}
+.invoice-detail-meta .invoice-detail-phone{display:block;min-height:22px;font-size:13px;color:#526558;font-weight:400}
+.invoice-detail code{font-size:12px;line-height:1.6;overflow-wrap:anywhere;white-space:normal}
+.invoice-detail small{display:block;font-size:12px;line-height:1.5;color:#68796c;margin-top:4px;overflow-wrap:anywhere}
+.invoice-detail .invoice-detail-actor{grid-column:1/-1}
+.invoice-detail h3{font-size:15px;font-weight:600;line-height:1.5;margin:24px 0 12px;letter-spacing:0}
+.invoice-detail table{font-size:13px;line-height:1.55}.invoice-detail th{font-size:12px;font-weight:600;line-height:1.5;letter-spacing:0;text-transform:none}
+.invoice-detail td{font-size:13px;line-height:1.55;vertical-align:top}.invoice-detail .invoice-detail-money{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.invoice-detail .muted{font-size:13px;line-height:1.6}.invoice-detail .invoice-row{font-size:14px;line-height:1.6;gap:16px;padding:12px 0}
+.invoice-detail .invoice-row strong{font-size:14px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.invoice-detail .pos-summary-total{font-size:16px;line-height:1.5;border-top:2px solid #174d3a;padding-top:16px;margin-top:16px;gap:12px}
+.invoice-detail .pos-summary-total strong{font-size:18px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.invoice-detail .dialog-foot{border-top:1px solid #e4e9e0;margin-top:24px;padding-top:16px}.invoice-detail .dialog-foot button{font-size:13px}
+@media(max-width:600px){.dialog.invoice-detail{padding:18px}.invoice-detail .invoice-detail-meta{grid-template-columns:1fr;padding:16px;gap:16px}.invoice-detail .dialog-head h2{font-size:18px}.invoice-detail .pos-summary-total{flex-direction:column;align-items:flex-start}.invoice-detail .table-scroll{max-width:100%}}

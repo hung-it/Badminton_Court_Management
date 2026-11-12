@@ -39,6 +39,7 @@ public class AnalyticsService {
     private final InvoiceDetailRepository invoiceDetails;
     private final ProductRepository products;
     private final CustomerRepository customers;
+    private final com.bcm.security.WalkInGuestIdentity guest;
     private final BookingDetailRepository bookingDetails;
     private final com.bcm.repository.BookingRepository bookings;
     private final com.bcm.repository.PaymentTransactionRepository payments;
@@ -81,11 +82,13 @@ public class AnalyticsService {
     }
 
     private InvoiceReportResponse.Summary summary(Invoice i) {
-        String name=customers.findById(i.getCustomerId()).map(Customer::getFullName).orElse("Khách vãng lai");
+        var customer=customers.findById(i.getCustomerId());
+        String name=customer.map(Customer::getFullName).orElse("Khách vãng lai");
+        String phone=customer.filter(c->!guest.isGuest(c.getUser().getId())).map(Customer::getPhone).orElse(null);
         return new InvoiceReportResponse.Summary(i.getId(),i.getBookingId(),name,i.getCreatedAt(),i.getPaymentMethod(),
             valueOrZero(i.getCourtFee()),i.getProductFee(),i.getDiscountAmount(),i.getTotalAmount(),i.getStatus(),i.getBookingId()==null?null:bookings.findById(i.getBookingId()).map(b->b.getStatus().name()).orElse(null),
             payments.findInvoiceReceipts(i.getId(),i.getBookingId()).stream().filter(p->p.getStatus()==com.bcm.entity.PaymentStatus.SUCCESS)
-                .map(p->p.getPaymentMethod().name()).distinct().toList());
+                .map(p->p.getPaymentMethod().name()).distinct().toList(),i.getCustomerId(),phone);
     }
 
     public RevenueReportResponse getRevenue(String period, LocalDate date) {
