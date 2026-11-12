@@ -17,6 +17,8 @@ public class PublicCatalogController {
     private final com.bcm.service.BranchService branchService;
     private final com.bcm.service.AvailabilityService availabilityService;
     private final java.time.Clock bookingExpirationClock;
+    @org.springframework.beans.factory.annotation.Value("${booking.hold-duration}")
+    private java.time.Duration holdDuration;
 
     @GetMapping("/availability")
     @io.swagger.v3.oas.annotations.Operation(summary = "Browse court availability and per-slot server prices", description = "Public aggregate grid only; exposes no customer or booking identifiers. Dates use Asia/Ho_Chi_Minh. Booking rechecks availability and prices under locks.")
@@ -31,7 +33,7 @@ public class PublicCatalogController {
     public ApiResponse<com.bcm.dto.response.BookingClockResponse> bookingClock() {
         var instant = bookingExpirationClock.instant();
         return ApiResponse.success(new com.bcm.dto.response.BookingClockResponse(instant, "Asia/Ho_Chi_Minh",
-                java.time.LocalDate.ofInstant(instant, java.time.ZoneId.of("Asia/Ho_Chi_Minh"))));
+                java.time.LocalDate.ofInstant(instant, java.time.ZoneId.of("Asia/Ho_Chi_Minh")),holdDuration.getSeconds()));
     }
 
     @GetMapping("/courts")

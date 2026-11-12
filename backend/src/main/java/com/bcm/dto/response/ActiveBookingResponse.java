@@ -13,7 +13,10 @@ public record ActiveBookingResponse(
         BigDecimal courtFee,
         BigDecimal finalAmount,
         String courtDetails,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        java.util.List<Schedule> courtSchedules
 ) {
+    public record Schedule(UUID courtId, Integer courtNumber, String courtName,
+                           java.time.LocalDate bookingDate, java.time.LocalTime startTime, java.time.LocalTime endTime) { }
 }
 

@@ -11,6 +11,9 @@ import java.util.List;
 import java.util.UUID;
 
 public interface BookingDetailRepository extends JpaRepository<BookingDetail, UUID> {
+    @Query("select d from BookingDetail d join fetch d.court join fetch d.timeSlot where d.booking.id in :ids")
+    List<BookingDetail> findActiveDetails(@Param("ids") List<UUID> ids);
+
     @Query("select distinct d.court.id from BookingDetail d where d.booking.id = :bookingId")
     List<UUID> findCourtIdsForBooking(@Param("bookingId") UUID bookingId);
 

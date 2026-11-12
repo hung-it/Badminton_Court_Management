@@ -27,12 +27,23 @@ import java.util.Map;
 public class PosController {
 
     private final PosService posService;
+    private final com.bcm.service.PosDraftService drafts;
     private final com.bcm.service.ProductPriceService productPrices;
     private final com.bcm.repository.CustomerRepository customerRepository;
     private final com.bcm.repository.ProductRepository productRepository;
     private final com.bcm.service.ProductPromotionService productPromotions;
 
     private final com.bcm.service.BookingPromotionService bookingPromotions;
+
+    @GetMapping("/drafts")
+    @io.swagger.v3.oas.annotations.Operation(summary="List persisted unmerged POS drafts", description="ADMIN/STAFF can recover drafts across reload/login. Snapshot prices; optional booking UUID/search, page>=0, size 1..100. Read only; cancellation uses the existing atomic cancel endpoint.")
+    public ApiResponse<com.bcm.dto.response.PosDraftPage> drafts(
+            @org.springframework.web.bind.annotation.RequestParam(required=false) java.util.UUID bookingId,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue="") String search,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue="0") int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue="20") int size) {
+        return ApiResponse.success(drafts.list(bookingId,search,page,size));
+    }
     @PostMapping("/bookings/{id}/promotion")
     public ApiResponse<?> courtPromotion(@org.springframework.web.bind.annotation.PathVariable java.util.UUID id,
             @Valid @RequestBody com.bcm.dto.request.BookingPromotionRequest request) {

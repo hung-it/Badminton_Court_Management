@@ -75,13 +75,18 @@ public class CheckoutService {
     public List<ActiveBookingResponse> getActiveBookings() {
         List<Booking> bookings = bookingRepository.findByStatusInOrderByCreatedAtDesc(
                 List.of(BookingStatus.PAID, BookingStatus.PENDING));
+        if(bookings.isEmpty()) return List.of();
+        var allDetails=bookingDetailRepository.findActiveDetails(bookings.stream().map(Booking::getId).toList()).stream()
+                .collect(Collectors.groupingBy(d->d.getBooking().getId()));
 
         DateTimeFormatter timeFmt = DateTimeFormatter.ofPattern("HH:mm");
         DateTimeFormatter dateFmt = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
         List<ActiveBookingResponse> list = new ArrayList<>();
         for (Booking b : bookings) {
-            List<BookingDetail> details = bookingDetailRepository.findHistoryDetails(b.getId());
+            List<BookingDetail> details = allDetails.getOrDefault(b.getId(),List.of()).stream()
+                    .sorted(java.util.Comparator.comparing(BookingDetail::getBookingDate)
+                            .thenComparing(d->d.getTimeSlot().getStartTime()).thenComparing(d->d.getCourt().getId())).toList();
             String courtDetailsStr = details.stream()
                     .map(d -> {
                         String courtName = d.getCourt() != null ? d.getCourt().getName() : "Sân";
@@ -109,10 +114,31 @@ public class CheckoutService {
                     b.getCourtFee(),
                     b.getFinalAmount(),
                     courtDetailsStr,
-                    b.getCreatedAt()
+                    b.getCreatedAt(),
+                    courtSchedules(details)
             ));
         }
         return list;
+    }
+
+    static List<ActiveBookingResponse.Schedule> courtSchedules(List<BookingDetail> details) {
+        var groups=details.stream().collect(Collectors.groupingBy(d->d.getCourt().getId()+"/"+d.getBookingDate()));
+        var ranges=new ArrayList<ActiveBookingResponse.Schedule>();
+        for(var group:groups.values()) {
+            ActiveBookingResponse.Schedule previous=null;
+            for(var d:group.stream().sorted(java.util.Comparator.comparing((BookingDetail v)->v.getTimeSlot().getStartTime()).thenComparing(v->v.getTimeSlot().getEndTime())).toList()) {
+                var c=d.getCourt();var slot=d.getTimeSlot();
+                if(previous!=null&&previous.endTime().equals(slot.getStartTime())) {
+                    ranges.remove(ranges.size()-1);
+                    previous=new ActiveBookingResponse.Schedule(c.getId(),c.getCourtNumber(),c.getName(),d.getBookingDate(),previous.startTime(),slot.getEndTime());
+                } else previous=new ActiveBookingResponse.Schedule(c.getId(),c.getCourtNumber(),c.getName(),d.getBookingDate(),slot.getStartTime(),slot.getEndTime());
+                ranges.add(previous);
+            }
+        }
+        return ranges.stream().sorted(java.util.Comparator.comparing(ActiveBookingResponse.Schedule::bookingDate)
+                .thenComparing(ActiveBookingResponse.Schedule::startTime)
+                .thenComparing(ActiveBookingResponse.Schedule::courtNumber,java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
+                .thenComparing(ActiveBookingResponse.Schedule::courtId)).toList();
     }
 
     @Transactional
