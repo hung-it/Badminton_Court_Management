@@ -103,4 +103,16 @@ class AuthServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("User not found");
     }
+    @Test void refreshRejectsTokenFromBeforeUnlockWithoutIssuingNewTokens() {
+        var user=new com.bcm.entity.User();user.setId(java.util.UUID.randomUUID());user.setEmail("restored@test.invalid");user.setRoles(java.util.Set.of());
+        String token="revoked-refresh";
+        when(jwtUtil.validateToken(token)).thenReturn(true);
+        when(jwtUtil.isRefreshToken(token)).thenReturn(true);
+        when(jwtUtil.extractEmail(token)).thenReturn(user.getEmail());
+        when(userRepository.findByEmailAndDeletedAtIsNull(user.getEmail())).thenReturn(Optional.of(user));
+        when(jwtUtil.validateToken(eq(token),any(org.springframework.security.core.userdetails.UserDetails.class))).thenReturn(false);
+        assertThatThrownBy(()->authService.refreshToken(new RefreshTokenRequest(token))).isInstanceOf(BadRequestException.class).hasMessageContaining("revoked");
+        verify(jwtUtil,never()).generateAccessToken(any());
+        verify(jwtUtil,never()).generateRefreshToken(any(com.bcm.security.UserPrincipal.class));
+    }
 }

@@ -66,8 +66,8 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    @DisplayName("Filter performs stateless authentication from token claims without hitting DB")
-    void filterPerformsStatelessAuthenticationWithoutDatabaseLookup() throws Exception {
+    @DisplayName("Filter reloads current account state before accepting access claims")
+    void filterReloadsCurrentAccountState() throws Exception {
         String userId = UUID.randomUUID().toString();
         String email = "stateless@example.com";
         UserPrincipal principal = new UserPrincipal(
@@ -78,6 +78,8 @@ class JwtAuthenticationFilterTest {
                 true
         );
 
+        principal.setTokenVersion(0L);
+        when(userDetailsService.loadUserByUsername(email)).thenReturn(principal);
         String accessToken = jwtUtil.generateAccessToken(principal);
 
         MockHttpServletRequest request = new MockHttpServletRequest();
@@ -98,7 +100,25 @@ class JwtAuthenticationFilterTest {
                 .containsExactly("ROLE_CUSTOMER");
 
         verify(filterChain).doFilter(request, response);
-        // CRITICAL: userDetailsService MUST NOT be touched when claims are present (stateless)
-        verifyNoInteractions(userDetailsService);
+        verify(userDetailsService).loadUserByUsername(email);
+    }
+
+    @Test void unlockedAccountRejectsAccessTokenFromBeforeLock() throws Exception {
+        var principal=new UserPrincipal(UUID.randomUUID().toString(),"restored@test.invalid","hash",List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER")),true,0L);
+        String token=jwtUtil.generateAccessToken(principal);
+        principal.setTokenVersion(1L);
+        when(userDetailsService.loadUserByUsername(principal.getUsername())).thenReturn(principal);
+        var request=new MockHttpServletRequest();request.addHeader("Authorization","Bearer "+token);
+        filter.doFilter(request,new MockHttpServletResponse(),mock(FilterChain.class));
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test void lockedAccountCannotUsePreviouslyIssuedAccessToken() throws Exception {
+        var principal=new UserPrincipal(UUID.randomUUID().toString(),"locked@test.invalid","hash",List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER")),true);
+        String token=jwtUtil.generateAccessToken(principal);principal.setEnabled(false);
+        when(userDetailsService.loadUserByUsername(principal.getUsername())).thenReturn(principal);
+        var request=new MockHttpServletRequest();request.addHeader("Authorization","Bearer "+token);
+        filter.doFilter(request,new MockHttpServletResponse(),mock(FilterChain.class));
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
 }

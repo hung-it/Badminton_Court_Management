@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 @Service @RequiredArgsConstructor @Transactional(readOnly=true)
 public class AdminAccountService {
  private final JdbcTemplate jdbc; private final UserRepository users;
+ @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager entityManager;
  private static final String FROM=" from users u left join customers c on c.user_id=u.id left join staffs s on s.user_id=u.id ";
  private static final String SELECT="select u.id,u.full_name,u.email,u.phone,coalesce(c.address,u.address) address,u.created_at,u.deleted_at,c.id customer_id,s.id staff_id,s.position,"
   +"(select string_agg(r.role_name,',' order by case r.role_name when 'ADMIN' then 1 when 'STAFF' then 2 else 3 end) from user_roles ur join roles r on r.id=ur.role_id where ur.user_id=u.id) roles,"
@@ -27,7 +28,8 @@ public class AdminAccountService {
   String roles=rs.getString("roles");v.put("roles",roles==null?List.of():Arrays.asList(roles.split(",")));
   v.put("bookingCount",rs.getLong("booking_count"));v.put("totalSpent",rs.getBigDecimal("total_spent"));
   boolean active=rs.getObject("deleted_at")==null,guest="0000000000".equals(rs.getString("phone"));
-  v.put("canEdit",active&&!guest);v.put("canLock",active&&!guest);return v;
+  boolean customer=!guest&&v.get("customerId")!=null&&v.get("roles") instanceof List<?> codes&&codes.size()==1&&codes.contains("CUSTOMER");
+  v.put("canEdit",active&&!guest);v.put("canLock",active&&customer);v.put("canUnlock",!active&&customer);return v;
  }
  public Map<String,Object> list(String search,String role,String sort,int page){
   if(page<0||!List.of("","ADMIN","STAFF","CUSTOMER").contains(role)||!List.of("created","name").contains(sort))throw new BadRequestException("Invalid account filter");
@@ -54,17 +56,27 @@ public class AdminAccountService {
   jdbc.update("update customers set full_name=?,phone=?,address=?,updated_at=current_timestamp where user_id=?",u.getFullName(),u.getPhone(),u.getAddress(),id);
   jdbc.update("update staffs set full_name=?,phone=?,updated_at=current_timestamp where user_id=?",u.getFullName(),u.getPhone(),id);
  }
- @Transactional public void disable(UUID id){
-  var principal=SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+ @Transactional public void disable(UUID id){setCustomerLocked(id,true);}
+ @Transactional public void unlock(UUID id){setCustomerLocked(id,false);}
+ private void setCustomerLocked(UUID id,boolean locked){
+  var authentication=SecurityContextHolder.getContext().getAuthentication();
+  var principal=authentication==null?null:authentication.getPrincipal();
   if(!(principal instanceof UserPrincipal p))throw new AccessDeniedException("Admin identity required");UUID actor=UUID.fromString(p.getId());
-  // Serialize admin-account locks on an existing role row, including concurrent cross-lock requests.
+  // Serialize current ADMIN authorization, then lock the target customer row.
   jdbc.queryForList("select id from roles where role_name='ADMIN' for update",UUID.class);
   if(jdbc.queryForObject("select count(*) from users u join user_roles ur on ur.user_id=u.id join roles r on r.id=ur.role_id where u.id=? and u.deleted_at is null and r.role_name='ADMIN'",Long.class,actor)==0)throw new AccessDeniedException("Active admin required");
   if(actor.equals(id))throw new BadRequestException("Cannot lock your own account");lockUser(id);var u=users.findById(id).orElseThrow();
-  if("0000000000".equals(u.getPhone()))throw new BadRequestException("POS guest account is protected");if(u.getDeletedAt()!=null)return;
-  if(u.hasRole("ADMIN")&&jdbc.queryForObject("select count(distinct u.id) from users u join user_roles ur on ur.user_id=u.id join roles r on r.id=ur.role_id where r.role_name='ADMIN' and u.deleted_at is null",Long.class)<=1)throw new BadRequestException("Cannot lock last active admin");
-  u.setDeletedAt(LocalDateTime.now());users.saveAndFlush(u);
-  jdbc.update("update customers set deleted_at=?,updated_at=current_timestamp where user_id=?",u.getDeletedAt(),id);
-  jdbc.update("update staffs set deleted_at=?,updated_at=current_timestamp where user_id=?",u.getDeletedAt(),id);
+  // A concurrent request may have changed this already-managed entity while we waited.
+  entityManager.refresh(u);
+  if("0000000000".equals(u.getPhone())||jdbc.queryForObject("select count(*) from customers where user_id=? and phone='0000000000'",Long.class,id)>0)throw new BadRequestException("POS guest account is protected");
+  if(u.getRoles().size()!=1||!u.hasRole("CUSTOMER")||jdbc.queryForObject("select count(*) from customers where user_id=?",Long.class,id)==0)throw new BadRequestException("Only customer accounts can be locked");
+  var customer=jdbc.queryForMap("select deleted_at from customers where user_id=? for update",id);
+  if((u.getDeletedAt()!=null)==locked&&(customer.get("deleted_at")!=null)==locked)return;
+  LocalDateTime now=LocalDateTime.now();
+  // Advance the durable revocation epoch atomically; profile updates never change it.
+  LocalDateTime deletedAt=locked?now:null;
+  jdbc.update("update users set deleted_at=?,updated_at=?,token_version=token_version+1 where id=?",deletedAt,now,id);
+  jdbc.update("update customers set deleted_at=?,updated_at=? where user_id=?",deletedAt,now,id);
+  entityManager.refresh(u);
  }
 }

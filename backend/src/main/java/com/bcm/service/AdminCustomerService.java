@@ -12,26 +12,34 @@ import java.util.*;
 import java.time.LocalDateTime;
 @Service @RequiredArgsConstructor @Transactional(readOnly=true)
 public class AdminCustomerService {
- private final CustomerRepository customers; private final UserRepository users;
+ private final AdminAccountService accounts; private final CustomerRepository customers; private final UserRepository users;
  private final RoleRepository roles; private final PasswordEncoder encoder; private final JdbcTemplate jdbc;
  public Map<String,Object> list(String search,int page,String sort) {
   if(page<0) throw new BadRequestException("Invalid page");
   String order="name".equals(sort)?"c.full_name asc,c.id":"c.created_at desc,c.id";
-  String where=" from customers c join users u on u.id=c.user_id where c.deleted_at is null and c.phone<>'0000000000' and (lower(c.full_name) like ? or lower(u.email) like ? or c.phone like ?)";
+  String where=" from customers c join users u on u.id=c.user_id where c.phone<>'0000000000' and u.phone<>'0000000000' and exists(select 1 from user_roles ur join roles r on r.id=ur.role_id where ur.user_id=u.id and r.role_name='CUSTOMER') and not exists(select 1 from user_roles ur join roles r on r.id=ur.role_id where ur.user_id=u.id and r.role_name in ('ADMIN','STAFF')) and (lower(c.full_name) like ? or lower(u.email) like ? or c.phone like ?)";
   String q="%"+search.toLowerCase(Locale.ROOT).trim()+"%";
-  var rows=jdbc.queryForList("select c.id,c.full_name as \"fullName\",u.email,c.phone,c.address,c.created_at as \"createdAt\",(select count(*) from bookings b where b.customer_id=c.id) as \"bookingCount\",(select coalesce(sum(i.total_amount),0) from invoices i where i.customer_id=c.id and i.status='PAID' and i.deleted_at is null) as \"totalSpent\""+where+" order by "+order+" limit 20 offset ?",q,q,q,(long)page*20);
+  var rows=jdbc.queryForList("select c.id,c.full_name as \"fullName\",u.email,c.phone,c.address,c.created_at as \"createdAt\",coalesce(u.deleted_at,c.deleted_at) as \"deletedAt\",(select count(*) from bookings b where b.customer_id=c.id) as \"bookingCount\",(select coalesce(sum(i.total_amount),0) from invoices i where i.customer_id=c.id and i.status='PAID' and i.deleted_at is null) as \"totalSpent\""+where+" order by "+order+" limit 20 offset ?",q,q,q,(long)page*20);
   long count=jdbc.queryForObject("select count(*)"+where,Long.class,q,q,q);
   return Map.of("customers",rows,"totalPages",(count+19)/20,"totalElements",count);
  }
  public Map<String,Object> detail(UUID id) {
-  var c=active(id);
-  return Map.of("id",c.getId(),"bookings",jdbc.queryForList("select id,status,court_fee,created_at from bookings where customer_id=? order by created_at desc",id),"invoices",jdbc.queryForList("select id,status,total_amount,created_at from invoices where customer_id=? and status='PAID' and deleted_at is null order by created_at desc",id));
+  var c=customers.findById(id).filter(v->!"0000000000".equals(v.getPhone()) && !"0000000000".equals(v.getUser().getPhone()) && v.getUser().hasRole("CUSTOMER") && !v.getUser().hasRole("ADMIN") && !v.getUser().hasRole("STAFF")).orElseThrow(()->new ResourceNotFoundException("Customer not found"));
+  var result=new LinkedHashMap<String,Object>();
+  result.put("id",c.getId());result.put("userId",c.getUser().getId());
+  result.put("fullName",c.getFullName());result.put("email",c.getUser().getEmail());
+  result.put("phone",c.getPhone());result.put("address",c.getAddress());result.put("createdAt",c.getCreatedAt());
+  result.put("deletedAt",c.getUser().getDeletedAt()!=null?c.getUser().getDeletedAt():c.getDeletedAt());
+  result.put("bookings",jdbc.queryForList("select id,status,court_fee,created_at from bookings where customer_id=? order by created_at desc,id",id));
+  result.put("invoices",jdbc.queryForList("select id,status,total_amount,created_at from invoices where customer_id=? and status='PAID' and deleted_at is null order by created_at desc,id",id));
+  return result;
  }
  private Customer active(UUID id) {return customers.findById(id).filter(c->c.getDeletedAt()==null && !"0000000000".equals(c.getPhone())).orElseThrow(()->new ResourceNotFoundException("Customer not found"));}
  @Transactional public UUID save(UUID id,AdminCustomerRequest r) {
-  if("0000000000".equals(r.phone().trim())) throw new BadRequestException("Reserved POS guest phone");
+  if("0000000000".equals(r.phone().replaceAll("[^0-9]",""))) throw new BadRequestException("Reserved POS guest phone");
   Customer c=id==null?new Customer():active(id); User u=id==null?new User():c.getUser();
   if(id==null && (r.password()==null||r.password().isBlank())) throw new BadRequestException("Password required");
+  if(id==null && r.password().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>72) throw new BadRequestException("Password must not exceed 72 UTF-8 bytes");
   String email=r.email().trim().toLowerCase(Locale.ROOT);
   if(jdbc.queryForObject("select count(*) from users where lower(email)=? and id<>?",Long.class,email,u.getId()==null?new UUID(0,0):u.getId())>0) throw new DuplicateResourceException("Email already registered");
   if(id!=null && (u.hasRole("ADMIN")||u.hasRole("STAFF"))) throw new BadRequestException("Managed staff account");
@@ -40,8 +48,7 @@ public class AdminCustomerService {
   users.saveAndFlush(u);c.setUser(u);c.setFullName(u.getFullName());c.setPhone(u.getPhone());c.setAddress(u.getAddress());return customers.saveAndFlush(c).getId();
  }
  @Transactional public void disable(UUID id) {
-  Customer c=active(id);User u=c.getUser();
-  if(u.hasRole("ADMIN")||u.hasRole("STAFF")) throw new BadRequestException("Managed staff account");
-  c.setDeletedAt(LocalDateTime.now());u.setDeletedAt(c.getDeletedAt());customers.flush();
+  Customer c=customers.findById(id).orElseThrow(()->new ResourceNotFoundException("Customer not found"));
+  accounts.disable(c.getUser().getId());
  }
 }
