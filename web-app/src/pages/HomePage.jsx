@@ -6,7 +6,7 @@ import HomeFeaturedCourts from '../components/HomeFeaturedCourts';
 import HomeSteps from '../components/HomeSteps';
 import HomeTestimonials from '../components/HomeTestimonials';
 import HomeFaq from '../components/HomeFaq';
-import { fetchCourts, fetchTimeSlots } from '../lib/publicApi';
+import { fetchCourts, fetchTimeSlots, fetchBookingPolicy } from '../lib/publicApi';
 import { toErrorMessage } from '../lib/apiClient';
 
 export default function HomePage() {
@@ -14,6 +14,8 @@ export default function HomePage() {
   const [timeSlots, setTimeSlots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [holdDurationSeconds,setHoldDurationSeconds]=useState(null);
+  useEffect(()=>{let active=true;fetchBookingPolicy().then(p=>{if(active)setHoldDurationSeconds(p?.holdDurationSeconds)}).catch(()=>{});return()=>{active=false}},[]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,7 +60,7 @@ export default function HomePage() {
 
       <HomeSteps />
       <HomeTestimonials />
-      <HomeFaq />
+      <HomeFaq holdDurationSeconds={holdDurationSeconds}/>
     </>
   );
 }

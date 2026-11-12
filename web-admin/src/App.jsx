@@ -6,6 +6,7 @@ import RevenueInvoices from './RevenueInvoices.jsx';
 import Accounts from './Accounts.jsx';
 import CounterReceipt from './CounterReceipt.jsx';
 import ChangePassword from './ChangePassword.jsx';
+import PosDrafts from './PosDrafts.jsx';
 import Statistics from './Statistics.jsx';
 import RevenueBreakdown from './RevenueBreakdown.jsx';
 import PeriodFilter,{inPeriod} from './PeriodFilter.jsx';
@@ -42,6 +43,7 @@ export default function App(){
  const [posSearch,setPosSearch]=useState('');
  const [posQuoteVersion,setPosQuoteVersion]=useState(0);
  const [posHistory,setPosHistory]=useState([]);
+ const [draftRefresh,setDraftRefresh]=useState(0);
  const [posMode,setPosMode]=useState('booking');
  const [posPaymentMethod,setPosPaymentMethod]=useState('CASH');
  const [posConfirmed,setPosConfirmed]=useState(false),[posReference,setPosReference]=useState('');
@@ -185,6 +187,7 @@ useEffect(()=>{
    const totalAmt=inv.total_amount??inv.totalAmount;
    const discountAmt=inv.discountAmount??inv.discount_amount??0;
    setPosHistory(h=>[{id:inv.id||`#HD-${Date.now().toString().slice(-4)}`,time:new Date().toLocaleTimeString('vi-VN'),total:totalAmt,discount:discountAmt,status:inv.status,items:[...posCart]},...h]);
+   setDraftRefresh(v=>v+1);
    setPosCart([]);posAttempt.current=null;setPosConfirmed(false);setPosReference('');
    setPosPromotionCode('');
    setNotice(bookingId?'Đã thêm hàng vào đơn đặt sân. Xem bill gộp và xác nhận phần tiền còn phải thu.':'Bán hàng thành công! Hóa đơn chỉ gồm hàng hóa, không kèm tiền sân.');
@@ -336,9 +339,10 @@ useEffect(()=>{
     </div>
    </div>
   </div>
-  {posHistory.length>0&&<div className="content-panel" style={{marginTop:'24px'}}><div style={{padding:'16px 20px',borderBottom:'1px solid #edf0e8'}}><h3>Giao dịch POS gần đây</h3></div><div className="table-scroll"><table><thead><tr><th>Mã giao dịch</th><th>Thời gian</th><th>Số món</th><th>Khuyến mãi</th><th>Tổng tiền</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{posHistory.map(h=><tr key={h.id}><td><strong>{h.id}</strong></td><td>{h.time}</td><td>{h.items.length} món</td><td>{money(h.discount||0)}</td><td><strong>{money(h.total)}</strong></td><td><span className={"badge "+(h.status==='DRAFT'?'MAINTENANCE':'AVAILABLE')}>{h.status==='DRAFT'?'Chờ kết toán':h.status==='CANCELLED'?'Đã hủy':'Đã thanh toán'}</span></td><td>{h.status==='DRAFT'&&<button className="secondary" disabled={saving} onClick={async()=>{setSaving(true);try{await api('/pos/sales/'+h.id+'/cancel','POST');setPosHistory(rows=>rows.map(r=>r.id===h.id?{...r,status:'CANCELLED'}:r));setCheckoutSlip(null);await load();}catch(e){setError(e.message)}finally{setSaving(false)}}}>Hủy đơn nháp</button>}</td></tr>)}</tbody></table></div></div>}
+  {posHistory.length>0&&<div className="content-panel" style={{marginTop:'24px'}}><div style={{padding:'16px 20px',borderBottom:'1px solid #edf0e8'}}><h3>Giao dịch POS gần đây</h3></div><div className="table-scroll"><table><thead><tr><th>Mã giao dịch</th><th>Thời gian</th><th>Số món</th><th>Khuyến mãi</th><th>Tổng tiền</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{posHistory.map(h=><tr key={h.id}><td><strong>{h.id}</strong></td><td>{h.time}</td><td>{h.items.length} món</td><td>{money(h.discount||0)}</td><td><strong>{money(h.total)}</strong></td><td><span className={"badge "+(h.status==='DRAFT'?'MAINTENANCE':'AVAILABLE')}>{h.status==='DRAFT'?'Chờ kết toán':h.status==='CANCELLED'?'Đã hủy':'Đã thanh toán'}</span></td><td>{h.status==='DRAFT'&&<span>Quản lý tại danh sách đơn nháp bên dưới</span>}</td></tr>)}</tbody></table></div></div>}
 
 
+ <PosDrafts api={api} refreshKey={draftRefresh} onCancelled={async id=>{setPosHistory(rows=>rows.map(r=>r.id===id?{...r,status:'CANCELLED'}:r));setCheckoutSlip(null);setPosQuoteVersion(v=>v+1);await load();}}/>
  </div>}
 
 
@@ -370,15 +374,15 @@ useEffect(()=>{
       ) : (
         <div className="table-scroll">
           <table>
-            <thead><tr><th>UUID</th><th>Sân</th><th>Khách</th><th>Thời gian</th><th>Tổng tiền</th><th>Thao tác</th></tr></thead>
+            <thead><tr><th>UUID</th><th>Sân</th><th>Khách</th><th>Thời gian</th><th>Tiền sân sau giảm</th><th>Thao tác</th></tr></thead>
             <tbody>
               {filteredBookings.map((b,i) => (
                 <tr key={b.bookingId ?? i}>
                   <td><code title={b.bookingId}>{(b.bookingId ?? b.shortId)?.slice(0,8) ?? '—'}</code>{b.bookingId&&<button className="secondary" style={{marginLeft:8,padding:'4px 8px'}} aria-label="Sao chép UUID đầy đủ" title="Sao chép UUID đầy đủ để mua hàng hoặc kết toán" onClick={async()=>{try{await navigator.clipboard.writeText(b.bookingId);setNotice('Đã sao chép UUID đầy đủ.');}catch{setError('Không thể sao chép UUID.');}}}>Sao chép</button>}</td>
-                  <td>{b.courtDetails?.split('·')[0]?.trim() ?? '—'}</td>
+                  <td>{b.courtSchedules?.length?[...new Map(b.courtSchedules.map(r=>[r.courtId,r])).values()].map(r=><div key={r.courtId}>{r.courtName} · Sân {r.courtNumber??'—'}</div>):'—'}</td>
                   <td>{b.customerName||'—'} ({b.customerPhone||'—'})</td>
-                  <td>{b.courtDetails?.match(/\(([^)]+)\)/)?.[1] ?? '—'}</td>
-                  <td>{money(b.courtFee ?? b.court_fee ?? b.totalAmount ?? b.amountDue ?? 0)}</td>
+                  <td>{b.courtSchedules?.length?b.courtSchedules.map((r,i)=><div key={i}>{r.bookingDate.split('-').reverse().join('/')} · Sân {r.courtNumber??'—'} · {r.startTime.slice(0,5)}–{r.endTime.slice(0,5)}</div>):'Chưa có lịch chơi'}</td>
+                  <td>{b.finalAmount==null?'—':money(b.finalAmount)}</td>
                   <td>{b.status==='PENDING'?<button className="primary" disabled={saving} onClick={()=>setReceiptBooking(b)}>Thu tiền tại quầy</button>:<button className="primary" disabled={saving} onClick={()=>createCheckoutSlip(b.bookingId)}>Kết toán</button>}</td>
                 </tr>
               ))}

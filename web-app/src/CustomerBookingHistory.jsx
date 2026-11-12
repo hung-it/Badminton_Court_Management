@@ -3,6 +3,8 @@ import './customer-history.css';
 import {assets, GuideFooter, GuideHeader, GuideIcon, SupportBanner} from './CustomerLayout.jsx';
 import {api, clearSession, readSession} from './CustomerCourts.jsx';
 import {formatVND} from './lib/format';
+import {useBookingClock} from './lib/useBookingClock';
+import {canResumeBooking} from './lib/bookingPolicy.mjs';
 
 const PAGE_SIZE = 10;
 
@@ -88,6 +90,7 @@ function BookingDetail({detail, loading, error, onRetry}) {
 }
 
 export default function CustomerBookingHistory() {
+  const clock=useBookingClock();
   const [session, setSession] = useState(readSession);
   const [page, setPage] = useState(0);
   const [status, setStatus] = useState('');
@@ -218,6 +221,11 @@ export default function CustomerBookingHistory() {
                 <small>Tiền sân sau ưu đãi</small>
               </span>
             </button>
+            {booking.status==='PENDING'&&<div style={{padding:'0 20px 16px'}}>
+              {canResumeBooking(booking,clock.nowMs)?<a className="customer-button customer-button-primary" href={`/checkout?bookingId=${encodeURIComponent(booking.bookingId)}`}>Tiếp tục thanh toán</a>
+                :<span>{!clock.ready?'Đang kiểm tra thời hạn…':'Đã hết hạn thanh toán. Tải lại để cập nhật trạng thái.'}</span>}
+              {clock.error&&<p role="alert">{clock.error} <button className="history-inline-button" onClick={()=>window.location.reload()}>Tải lại trang</button></p>}
+            </div>}
             {expanded && <BookingDetail detail={detailState?.data} loading={Boolean(detailState?.loading)} error={detailState?.error}
               onRetry={() => {
                 setDetails(current => {const next = {...current}; delete next[booking.bookingId]; return next;});

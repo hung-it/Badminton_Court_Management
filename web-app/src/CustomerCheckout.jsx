@@ -84,7 +84,7 @@ export default function CustomerCheckout() {
   const visibleEditOptions = editOptions.filter(option => isFutureSlot(editDate, option.startTime, bookingClock.nowMs));
   const visibleEditKey = visibleEditOptions.map(option => option.timeSlotId).join('|');
   const editSelectionValid = editOptionsDate === editDate && editSlotIds.length > 0 && editSlotIds.every(id => visibleEditOptions.some(option => option.timeSlotId === id && option.available));
-  const expiryMessage = 'Thời gian giữ sân 10 phút đã hết. Đơn đặt sân của bạn đã hết hạn và không thể tiếp tục thanh toán. Vui lòng quay về trang chủ để đặt sân lại.';
+  const expiryMessage = 'Thời gian giữ sân đã hết. Đơn đặt sân của bạn đã hết hạn và không thể tiếp tục thanh toán. Vui lòng quay về trang chủ để đặt sân lại.';
 
   useEffect(() => {
     setContactReady(false); setContact(null); setContactEditing(false); setContactError('');

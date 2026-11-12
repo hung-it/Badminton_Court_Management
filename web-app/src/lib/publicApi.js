@@ -1,5 +1,7 @@
 import { apiGet } from './apiClient';
 
+export function fetchBookingPolicy() { return apiGet('/public/booking-clock'); }
+
 /**
  * Endpoint public của backend (`/api/public/**` được permitAll trong SecurityConfig).
  * Chỉ dùng cho trang chủ — các màn hình cần token dùng `apiGet` trực tiếp.
