@@ -5,6 +5,7 @@ const assert=require('node:assert/strict');
  const browser=await chromium.launch({headless:true,channel:'msedge'});
  try{
   const page=await browser.newPage({viewport:{width:1366,height:900}});
+  await page.route('https://fonts.googleapis.com/**',r=>r.fulfill({body:'',contentType:'text/css'}));
   const id='11111111-1111-4111-8111-111111111111';let received=false,receipt,password,attempts=0,actualAmount=180000,failReceipt=true;
   await page.route('**/api/**',route=>{
    const req=route.request(),path=new URL(req.url()).pathname;let data=[];
@@ -66,6 +67,7 @@ const assert=require('node:assert/strict');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.screenshot({path:'backend/target/booking-fixes-admin-mobile.png',fullPage:true});
   const customer=await browser.newPage({viewport:{width:390,height:844}});let changes=0;
+  await customer.route('https://fonts.googleapis.com/**',r=>r.fulfill({body:'',contentType:'text/css'}));
   await customer.addInitScript(()=>{sessionStorage.setItem('bcm.accessToken','fixture');sessionStorage.setItem('bcm.user',JSON.stringify({id:'customer-fixture',email:'fixture@test.invalid',fullName:'Khách thử',roles:['CUSTOMER']}));});
   await customer.route('**/api/**',route=>{if(new URL(route.request().url()).pathname==='/api/users/me/password')changes++;return route.fulfill({json:{success:true,data:null}})});
   await customer.goto(process.env.CUSTOMER_TEST_URL||'http://127.0.0.1:5176/profile');

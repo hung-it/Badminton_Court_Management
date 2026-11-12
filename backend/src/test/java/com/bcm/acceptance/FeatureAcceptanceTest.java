@@ -32,7 +32,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 class FeatureAcceptanceTest {
  @DynamicPropertySource static void database(DynamicPropertyRegistry r){
   String url=System.getenv("BCM_ACCEPTANCE_DB_URL");
-  if(url==null||!url.matches("jdbc:postgresql://127\\.0\\.0\\.1:5433/bcm_acceptance_test"))throw new IllegalStateException("Dedicated acceptance database required");
+  if(url==null||!url.matches("jdbc:postgresql://127\\.0\\.0\\.1:(?:5433|55438)/bcm_acceptance_test"))throw new IllegalStateException("Dedicated acceptance database required");
   r.add("spring.datasource.url",()->url);r.add("spring.datasource.username",()->"bcm_acceptance_owner");r.add("spring.datasource.password",()->"acceptance-local-only");
  }
  @Autowired com.bcm.service.BookingExpirationService expiration;

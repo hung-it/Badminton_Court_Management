@@ -13,6 +13,7 @@ const user={id:'user-p1',fullName:'P1 Browser',roles:['CUSTOMER']};
  try {
   const page=await browser.newPage({viewport:{width:1280,height:900}}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
+  await page.route('https://fonts.googleapis.com/**',r=>r.fulfill({body:'',contentType:'text/css'}));
   await page.addInitScript(user=>{
    if(sessionStorage.getItem('p1-initialized'))return;
    sessionStorage.setItem('p1-initialized','true');

@@ -36,6 +36,7 @@ class P2BusinessPostgresTest {
     @Autowired BookingHistoryService history;
     @Autowired AvailabilityService availability;
     @Autowired PosService pos;
+    @Autowired CheckoutService checkout;
     @Autowired PlatformTransactionManager transactions;
     @MockBean CurrentCustomerService customer;
     UUID user,owner,court,slot,category,product;
@@ -110,6 +111,28 @@ class P2BusinessPostgresTest {
         assertThat(race(()->pos.cancelDraft(draft.getId()),()->master.saveProduct(product,r))).isInstanceOf(DuplicateResourceException.class);
         assertThat(master.product(product).getStockQuantity()).isEqualTo(1);
         assertThat(master.product(product).getType()).isEqualTo(ProductType.GOODS);
+    }
+    @RepeatedTest(5) void concurrentDraftCancellationRestoresExactlyOnce() throws Exception {
+        var draft=pos.sell(sale(paid()));
+        assertThat(race(()->pos.cancelDraft(draft.getId()),()->pos.cancelDraft(draft.getId()))).isNull();
+        assertThat(master.product(product).getStockQuantity()).isEqualTo(1);
+    }
+    CheckoutRequest confirmedDue(String amount) {
+        var request=new CheckoutRequest("CASH");request.setPaymentConfirmed(true);request.setExpectedAmountDue(new BigDecimal(amount));return request;
+    }
+    @RepeatedTest(5) void cancellationBeforeCheckoutExcludesDraftAndRestoresStockOnce() throws Exception {
+        UUID id=paid();var draft=pos.sell(sale(id));
+        jdbc.update("UPDATE booking_details SET booking_date=? WHERE booking_id=?",LocalDate.now().minusDays(1),id);
+        assertThat(race(()->pos.cancelDraft(draft.getId()),()->checkout.checkout(id,confirmedDue("0")))).isNull();
+        assertThat(master.product(product).getStockQuantity()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT product_fee FROM invoices WHERE booking_id=? AND status='PAID'",BigDecimal.class,id)).isEqualByComparingTo("0");
+    }
+    @RepeatedTest(5) void checkoutBeforeCancellationKeepsConsumedStockAndReceipts() throws Exception {
+        UUID id=paid();var draft=pos.sell(sale(id));
+        jdbc.update("UPDATE booking_details SET booking_date=? WHERE booking_id=?",LocalDate.now().minusDays(1),id);
+        assertThat(race(()->checkout.checkout(id,confirmedDue("10000")),()->pos.cancelDraft(draft.getId()))).isInstanceOf(BadRequestException.class);
+        assertThat(master.product(product).getStockQuantity()).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE invoice_id IN (SELECT id FROM invoices WHERE booking_id=?)",Integer.class,id)).isEqualTo(1);
     }
     @Test void normalizedEmailLoginAndConcurrentRegistrationPreserveOneIdentity() throws Exception {
         String email=UUID.randomUUID()+"@p2-email.invalid";

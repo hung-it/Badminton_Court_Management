@@ -9,6 +9,7 @@ for(const url of [web,admin])assert.equal(new URL(url).hostname,'127.0.0.1');
  const errors=[];
  try{
   const page=await browser.newPage();page.on('pageerror',e=>errors.push(e.message));
+  await page.route('https://fonts.googleapis.com/**',r=>r.fulfill({body:'',contentType:'text/css'}));
   await page.addInitScript(()=>{sessionStorage.setItem('bcm.accessToken','fixture');sessionStorage.setItem('bcm.user',JSON.stringify({id:'customer',fullName:'Customer',roles:['CUSTOMER']}));});
   let password;
   await page.route('**/api/**',route=>{
