@@ -58,6 +58,12 @@ export function AuthProvider({ children }) {
     setIsAuthenticated(true);
   }, []);
 
+  const updateUser = useCallback(profile => {
+    if (!tokenStore.updateUser(profile)) return false;
+    setUser(profile);
+    return true;
+  }, []);
+
   const login = useCallback(
     async ({ email, password, remember = true }) => {
       try {
@@ -91,8 +97,8 @@ export function AuthProvider({ children }) {
   );
 
   const value = useMemo(
-    () => ({ user, isAuthenticated, login, register, logout }),
-    [user, isAuthenticated, login, register, logout],
+    () => ({ user, isAuthenticated, login, register, logout, updateUser }),
+    [user, isAuthenticated, login, register, logout, updateUser],
   );
 
   return <AuthContext.Provider value={value}>{restoring ? <p role="status">Đang khôi phục phiên đăng nhập…</p> : children}</AuthContext.Provider>;

@@ -57,7 +57,9 @@ class UserControllerTest {
                 .build();
         user.setId(userId);
 
-        when(userService.findById(userId.toString())).thenReturn(user);
+        UserResponse profile=UserResponse.fromEntity(user);
+        profile.setCanEditProfile(true);
+        when(userService.profile(userId.toString())).thenReturn(profile);
 
         ResponseEntity<ApiResponse<UserResponse>> response = controller.getCurrentUser(principal);
 
@@ -69,5 +71,7 @@ class UserControllerTest {
         assertThat(data.getPhone()).isEqualTo("0912345678");
         assertThat(data.getAddress()).isEqualTo("123 Duong ABC");
         assertThat(data.getRoles()).containsExactly("CUSTOMER");
+        assertThat(data.getCanEditProfile()).isTrue();
+        verify(userService).profile(userId.toString());
     }
 }

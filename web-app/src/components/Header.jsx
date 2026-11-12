@@ -55,7 +55,7 @@ export default function Header() {
                     <span className="header__badge">{bookingCount > 99 ? '99+' : bookingCount}</span>
                   )}
                 </Link>
-                <Link to="/profile">{user.fullName || user.email}</Link>
+                <Link to="/profile" title="Thông tin cá nhân">{user.fullName || user.email}</Link>
                 <button type="button" onClick={logout}>Đăng xuất</button>
               </>
             ) : (
@@ -122,7 +122,7 @@ export default function Header() {
           </NavLink>
         )}
         {isAuthenticated && user ? (
-          <><NavLink to="/profile">Hồ sơ ({user.email})</NavLink><button type="button" onClick={logout}>Đăng xuất</button></>
+            <><NavLink to="/profile">Thông tin cá nhân</NavLink><button type="button" onClick={logout}>Đăng xuất</button></>
         ) : (
           <>
             <NavLink to="/login">Đăng nhập</NavLink>

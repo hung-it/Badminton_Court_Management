@@ -55,7 +55,7 @@ export function GuideHeader({session, bookingCount, bookingError, bookingLoading
           <button className="guide-profile-button" aria-expanded={session ? profileOpen : undefined} onClick={() => session && setProfileOpen(value => !value)} disabled={!session}>
             <span className="guide-avatar">{initials || 'KH'}</span><span>{fullName}</span><GuideIcon src={assets.chevronDown} />
           </button>
-          {profileOpen && session && <div className="guide-profile-menu"><span>{session.user?.email}</span><a href="/profile">Đổi mật khẩu</a><button onClick={onLogout}>Đăng xuất</button></div>}
+          {profileOpen && session && <div className="guide-profile-menu"><span>{session.user?.email}</span><a href="/profile">Thông tin cá nhân</a><button onClick={onLogout}>Đăng xuất</button></div>}
         </div>
       </div>
     </div>

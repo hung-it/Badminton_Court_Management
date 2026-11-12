@@ -46,7 +46,7 @@ class P2RegressionTest {
         UUID id=UUID.randomUUID();var user=new User();user.setId(id);
         String legacy="a".repeat(80);user.setPasswordHash(encoder.encode(legacy));
         when(users.findActiveForUpdate(id)).thenReturn(Optional.of(user));
-        assertThatCode(()->new UserService(users,encoder).changePassword(id.toString(),new ChangePasswordRequest(legacy,"NewPassword123")))
+        assertThatCode(()->new UserService(users,mock(com.bcm.repository.CustomerRepository.class),mock(com.bcm.security.WalkInGuestIdentity.class),encoder).changePassword(id.toString(),new ChangePasswordRequest(legacy,"NewPassword123")))
                 .doesNotThrowAnyException();
         assertThat(encoder.matches("NewPassword123",user.getPasswordHash())).isTrue();
     }

@@ -41,6 +41,13 @@ export const tokenStore = {
   setAccess(accessToken) {
     if (accessToken) sessionStorage.setItem(ACCESS_KEY, accessToken);
   },
+  updateUser(user) {
+    if (!this.access || !user?.id || this.user?.id !== user.id) return false;
+    const storage = localStorage.getItem(REFRESH_KEY) ? localStorage : sessionStorage;
+    storage.setItem(USER_KEY, JSON.stringify(user));
+    window.dispatchEvent(new CustomEvent('bcm:session-changed'));
+    return true;
+  },
   clear() {
     sessionStorage.removeItem(ACCESS_KEY);
     sessionStorage.removeItem(REFRESH_KEY);
@@ -71,6 +78,7 @@ let refreshPromise = null;
 
 async function refreshAccessToken() {
   const refreshToken = tokenStore.refresh;
+  const ownerId = tokenStore.user?.id;
   if (!refreshToken) throw new Error('No refresh token');
 
   const { data } = await axios.post(
@@ -81,6 +89,11 @@ async function refreshAccessToken() {
 
   const payload = data?.data;
   if (!payload?.accessToken) throw new Error('Refresh response missing accessToken');
+  if (tokenStore.refresh !== refreshToken || tokenStore.user?.id !== ownerId) {
+    const error = new Error('Session changed during refresh');
+    error.code = 'SESSION_CHANGED';
+    throw error;
+  }
 
   tokenStore.setAccess(payload.accessToken);
   if (payload.refreshToken) {
@@ -104,13 +117,17 @@ client.interceptors.response.use(
     const status = error.response?.status;
 
     if (status === 401 && original && !original._retried && !original.url?.includes('/auth/')) {
+      if (original.profileOwnerId && original.profileOwnerId !== tokenStore.user?.id) return Promise.reject(error);
       original._retried = true;
       try {
         refreshPromise = refreshPromise ?? refreshAccessToken();
         const token = await refreshPromise;
+        if (original.profileOwnerId && original.profileOwnerId !== tokenStore.user?.id) return Promise.reject(error);
         original.headers.Authorization = `Bearer ${token}`;
         return client(original);
-      } catch {
+      } catch (refreshError) {
+        if (refreshError.code === 'SESSION_CHANGED') return Promise.reject(error);
+        if (original.profileOwnerId && original.profileOwnerId !== tokenStore.user?.id) return Promise.reject(error);
         const hadSession = Boolean(tokenStore.access || tokenStore.refresh);
         tokenStore.clear();
         if (hadSession) window.dispatchEvent(new CustomEvent('bcm:auth-expired'));
@@ -134,6 +151,11 @@ export async function apiGet(path, params) {
 
 export async function apiPost(path, body) {
   const res = await client.post(path, body);
+  return res.data?.data;
+}
+
+export async function apiPut(path, body) {
+  const res = await client.put(path, body, { profileOwnerId: tokenStore.user?.id });
   return res.data?.data;
 }
 

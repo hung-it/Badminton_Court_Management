@@ -26,6 +26,14 @@ public class UserController {
 
     private final UserService userService;
 
+    @PutMapping("/me")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    @Operation(summary="Cập nhật hồ sơ của chính mình", description="Chỉ sửa họ tên, số điện thoại và địa chỉ; đồng bộ customer profile, giữ nguyên email và thông tin xác thực.")
+    public ApiResponse<UserResponse> updateCurrentUser(@AuthenticationPrincipal UserPrincipal principal,
+            @jakarta.validation.Valid @RequestBody com.bcm.dto.request.UpdateProfileRequest request) {
+        return ApiResponse.success(userService.updateProfile(principal.getId(),request));
+    }
+
     @PostMapping("/me/password")
     @PreAuthorize("isAuthenticated()")
     @Operation(summary="Tự đổi mật khẩu", description="Dùng tài khoản trong JWT, yêu cầu mật khẩu hiện tại. Mật khẩu mới 8–72 ký tự và tối đa 72 byte UTF-8. Không đổi tài khoản khác; không trả hash. JWT hiện có vẫn có hiệu lực đến hạn theo cơ chế hiện tại.")
@@ -43,8 +51,7 @@ public class UserController {
     public ResponseEntity<ApiResponse<UserResponse>> getCurrentUser(
             @AuthenticationPrincipal UserPrincipal userPrincipal) {
 
-        User user = userService.findById(userPrincipal.getId());
-        UserResponse userResponse = UserResponse.fromEntity(user);
+        UserResponse userResponse = userService.profile(userPrincipal.getId());
 
         return ResponseEntity.ok(ApiResponse.success(userResponse));
     }
