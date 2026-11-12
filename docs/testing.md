@@ -1,13 +1,45 @@
-# Original regression failures
+# Kiểm thử project
 
-Baseline: f7d48ea. All 47 cases were reproduced before P2 changes.
+## Backend và HTTP
 
-Verified 2026-11-11: all 47 cases below pass in the final reports (741 backend
-regression cases plus 25 HTTP acceptance cases; zero failures, errors or skips).
-Suite/case names were matched programmatically, including the two explicitly
-renamed cases below. Two clean backend regression runs passed on the same
-isolated PostgreSQL database. Each row describes the actual fix; production
-constraints remain enforced.
+Tại thư mục gốc, cần Docker Desktop, JDK và Maven:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-p1.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-p1-acceptance.ps1
+```
+
+Runner P1 hiện chạy toàn bộ regression bắt buộc, gồm P2 và các bản sửa browser/backend. Regression dùng container `bcm-p1-tests`, port 55437, DB `bcm_p1_work`. Acceptance dùng `bcm-browser-acceptance`, port 55438, DB `bcm_acceptance_test` và role riêng không phải superuser. Không chạy trên DB project.
+
+Maven chạy tuần tự từ `backend` vì các bài SQL dùng `../db`. Full runner clean trước khi chạy; không ghi log ngoài vào `backend/target` lúc clean. Log và Surefire reports ở `backend/target`. Suite backup BANK_TRANSFER legacy là opt-in riêng, ngoài tổng bắt buộc.
+
+Chạy nhóm mục tiêu:
+
+```powershell
+powershell -NoProfile -File scripts/verify-p1.ps1 -Tests 'CustomerAuthPostgresTest,P1MasterDataConcurrencyPostgresTest,BookingPromotionPostgresTest'
+```
+
+## Frontend
+
+```powershell
+node --test web-app/*.test.mjs
+npm --prefix web-app run build
+npm --prefix web-admin run build
+```
+
+Các file `*.e2e.cjs` kiểm tra những luồng khác nhau; giữ để regression. Cần Playwright có Chromium/Edge; `PLAYWRIGHT_MODULE` có thể trỏ module `playwright/test` đã cài.
+
+Bảy suite fixture gần nhất: customer `p1-business`, `p2-business`, `browser-flow-fixes`; admin `booking-fixes`, `pos-customer-mode`, `checkout-list`, `revenue-invoices` (đuôi `.e2e.cjs`). Chạy customer Vite trên 5184, admin trên 5185. Các suite có hỗ trợ biến URL dùng `BCM_WEB_TEST_URL`/`ADMIN_TEST_URL`; booking-fixes cần `ADMIN_TEST_URL=http://127.0.0.1:5185/?tab=checkout`, `CUSTOMER_TEST_URL=http://127.0.0.1:5184/profile`. Xem đầu mỗi script trước khi chạy: các suite cũ có thể dùng port/môi trường khác hoặc API thật.
+
+`scripts/verify-demo-seed.ps1` kiểm tra seed trên DB test riêng. `db/checks/verify-demo-seed.sql` dành cho demo mới; số lượng thay đổi sau giao dịch.
+
+## Kết quả và giới hạn
+
+Mốc `41f8bbc` ngày 12/11/2026: 788 backend + 26 HTTP đạt, không failure/error/skip; 50 Node test, hai React build và 7 suite Edge đạt. Chi tiết: [tổng hợp lỗi đã sửa](tong-hop-loi-da-sua-2026-11-11-den-12.md).
+
+47 ca lỗi baseline đã được khôi phục; bảng đối chiếu từng ca được giữ dưới đây. Không xem chúng là 47 lỗi production riêng biệt. VNPay end-to-end với nhà cung cấp chưa xác nhận do thiếu cấu hình sandbox. Kết quả lịch sử không thay thế chạy lại khi code thay đổi.
+
+## Baseline regression ledger (2026-11-11)
 
 | Case | Resolution |
 |---|---|

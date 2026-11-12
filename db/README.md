@@ -36,6 +36,7 @@ Compose tự nạp theo thứ tự dưới đây khi PostgreSQL volume còn tr�
 4. `upgrades/product-promotions-upgrade.sql`.
 5. `upgrades/court-promotions-upgrade.sql`.
 6. `demo-seed.sql`.
+7. `upgrades/email-identity-upgrade.sql`.
 
 Tên đích trong `/docker-entrypoint-initdb.d` được giữ nguyên để tương thích cách
 chạy psql và tài liệu demo. Chỉ đường dẫn source trên host thay đổi. Hibernate
@@ -70,5 +71,15 @@ riêng, kiểm tra hai lần nạp đồng thời, tổng tiền, tồn kho và 
 Các test Java đọc SQL và các script khởi động/acceptance cũng đã cập nhật đường dẫn.
 
 Lịch sử nâng cấp và sao lưu được giữ tại
-[database-history.md](../docs/database-history.md); đường dẫn cũ trong bản lưu đó
+[database-history.md](README.md); đường dẫn cũ trong bản lưu đó
 là thông tin lịch sử, không phải hướng dẫn bootstrap hiện tại.
+
+## Identity upgrades and local manual DB
+
+Apply email-identity-upgrade.sql after a verified backup; collisions include soft-deleted users and stop migration rather than merge/delete accounts. The account-token-version section of booking-ux-upgrade.sql adds the durable revocation epoch. Apply only required sections to an existing database; do not replay the whole upgrade blindly over financial history.
+
+BCM_POS_GUEST_USER_ID must reference an active CUSTOMER-only user with an active customer profile. It is a user UUID, not a customer UUID or a phone number.
+
+Local manual testing uses bcm_manual_p2_20261111 with .tools/shared-docker/start-manual-p2.ps1. Keep the original badminton_court_db separate. The latter has legacy transfer history requiring review before a full upgrade.
+
+Before upgrading, verify pg_dump -Fc by listing and restoring into a separate database; compare data and constraints. Keep backups outside backend/target. Historical audit backup backups/bcm-remove-transfer-2026-11-05T09-39-40-425Z.dump is retained; do not delete it as part of source cleanup. The latest manual backup is .tools/develop-sync-20261112/manual-before-develop.dump. No database/volume is changed by documentation cleanup.

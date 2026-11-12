@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $bin = Join-Path $root '.tools/pgsql/bin'
 $data = Join-Path $root '.tools/pgdata'
-if (!(Test-Path (Join-Path $bin 'pg_ctl.exe'))) { throw 'PostgreSQL portable missing. Install PostgreSQL or prepare .tools/pgsql; see docs/MEMBER2-HANDOVER.md.' }
+if (!(Test-Path (Join-Path $bin 'pg_ctl.exe'))) { throw 'PostgreSQL portable missing. Install PostgreSQL or prepare .tools/pgsql; see README.md.' }
 function Check-Exit { if ($LASTEXITCODE -ne 0) { throw "Database command failed: $LASTEXITCODE" } }
 if (!(Test-Path (Join-Path $data 'PG_VERSION'))) {
     & "$bin/initdb.exe" -D $data -U postgres -A trust --encoding=UTF8 --locale=C

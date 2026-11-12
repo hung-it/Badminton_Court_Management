@@ -3,7 +3,7 @@
 ## Phạm vi và thứ tự đọc
 
 - MUST làm việc theo scope Thành viên 3 trên branch `feature/booking-engine`.
-- MUST đọc file này, `SKILL.md`, `db/migration.sql`, `plans.md`, source liên quan,
+- MUST đọc file này, `SKILL.md`, `db/migration.sql`, `README.md`, source liên quan,
   `backend/pom.xml` và `application.yml` trước khi sửa; kiểm tra Git diff hiện có.
 - MUST dùng source/build config để xác nhận convention; README/docs chỉ là tham khảo.
   Phân công và nội dung Mobile cũ không mở rộng scope hiện tại.
