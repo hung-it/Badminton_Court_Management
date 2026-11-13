@@ -25,7 +25,7 @@ export default function RevenueBreakdown({api}){
   <form className="rd-filters" onSubmit={submit}>
    <label className="field">Từ ngày<input aria-label="Từ ngày" required type="date" value={form.from} onChange={e=>setForm({...form,from:e.target.value})}/></label>
    <label className="field">Đến ngày<input aria-label="Đến ngày" required type="date" value={form.to} onChange={e=>setForm({...form,to:e.target.value})}/></label>
-   <div className="rd-quick" role="group" aria-label="Chọn nhanh khoảng ngày">{[['today','Hôm nay'],['7','7 ngày'],['30','30 ngày'],['month','Tháng này'],['year','Năm nay']].map(([key,label])=>{const r=range(key);return <button key={key} type="button" aria-pressed={form.from===r.from&&form.to===r.to} onClick={()=>setForm(r)}>{label}</button>})}</div>
+   <div className="rd-quick" role="group" aria-label="Chọn nhanh khoảng ngày">{[['today','Hôm nay'],['7','7 ngày'],['30','30 ngày'],['month','Tháng này'],['year','Năm nay']].map(([key,label])=>{const r=range(key);return <button key={key} type="button" aria-pressed={form.from===r.from&&form.to===r.to} onClick={()=>{setForm(r);setApplied({...r})}}>{label}</button>})}</div>
    <button className="primary" disabled={busy}>Xem doanh thu</button>
   </form>
   {error&&<p role="alert" className="alert error">{error}</p>}
