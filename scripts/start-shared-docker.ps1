@@ -1,4 +1,6 @@
 ﻿$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
+$OutputEncoding = [Console]::OutputEncoding
 $root = Split-Path $PSScriptRoot -Parent
 $runtimeDir = Join-Path $root '.tools/shared-docker'
 New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null

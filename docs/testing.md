@@ -13,7 +13,15 @@ Runner P1 hiện chạy toàn bộ regression bắt buộc, gồm P2 và các b�
 
 Maven chạy tuần tự từ `backend` vì các bài SQL dùng `../db`. Full runner clean trước khi chạy; không ghi log ngoài vào `backend/target` lúc clean. Log và Surefire reports ở `backend/target`. Suite `LegacyPaymentCompatibilityPostgresTest` chỉ xác nhận phương thức cũ bị từ chối, không cung cấp khả năng đọc BANK_TRANSFER. Runner regression chạy suite này cùng các kiểm tra bắt buộc.
 
-Chạy nhóm mục tiêu:
+Kiểm tra riêng SQL kiểm chứng runtime trên DB đang chạy:
+
+```powershell
+node scripts/verify-runtime-check.cjs
+```
+
+Tám ca dùng bảng TEMP theo session, không tạo DB mới hoặc sửa bảng public: phiếu nháp đã gộp hợp lệ, hủy độc lập, thiếu dòng hàng, lệch receipt và liên kết/snapshot gộp sai.
+
+Chạy nhóm backend mục tiêu:
 
 ```powershell
 powershell -NoProfile -File scripts/verify-p1.ps1 -Tests 'CustomerAuthPostgresTest,P1MasterDataConcurrencyPostgresTest,BookingPromotionPostgresTest'

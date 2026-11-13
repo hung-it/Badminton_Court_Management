@@ -2,8 +2,18 @@
 BEGIN READ ONLY;
 DO $verify$
 BEGIN
+ -- Checkout moves draft lines to the paid parent and retains the cancelled draft header.
+ IF EXISTS(SELECT 1 FROM invoices i WHERE i.parent_invoice_id IS NOT NULL AND
+  (i.status IS DISTINCT FROM 'CANCELLED' OR i.booking_id IS NULL OR i.payment_method IS NOT NULL
+   OR NOT EXISTS(SELECT 1 FROM invoices p WHERE p.id=i.parent_invoice_id AND p.status='PAID'
+    AND p.parent_invoice_id IS NULL AND p.booking_id=i.booking_id)
+   OR EXISTS(SELECT 1 FROM invoice_details d WHERE d.invoice_id=i.id)
+   OR EXISTS(SELECT 1 FROM payment_transactions t WHERE t.invoice_id=i.id))) THEN
+  RAISE EXCEPTION 'Invalid merged draft or paid parent link';
+ END IF;
  IF EXISTS(SELECT 1 FROM invoices i WHERE
-  i.product_fee IS DISTINCT FROM (SELECT coalesce(sum(d.quantity*d.unit_price),0) FROM invoice_details d WHERE d.invoice_id=i.id)
+  (i.parent_invoice_id IS NULL AND i.product_fee IS DISTINCT FROM
+   (SELECT coalesce(sum(d.quantity*d.unit_price),0) FROM invoice_details d WHERE d.invoice_id=i.id))
   OR i.total_amount IS DISTINCT FROM i.court_fee+i.product_fee-i.discount_amount
   OR (i.status='PAID' AND i.total_amount IS DISTINCT FROM
    (SELECT coalesce(sum(p.amount),0) FROM payment_transactions p WHERE p.status='SUCCESS' AND (p.invoice_id=i.id OR p.booking_id=i.booking_id)))) THEN
