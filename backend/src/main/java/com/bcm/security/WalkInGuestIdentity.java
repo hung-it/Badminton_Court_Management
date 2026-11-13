@@ -12,25 +12,29 @@ public class WalkInGuestIdentity {
     private final JdbcTemplate jdbc;
     private final UUID userId;
 
-    public WalkInGuestIdentity(JdbcTemplate jdbc, @Value("${bcm.pos.guest-user-id:}") String configuredId) {
-        this.jdbc = jdbc;
-        try {
-            this.userId = UUID.fromString(configuredId);
-        } catch (IllegalArgumentException ex) {
-            throw new IllegalStateException("BCM_POS_GUEST_USER_ID must identify the dedicated POS guest user", ex);
-        }
+    @org.springframework.beans.factory.annotation.Autowired
+    public WalkInGuestIdentity(JdbcTemplate jdbc) {
+        this.jdbc=jdbc;
+        this.userId=null;
+    }
+    // Test/reference constructor for identifying a historical account only.
+    public WalkInGuestIdentity(JdbcTemplate jdbc,String historicalId) {
+        this.jdbc=jdbc;this.userId=UUID.fromString(historicalId);
+    }
+    public UUID userId() {
+        if(userId!=null)return userId;
+        var ids=jdbc.queryForList("SELECT id FROM users WHERE email='guest@bcm.com'",UUID.class);
+        return ids.isEmpty()?new UUID(0,0):ids.get(0);
     }
 
-    public UUID userId() { return userId; }
-
-    public boolean isGuest(UUID candidate) { return userId.equals(candidate); }
+    public boolean isGuest(UUID candidate) { return userId().equals(candidate); }
 
     public UUID customerId() {
         var ids = jdbc.queryForList("SELECT c.id FROM customers c JOIN users u ON u.id=c.user_id "
                 + "WHERE u.id=? AND u.deleted_at IS NULL AND c.deleted_at IS NULL "
                 + "AND EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=u.id AND r.role_name='CUSTOMER') "
                 + "AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=u.id AND r.role_name IN ('ADMIN','STAFF'))",
-                UUID.class, userId);
+                UUID.class, userId());
         if (ids.size() != 1) throw new IllegalStateException("Configured POS guest requires one active customer and CUSTOMER-only privileges");
         return ids.get(0);
     }

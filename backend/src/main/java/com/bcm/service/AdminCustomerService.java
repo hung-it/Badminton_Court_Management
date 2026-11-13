@@ -24,7 +24,7 @@ public class AdminCustomerService {
   return Map.of("customers",rows,"totalPages",(count+19)/20,"totalElements",count);
  }
  public Map<String,Object> detail(UUID id) {
-  var c=customers.findById(id).filter(v->!guest.isGuest(v.getUser().getId()) && v.getUser().hasRole("CUSTOMER") && !v.getUser().hasRole("ADMIN") && !v.getUser().hasRole("STAFF")).orElseThrow(()->new ResourceNotFoundException("Customer not found"));
+  var c=customers.findById(id).filter(v->v.getUser()!=null && !guest.isGuest(v.getUser().getId()) && v.getUser().hasRole("CUSTOMER") && !v.getUser().hasRole("ADMIN") && !v.getUser().hasRole("STAFF")).orElseThrow(()->new ResourceNotFoundException("Customer not found"));
   var result=new LinkedHashMap<String,Object>();
   result.put("id",c.getId());result.put("userId",c.getUser().getId());
   result.put("fullName",c.getFullName());result.put("email",c.getUser().getEmail());
@@ -34,7 +34,7 @@ public class AdminCustomerService {
   result.put("invoices",jdbc.queryForList("select id as \"id\",status as \"status\",total_amount as \"total_amount\",created_at as \"created_at\" from invoices where customer_id=? and status='PAID' and deleted_at is null order by created_at desc,id",id));
   return result;
  }
- private Customer active(UUID id) {return customers.findById(id).filter(c->c.getDeletedAt()==null && !guest.isGuest(c.getUser().getId())).orElseThrow(()->new ResourceNotFoundException("Customer not found"));}
+ private Customer active(UUID id) {return customers.findById(id).filter(c->c.getUser()!=null && c.getDeletedAt()==null && !guest.isGuest(c.getUser().getId())).orElseThrow(()->new ResourceNotFoundException("Customer not found"));}
  @Transactional public UUID save(UUID id,AdminCustomerRequest r) {
   if("0000000000".equals(r.phone().replaceAll("[^0-9]",""))) throw new BadRequestException("Reserved POS guest phone");
   Customer c=id==null?new Customer():active(id); User u=id==null?new User():c.getUser();
@@ -49,6 +49,7 @@ public class AdminCustomerService {
  }
  @Transactional public void disable(UUID id) {
   Customer c=customers.findById(id).orElseThrow(()->new ResourceNotFoundException("Customer not found"));
+  if(c.getUser()==null)throw new BadRequestException("Buyer has no login account");
   accounts.disable(c.getUser().getId());
  }
 }

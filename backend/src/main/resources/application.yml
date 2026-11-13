@@ -3,9 +3,6 @@
 # Badminton Court Management System
 # ======================================
 
-bcm:
-  pos:
-    guest-user-id: ${BCM_POS_GUEST_USER_ID:}
 
 booking:
   auto-checkout:

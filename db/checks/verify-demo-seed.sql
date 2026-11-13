@@ -2,12 +2,12 @@
 BEGIN READ ONLY;
 DO $verify$
 BEGIN
-    IF (SELECT count(*) FROM users)<>15 OR (SELECT count(*) FROM user_roles)<>15
-       OR (SELECT count(*) FROM staffs)<>5 OR (SELECT count(*) FROM customers)<>10 THEN
-        RAISE EXCEPTION 'Expected 15 accounts, 5 staff profiles (including ADMIN), 10 customers';
+    IF (SELECT count(*) FROM users)<>14 OR (SELECT count(*) FROM user_roles)<>14
+       OR (SELECT count(*) FROM staffs)<>5 OR (SELECT count(*) FROM customers)<>9 THEN
+        RAISE EXCEPTION 'Expected 14 accounts, 5 staff profiles (including ADMIN), 9 customers';
     END IF;
     IF EXISTS (SELECT r.role_name FROM roles r LEFT JOIN user_roles ur ON ur.role_id=r.id
-        GROUP BY r.role_name HAVING count(ur.user_id)<>CASE r.role_name WHEN 'ADMIN' THEN 1 WHEN 'STAFF' THEN 4 ELSE 10 END) THEN
+        GROUP BY r.role_name HAVING count(ur.user_id)<>CASE r.role_name WHEN 'ADMIN' THEN 1 WHEN 'STAFF' THEN 4 ELSE 9 END) THEN
         RAISE EXCEPTION 'Unexpected role distribution';
     END IF;
     IF (SELECT count(*) FROM products)<>11 OR (SELECT count(*) FROM suppliers)<>3
@@ -18,7 +18,7 @@ BEGIN
        OR (SELECT count(*) FROM bookings WHERE status='PAID')<>2
        OR (SELECT count(*) FROM bookings WHERE status='PENDING')<>1
        OR (SELECT count(*) FROM bookings)<>103
-       OR (SELECT count(*) FROM invoices WHERE status='PAID')<>150
+       OR (SELECT count(*) FROM invoices WHERE status='PAID')<>162
        OR (SELECT count(*) FROM invoices WHERE status='DRAFT')<>1
        OR (SELECT count(*) FROM promotions WHERE code LIKE 'KM-OFF-%' AND NOT is_active)<>3 THEN
         RAISE EXCEPTION 'BCM dataset counts do not match';

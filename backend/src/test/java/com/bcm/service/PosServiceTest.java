@@ -88,7 +88,7 @@ class PosServiceTest {
         verify(invoiceRepository, never()).saveAndFlush(any());
     }
     @Test
-    void salePersistsGoodsAndServiceTypeSnapshotsDespiteLaterProductChanges() {
+    void walkInPhoneIsSavedOnInvoiceWithoutCreatingLoginAndRegisteredPhoneReusesProfile() {
         UUID productId=UUID.randomUUID(),actor=UUID.randomUUID(),registeredCustomer=UUID.randomUUID();
         Product product=new Product();product.setId(productId);product.setName("Water");product.setType(ProductType.GOODS);
         product.setPrice(BigDecimal.TEN);product.setStockQuantity(10);
@@ -97,17 +97,21 @@ class PosServiceTest {
         when(productPromotions.best(any(),org.mockito.ArgumentMatchers.anyInt(),any(),any()))
                 .thenReturn(new ProductPromotionService.Discount(null,null,BigDecimal.ZERO,BigDecimal.ZERO));
         when(invoiceRepository.saveAndFlush(any())).thenAnswer(call->{var invoice=(com.bcm.entity.Invoice)call.getArgument(0);invoice.setId(UUID.randomUUID());return invoice;});
-        var customer=new com.bcm.entity.Customer();customer.setId(registeredCustomer);
-        when(customerRepository.findById(registeredCustomer)).thenReturn(Optional.of(customer));
+        when(jdbc.queryForList(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.eq(UUID.class),org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(call->"84912345678".equals(call.getArgument(2))?List.of(registeredCustomer):List.of());
         for(String method:List.of("CASH","VNPAY")) {
             product.setType(method.equals("CASH")?ProductType.GOODS:ProductType.SERVICE);
-            var r=new PosSaleRequest(registeredCustomer,null,null,method,BigDecimal.ZERO,BigDecimal.ZERO,List.of(new PosSaleItemRequest(productId,1)));
-            r.setExpectedTotal(BigDecimal.TEN);
+            var r=new PosSaleRequest(null,null,null,method,BigDecimal.ZERO,BigDecimal.ZERO,List.of(new PosSaleItemRequest(productId,1)));
+            r.setCustomerPhone(method.equals("CASH")?"0912 345 678":"+84 912 345 678");r.setExpectedTotal(BigDecimal.TEN);
             r.setIdempotencyKey(UUID.randomUUID());r.setPaymentConfirmed(true);
             var saved=posService.sell(r);
+            assertEquals(method.equals("CASH")?"0912345678":"84912345678",saved.getBuyerPhone());
             if(method.equals("VNPAY"))assertEquals(registeredCustomer,saved.getCustomerId());
             org.junit.jupiter.api.Assertions.assertNotNull(saved.getCustomerId());assertEquals("PAID",saved.getStatus());
         }
+        var writes=org.mockito.Mockito.mockingDetails(jdbc).getInvocations().stream().filter(i->i.getMethod().getName().equals("update")).toList();
+        assertEquals(1,writes.size());
+        org.junit.jupiter.api.Assertions.assertTrue(((String)writes.get(0).getArgument(0)).contains("customers(id,user_id,full_name,phone,created_at,updated_at) VALUES (?,NULL"));
         org.mockito.Mockito.verify(payments,org.mockito.Mockito.times(2)).saveAndFlush(any());
         verify(customerRepository,never()).save(any());
         var detailWrites=org.mockito.Mockito.mockingDetails(invoiceDetailRepository).getInvocations().stream().filter(i->i.getMethod().getName().equals("saveAll")).toList();

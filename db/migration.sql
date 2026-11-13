@@ -47,7 +47,7 @@ CREATE TABLE user_roles (
 -- Customers table (Domain data)
 CREATE TABLE customers (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     full_name VARCHAR(255) NOT NULL,
     phone VARCHAR(20) NOT NULL,
     address TEXT,
@@ -190,6 +190,7 @@ CREATE TABLE discount_rules (
 -- Invoices table (MOVED UP - before payment_transactions and customer_voucher_usage)
 CREATE TABLE invoices (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    buyer_phone VARCHAR(20),
     booking_id UUID REFERENCES bookings(id) ON DELETE RESTRICT,
     customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
     promotion_id UUID REFERENCES promotions(id) ON DELETE SET NULL,

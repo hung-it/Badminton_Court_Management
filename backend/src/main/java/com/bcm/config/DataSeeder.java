@@ -27,7 +27,6 @@ public class DataSeeder implements CommandLineRunner {
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final com.bcm.security.WalkInGuestIdentity guest;
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     @Override
@@ -35,7 +34,6 @@ public class DataSeeder implements CommandLineRunner {
     public void run(String... args) {
         seedRoles();
         seedAdminUser();
-        seedGuestCustomer();
     }
 
     /**
@@ -101,17 +99,4 @@ public class DataSeeder implements CommandLineRunner {
         }
     }
 
-    /**
-     * Seed default guest customer "Khách vãng lai" for POS sales
-     */
-    private void seedGuestCustomer() {
-        if (userRepository.findById(guest.userId()).isPresent()) return;
-        if (userRepository.existsByEmail("guest@bcm.com"))
-            throw new IllegalStateException("Configure BCM_POS_GUEST_USER_ID with the existing guest users.id");
-        jdbc.update("INSERT INTO users(id,email,password_hash,full_name,phone,created_at,updated_at) VALUES (?,'guest@bcm.com',?,'Khách vãng lai','0000000000',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
-                guest.userId(), passwordEncoder.encode("guest123"));
-        jdbc.update("INSERT INTO user_roles(user_id,role_id) SELECT ?,id FROM roles WHERE role_name='CUSTOMER'", guest.userId());
-        jdbc.update("INSERT INTO customers(id,user_id,full_name,phone,created_at,updated_at) VALUES (?,?,'Khách vãng lai','0000000000',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
-                java.util.UUID.randomUUID(),guest.userId());
-    }
 }

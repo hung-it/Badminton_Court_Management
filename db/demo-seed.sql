@@ -27,9 +27,9 @@ BEGIN
         RETURN;
     END IF;
 
-    -- Four staff, nine named customers and the existing dedicated walk-in account.
+    -- Four staff and nine named login customers. Walk-in buyers have no login.
     -- ADMIN also has a Staff profile, as permitted by the current actor mapping.
-    FOR i IN 1..15 LOOP
+    FOR i IN 1..14 LOOP
         uid := pg_temp.seed_id('user-'||i);
         role_value := CASE WHEN i=1 THEN 'ADMIN' WHEN i<=5 THEN 'STAFF' ELSE 'CUSTOMER' END;
         email_value := CASE WHEN i=1 THEN 'admin@bcm.test'
@@ -52,11 +52,6 @@ BEGIN
             WHEN i=14 THEN 'Bùi Thị Hương'
             ELSE 'Khách hàng '||(i-5) END;
         phone_value := CASE WHEN i=15 THEN '0000000000' ELSE '090000'||lpad(i::text,4,'0') END;
-        -- Reuse the existing dedicated guest without changing its credentials/profile.
-        IF i=15 AND EXISTS(SELECT 1 FROM users WHERE email=email_value) THEN
-            SELECT u.id,c.id INTO STRICT uid,cid FROM users u JOIN customers c ON c.user_id=u.id
-            WHERE u.email=email_value AND u.deleted_at IS NULL AND c.deleted_at IS NULL AND c.phone='0000000000';
-        ELSE
             INSERT INTO users(id,email,password_hash,full_name,phone,address,created_at,updated_at)
             VALUES(uid,email_value,seed_hash,name_value,phone_value,'TP. Hồ Chí Minh',origin,origin);
             IF i<=5 THEN
@@ -70,7 +65,6 @@ BEGIN
                 INSERT INTO customers(id,user_id,full_name,phone,address,created_at,updated_at)
                 VALUES(cid,uid,name_value,phone_value,'TP. Hồ Chí Minh',origin,origin);
             END IF;
-        END IF;
         INSERT INTO user_roles(user_id,role_id)
         SELECT uid,id FROM roles WHERE role_name=role_value ON CONFLICT DO NOTHING;
         IF i>5 THEN customers_seed := array_append(customers_seed,cid); END IF;
@@ -197,7 +191,7 @@ BEGIN
             CASE WHEN i=3 THEN 'KM-OFF-3' END,CASE WHEN i=3 THEN 1 END,
             CASE WHEN i=1 THEN 'PERCENT' ELSE 'AMOUNT' END,CASE WHEN i=1 THEN 10 ELSE 30000 END,CASE WHEN i=1 THEN 3 ELSE 1 END);
     END LOOP;
-    RAISE NOTICE 'BCM BCM v1 installed: 15 accounts, 11 catalog products, 3 suppliers, 12 imports, 100 bookings, 150 invoices, 3 disabled promotions';
+    RAISE NOTICE 'BCM BCM v1 installed: 14 login accounts, 11 catalog products, 3 suppliers, 12 imports, 100 bookings, 150 invoices, 3 disabled promotions';
 END $dataset$;
 
 -- Additive v1.1 work queue: also executes for databases that already installed v1.
@@ -291,4 +285,56 @@ BEGIN
     RAISE NOTICE 'Checkout BCM ready; paid receipts, pending POS and ten-minute unpaid hold follow normal lifecycle';
 END $checkout$;
 
+-- Explicit coursework simulation, never evidence of an external gateway payment.
+DO $vnpay_dataset$
+DECLARE i int; inv uuid; cust uuid; prod uuid; staff uuid; stamp timestamp; price numeric;
+BEGIN
+ SELECT id INTO STRICT cust FROM customers WHERE id=pg_temp.seed_id('customer-6');
+ SELECT id,products.price INTO STRICT prod,price FROM products WHERE name='Thuê vợt theo lượt' AND deleted_at IS NULL;
+ staff:=pg_temp.seed_id('staff-2');
+ FOR i IN 1..12 LOOP
+  inv:=pg_temp.seed_id('vnpay-invoice-'||i);
+  IF EXISTS(SELECT 1 FROM invoices WHERE id=inv) THEN CONTINUE; END IF;
+  stamp:=date_trunc('month',current_date)-((12-i)||' months')::interval+interval '10 hours';
+  INSERT INTO invoices(id,customer_id,status,payment_method,court_fee,product_fee,discount_amount,total_amount,created_by,created_at,updated_at)
+  VALUES(inv,cust,'PAID','VNPAY',0,price,0,price,staff,stamp,stamp);
+  INSERT INTO invoice_details(id,invoice_id,product_id,product_name,quantity,unit_price,discount_amount,note,stock_deducted,created_at,product_type)
+  VALUES(pg_temp.seed_id('vnpay-line-'||i),inv,prod,'Thuê vợt theo lượt',1,price,0,'Thuê vợt theo lượt',false,stamp,'SERVICE');
+  INSERT INTO payment_transactions(id,invoice_id,payment_method,transaction_id,status,amount,transaction_date,created_at,source,note,reference)
+  VALUES(pg_temp.seed_id('vnpay-receipt-'||i),inv,'VNPAY','BCM-VNPAY-'||i,'SUCCESS',price,stamp,stamp,'GATEWAY','Mô phỏng VNPay; không phải giao dịch thật','BCM-VNPAY-'||i);
+ END LOOP;
+END $vnpay_dataset$;
+-- Product promotions seed: safe rerun, never creates duplicates or changes existing rules
+DO $product_promotions$
+BEGIN
+    INSERT INTO promotions(code, name, valid_from, valid_to, is_active)
+    SELECT v.code, v.name, v.valid_from::date, v.valid_to::date, true
+    FROM (VALUES
+        ('KM-NUOCSUOI10', 'Ưu đãi nước suối: Mua từ 3 chai giảm 10%', '2024-01-01', '2030-12-31'),
+        ('KM-DIENGIAI15', 'Ưu đãi nước điện giải: Mua từ 2 chai giảm 15%', '2024-01-01', '2030-12-31'),
+        ('KM-CAULONG10', 'Ưu đãi cầu lông tiêu chuẩn: Mua từ 5 quả giảm 10%', '2024-01-01', '2030-12-31'),
+        ('KM-ONGCAU5', 'Ưu đãi ống cầu lông: Mua từ 2 ống giảm 5%', '2024-01-01', '2030-12-31'),
+        ('KM-QUANCAN20', 'Ưu đãi quấn cán vợt: Mua từ 3 cái giảm 20%', '2024-01-01', '2030-12-31'),
+        ('KM-THUEVOT10', 'Ưu đãi thuê vợt: Thuê từ 2 lượt giảm 10%', '2024-01-01', '2030-12-31')
+    ) AS v(code, name, valid_from, valid_to)
+    WHERE NOT EXISTS (
+        SELECT 1 FROM promotions p WHERE upper(p.code) = upper(v.code)
+    );
+
+    INSERT INTO discount_rules(promotion_id, rule_type, target_product_id, min_quantity, discount_type, discount_value)
+    SELECT p.id, 'PRODUCT', prod.id, v.min_qty, 'PERCENT', v.discount_val
+    FROM (VALUES
+        ('KM-NUOCSUOI10', 'Nước suối 500ml', 3, 10.00),
+        ('KM-DIENGIAI15', 'Nước điện giải 500ml', 2, 15.00),
+        ('KM-CAULONG10', 'Cầu lông tiêu chuẩn', 5, 10.00),
+        ('KM-ONGCAU5', 'Ống cầu lông 12 quả', 2, 5.00),
+        ('KM-QUANCAN20', 'Quấn cán vợt', 3, 20.00),
+        ('KM-THUEVOT10', 'Thuê vợt theo lượt', 2, 10.00)
+    ) AS v(code, prod_name, min_qty, discount_val)
+    JOIN promotions p ON upper(p.code) = upper(v.code)
+    JOIN products prod ON lower(btrim(prod.name)) = lower(btrim(v.prod_name)) AND prod.deleted_at IS NULL
+    WHERE NOT EXISTS (
+        SELECT 1 FROM discount_rules d WHERE d.promotion_id = p.id
+    );
+END $product_promotions$;
 COMMIT;

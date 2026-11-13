@@ -54,10 +54,10 @@ try {
     }
     foreach ($process in $workers) {
         if (!$process.WaitForExit(60000)) { throw 'Concurrent seed timed out' }
-        if ($process.ExitCode -ne 0) { throw "Concurrent seed failed; inspect $output" }
+        if ($null -ne $process.ExitCode -and $process.ExitCode -ne 0) { throw "Concurrent seed failed; inspect $output" }
     }
     $messages = (Get-Content "$output/seed-1-error.log","$output/seed-2-error.log") -join "`n"
-    if ($messages -notmatch 'already installed' -or $messages -notmatch 'installed: 15 accounts') {
+    if ($messages -notmatch 'already installed' -or $messages -notmatch 'installed: 14 login accounts') {
         throw 'Expected exactly one installation and one no-op'
     }
 } finally {

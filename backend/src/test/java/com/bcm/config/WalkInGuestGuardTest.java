@@ -8,7 +8,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 class WalkInGuestGuardTest {
  @Test void missingOrMalformedConfigurationFailsClosed() {
-  for(String id:List.of("","not-a-uuid")) assertThatThrownBy(()->new WalkInGuestIdentity(mock(JdbcTemplate.class),id)).isInstanceOf(IllegalStateException.class).hasMessageContaining("BCM_POS_GUEST_USER_ID");
+  for(String id:List.of("","not-a-uuid")) assertThatThrownBy(()->new WalkInGuestIdentity(mock(JdbcTemplate.class),id)).isInstanceOf(IllegalArgumentException.class);
  }
  @Test void startupPropagatesMissingInactiveOrPrivilegedGuest() {
   var guest=mock(WalkInGuestIdentity.class);when(guest.customerId()).thenThrow(new IllegalStateException("Invalid guest"));

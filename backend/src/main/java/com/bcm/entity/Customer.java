@@ -10,8 +10,8 @@ import lombok.Setter;
 @Getter
 @Setter
 public class Customer extends BaseEntity {
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "user_id", nullable = true, unique = true)
     private User user;
     @Column(name = "full_name", nullable = false)
     private String fullName;

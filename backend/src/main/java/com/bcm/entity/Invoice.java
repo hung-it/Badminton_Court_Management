@@ -35,6 +35,8 @@ public class Invoice extends BaseEntity {
     @Column(name = "payment_method", length = 50)
     private String paymentMethod;
 
+    @Column(name="buyer_phone",length=20)
+    private String buyerPhone;
     private UUID posRequestKey;
     private String requestFingerprint;
     private UUID createdByUser;

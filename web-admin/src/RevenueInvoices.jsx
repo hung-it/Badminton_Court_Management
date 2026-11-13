@@ -1,6 +1,6 @@
 import React,{useEffect,useState} from 'react';
 const money=n=>new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND'}).format(n||0);
-const methods={CASH:'Tiền mặt',VNPAY:'VNPay',BANK_TRANSFER:'Chuyển khoản (lịch sử)'};
+const methods={CASH:'Tiền mặt',VNPAY:'VNPay'};
 export default function RevenueInvoices({api,params="",openId,customer,onClearCustomer}){
  const [search,setSearch]=useState(''),[method,setMethod]=useState(''),[from,setFrom]=useState(''),[to,setTo]=useState('');
  const [page,setPage]=useState(0),[refresh,setRefresh]=useState(0),[history,setHistory]=useState(null),[busy,setBusy]=useState(true),[error,setError]=useState('');

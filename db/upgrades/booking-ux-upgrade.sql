@@ -172,69 +172,12 @@ COMMIT;
 
 -- BEGIN SECTION: payment-method-compatibility
 BEGIN;
-SET LOCAL lock_timeout = '5s';
-DO $methods$
-DECLARE t text; n text; definition text;
- legacy_enabled boolean := to_regprocedure('bcm_guard_legacy_bank_transfer()') IS NOT NULL;
- booking_ids uuid[] := ARRAY[
- '5378d15f-c4d5-4749-a567-2209de11848a','649d7874-76d7-4819-ae5f-252605fa6d47',
- '868ae90d-f7f9-484a-ae2d-4f498b96439a','ad54a6cc-d66a-4a95-a416-295f2342a077',
- 'b3f34c1c-0869-4fc9-a2fb-5d70f2ccca5d','bb33e652-8a7a-4907-a639-b3501e5f6b96',
- 'ca147e41-1aae-461f-8b57-3e1c5cbbe8aa','e14f66d2-ebb8-40db-a364-80f86cb1a8f9',
- 'e3ec9f78-8f56-442c-ab94-8e268755a338']::uuid[];
- payment_ids uuid[] := ARRAY[
- '0be54dec-af96-4ee8-8589-a03181aebed0','2a39e782-beff-4d01-8469-887552ae78c8',
- '42e519bc-0c4c-4d95-ad9b-91b76948de4a','484b24f7-b166-48bd-b912-ba49da9f4a89',
- '4ee3e446-96eb-43a0-b822-180c9c7c2ee8','7c7113a6-955c-4210-af1d-9144dfa77192',
- 'a6e21c5d-ac95-4761-a6cb-5e25d787cfef','b1306c42-6fed-4bfb-842d-c2e09507c140',
- 'dced5a24-640d-4a06-9121-48a2af080580']::uuid[];
- invoice_ids uuid[] := ARRAY[
- '10f3a738-d6dd-455f-b821-fcf53b253100','7cac4c2e-8001-4d8e-b16c-dd5816843c98',
- '93de3edc-d846-46b9-bd36-89960a450ae0','9c93b405-dd07-46a3-9691-de5b0672ccf4',
- 'e9bfdacc-6ce8-40ac-bc79-bdf208c537c9']::uuid[];
-BEGIN
- -- Reviewed development-only cleanup, explicitly authorized 2026-11-05.
- -- Never runs during ordinary bootstrap/upgrades. Requires a fresh verified backup.
- -- These invoices are dependent counter-settlement fixtures of the listed transfer bookings,
- -- not independent CASH sales. No payment is relabelled and no stock is changed.
- IF current_setting('bcm.remove_development_transfers',true)='on'
-    AND EXISTS(SELECT 1 FROM payment_transactions WHERE payment_method='BANK_TRANSFER') THEN
-  IF current_database()<>'badminton_court_db' THEN RAISE EXCEPTION 'Cleanup approved only for reviewed development database'; END IF;
-  LOCK TABLE bookings,payment_transactions,invoices,invoice_details,booking_details,customer_voucher_usage IN SHARE ROW EXCLUSIVE MODE;
-  IF (SELECT count(*) FROM payment_transactions WHERE payment_method='BANK_TRANSFER')<>9
-     OR (SELECT count(*) FROM payment_transactions WHERE id=ANY(payment_ids) AND booking_id=ANY(booking_ids) AND payment_method='BANK_TRANSFER' AND invoice_id IS NULL)<>9
-     OR (SELECT count(*) FROM payment_transactions WHERE id=ANY(payment_ids) AND status='PENDING' AND note LIKE 'CUSTOMER_DECLARED;%')<>6
-     OR (SELECT count(*) FROM payment_transactions WHERE id=ANY(payment_ids) AND status='SUCCESS' AND transaction_id='RECONCILED-'||id::text AND note LIKE 'STAFF_RECEIVED;%CUSTOMER_DECLARED;%')<>3
-     OR EXISTS(SELECT 1 FROM payment_transactions WHERE (booking_id=ANY(booking_ids) OR invoice_id=ANY(invoice_ids)) AND NOT(id=ANY(payment_ids)))
-     OR (SELECT count(*) FROM bookings WHERE id=ANY(booking_ids))<>9
-     OR (SELECT count(*) FROM invoices WHERE id=ANY(invoice_ids) AND booking_id=ANY(booking_ids) AND payment_method='CASH')<>5
-     OR EXISTS(SELECT 1 FROM invoices WHERE booking_id=ANY(booking_ids) AND NOT(id=ANY(invoice_ids))) THEN
-   RAISE EXCEPTION 'Reviewed development cluster has changed; rollback and audit again';
-  END IF;
-  DELETE FROM customer_voucher_usage WHERE invoice_id=ANY(invoice_ids);
-  DELETE FROM invoice_details WHERE invoice_id=ANY(invoice_ids);
-  DELETE FROM payment_transactions WHERE id=ANY(payment_ids);
-  DELETE FROM invoices WHERE id=ANY(invoice_ids);
-  DELETE FROM booking_details WHERE booking_id=ANY(booking_ids);
-  DELETE FROM bookings WHERE id=ANY(booking_ids);
+DO $$ BEGIN
+ IF EXISTS(SELECT 1 FROM invoices WHERE payment_method NOT IN ('CASH','VNPAY'))
+ OR EXISTS(SELECT 1 FROM payment_transactions WHERE payment_method NOT IN ('CASH','VNPAY')) THEN
+ RAISE EXCEPTION 'Unsupported payment history: stop and review; no automatic conversion permitted';
  END IF;
- IF EXISTS(SELECT 1 FROM invoices WHERE payment_method NOT IN ('CASH','VNPAY','MIXED') AND NOT(legacy_enabled AND payment_method='BANK_TRANSFER')) OR EXISTS(SELECT 1 FROM payment_transactions WHERE payment_method NOT IN ('CASH','VNPAY') AND NOT(legacy_enabled AND payment_method='BANK_TRANSFER')) THEN
-  RAISE EXCEPTION 'Unsupported historical payments require a reviewed data migration; no automatic conversion is permitted';
- END IF;
- FOREACH t IN ARRAY ARRAY['invoices','payment_transactions'] LOOP
-  n=t||'_payment_method_check';
-  SELECT pg_get_constraintdef(oid) INTO definition FROM pg_constraint WHERE conrelid=t::regclass AND conname=n;
-  IF definition IS NOT NULL AND (position('MOMO' in definition)>0 OR (position('BANK_TRANSFER' in definition)>0 AND NOT legacy_enabled)) THEN
-   EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I',t,n); definition=NULL;
-  ELSIF definition IS NOT NULL AND NOT (position('CASH' in definition)>0 AND position('VNPAY' in definition)>0) THEN
-   RAISE EXCEPTION 'Unrecognized payment constraint on %, manual review required',t;
-  END IF;
-  IF definition IS NULL THEN
-   IF legacy_enabled THEN EXECUTE format('ALTER TABLE %I ADD CONSTRAINT %I CHECK(payment_method IN (''CASH'',''VNPAY'',''BANK_TRANSFER''))',t,n);
-   ELSE EXECUTE format('ALTER TABLE %I ADD CONSTRAINT %I CHECK(payment_method IN (''CASH'',''VNPAY''))',t,n); END IF;
-  END IF;
- END LOOP;
-END $methods$;
+END $$;
 COMMIT;
 -- END SECTION: payment-method-compatibility
 
@@ -245,8 +188,8 @@ SET LOCAL lock_timeout = '5s';
 LOCK TABLE invoices,payment_transactions IN SHARE ROW EXCLUSIVE MODE;
 DO $$ DECLARE blocked text; BEGIN
  SELECT string_agg(id::text, ', ') INTO blocked FROM (
- SELECT id FROM invoices WHERE (payment_method NOT IN ('CASH','VNPAY','MIXED') AND NOT(payment_method='BANK_TRANSFER' AND to_regprocedure('bcm_guard_legacy_bank_transfer()') IS NOT NULL)) OR (status='DRAFT' AND payment_method IS NOT NULL)
- UNION ALL SELECT id FROM payment_transactions WHERE payment_method NOT IN ('CASH','VNPAY') AND NOT(payment_method='BANK_TRANSFER' AND to_regprocedure('bcm_guard_legacy_bank_transfer()') IS NOT NULL)) x;
+ SELECT id FROM invoices WHERE payment_method NOT IN ('CASH','VNPAY','MIXED') OR (status='DRAFT' AND payment_method IS NOT NULL)
+ UNION ALL SELECT id FROM payment_transactions WHERE payment_method NOT IN ('CASH','VNPAY')) x;
  IF blocked IS NOT NULL THEN RAISE EXCEPTION 'Payment migration blocked by historical records requiring review: %', blocked; END IF;
 END $$;
 ALTER TABLE invoices ALTER COLUMN payment_method DROP NOT NULL;
@@ -280,7 +223,7 @@ END $$;
 ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_payment_method_check;
 UPDATE invoices SET payment_method=NULL WHERE payment_method='MIXED';
 DO $$ DECLARE allowed text; BEGIN
- allowed:=CASE WHEN to_regprocedure('bcm_guard_legacy_bank_transfer()') IS NOT NULL THEN '''CASH'',''VNPAY'',''BANK_TRANSFER''' ELSE '''CASH'',''VNPAY''' END;
+ allowed:='''CASH'',''VNPAY''';
  EXECUTE 'ALTER TABLE invoices ADD CONSTRAINT invoices_payment_method_check CHECK ((status=''DRAFT'' AND payment_method IS NULL) OR (status IN (''PAID'',''CANCELLED'',''REFUNDED'') AND (payment_method IS NULL OR payment_method IN ('||allowed||'))))';
  ALTER TABLE payment_transactions DROP CONSTRAINT IF EXISTS payment_transactions_payment_method_check;
  EXECUTE 'ALTER TABLE payment_transactions ADD CONSTRAINT payment_transactions_payment_method_check CHECK(payment_method IN ('||allowed||'))';
@@ -288,7 +231,6 @@ END $$;
 DO $$ BEGIN
  IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='payment_transactions'::regclass AND conname='chk_receipt_source') THEN
  ALTER TABLE payment_transactions ADD CONSTRAINT chk_receipt_source CHECK (
- (source='LEGACY' AND payment_method='BANK_TRANSFER' AND to_regprocedure('bcm_guard_legacy_bank_transfer()') IS NOT NULL) OR
  (source='GATEWAY' AND payment_method='VNPAY' AND confirmed_by IS NULL AND confirmed_by_user IS NULL) OR
  (source='MANUAL' AND confirmed_by_user IS NOT NULL AND transaction_date IS NOT NULL AND status='SUCCESS' AND amount>0));
  END IF;
@@ -345,6 +287,13 @@ BEGIN
 END $account_token_version$;
 COMMIT;
 -- END SECTION: account-token-version
+
+-- Separate buyer identity from authentication. Existing user/customer links remain intact.
+BEGIN;
+ALTER TABLE customers ALTER COLUMN user_id DROP NOT NULL;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS buyer_phone VARCHAR(20);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_walkin_phone ON customers(phone) WHERE user_id IS NULL AND deleted_at IS NULL;
+COMMIT;
 
 -- INVOICE_TYPE_SNAPSHOT_UPGRADE: nullable history; only evidence-based backfill.
 BEGIN;

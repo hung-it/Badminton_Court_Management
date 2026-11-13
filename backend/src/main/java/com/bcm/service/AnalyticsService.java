@@ -108,7 +108,7 @@ public class AnalyticsService {
     private InvoiceReportResponse.Summary summary(Invoice i) {
         var customer=customers.findById(i.getCustomerId());
         String name=customer.map(Customer::getFullName).orElse("Khách vãng lai");
-        String phone=customer.filter(c->c.getUser()==null||!guest.isGuest(c.getUser().getId())).map(Customer::getPhone).orElse(null);
+        String phone=i.getBuyerPhone()!=null?i.getBuyerPhone():customer.filter(c->c.getUser()==null||!guest.isGuest(c.getUser().getId())).map(Customer::getPhone).orElse(null);
         String email=customer.filter(c->c.getUser()!=null&&!guest.isGuest(c.getUser().getId())).map(c->c.getUser().getEmail()).orElse(null);
         return new InvoiceReportResponse.Summary(i.getId(),i.getBookingId(),name,i.getCreatedAt(),i.getPaymentMethod(),
             valueOrZero(i.getCourtFee()),i.getProductFee(),i.getDiscountAmount(),i.getTotalAmount(),i.getStatus(),i.getBookingId()==null?null:bookings.findById(i.getBookingId()).map(b->b.getStatus().name()).orElse(null),

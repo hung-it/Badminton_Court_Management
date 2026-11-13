@@ -41,7 +41,6 @@ public class PosService {
     private final ProductPriceService productPrices;
     private final com.bcm.repository.BookingRepository bookings;
     private final com.bcm.security.CurrentStaffService currentStaff;
-    private final com.bcm.security.WalkInGuestIdentity guest;
 
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
     private final com.bcm.repository.PaymentTransactionRepository payments;
@@ -122,12 +121,13 @@ public class PosService {
         BigDecimal actual=courtFee.add(productFee).subtract(discountAmount);
         if(request.getExpectedTotal()==null || request.getExpectedTotal().compareTo(actual)!=0)
             throw new com.bcm.exception.DuplicateResourceException("Báo giá đã thay đổi; tải lại báo giá và xác nhận lại số tiền.");
-        UUID customerId = resolveCustomerId(request.getCustomerId());
+        UUID customerId = resolveCustomerId(request);
 
         UUID cashierId = currentStaff.currentStaffId().orElse(null);
         Invoice invoice = Invoice.builder()
                 .bookingId(request.getBookingId())
                 .customerId(customerId)
+                .buyerPhone(request.getBookingId()==null?request.getCustomerPhone().replaceAll("[^0-9]",""):null)
                 .posRequestKey(request.getIdempotencyKey()).requestFingerprint(fingerprint).createdByUser(actor)
                 .paymentMethod(paymentMethod)
                 .status(request.getBookingId() == null ? "PAID" : "DRAFT")
@@ -198,10 +198,17 @@ public class PosService {
         request.setCustomerId(b.getCustomer().getId());
     }
 
-    private UUID resolveCustomerId(UUID requestedCustomerId) {
-        if(requestedCustomerId!=null) return customerRepository.findById(requestedCustomerId)
-            .filter(c->c.getDeletedAt()==null).orElseThrow(()->new ResourceNotFoundException("Customer not found")).getId();
-        return guest.customerId();
+    private UUID resolveCustomerId(PosSaleRequest request) {
+        if(request.getBookingId()!=null)return request.getCustomerId();
+        String phone=request.getCustomerPhone()==null?"":request.getCustomerPhone().replaceAll("[^0-9]","");
+        if(!phone.matches("[0-9]{8,15}")||phone.matches("0+"))throw new BadRequestException("Nhập số điện thoại khách mua hàng hợp lệ");
+        jdbc.query("SELECT pg_advisory_xact_lock(hashtextextended(?,0))",rs->{},"buyer:"+phone);
+        var matches=jdbc.queryForList("SELECT c.id FROM customers c LEFT JOIN users u ON u.id=c.user_id WHERE regexp_replace(c.phone,'[^0-9]','','g')=? AND c.deleted_at IS NULL AND (c.user_id IS NULL OR u.deleted_at IS NULL) ORDER BY c.user_id NULLS LAST,c.id",UUID.class,phone);
+        if(matches.size()>1)throw new BadRequestException("Số điện thoại có nhiều hồ sơ; cần kiểm tra trước khi bán");
+        if(!matches.isEmpty())return matches.get(0);
+        UUID id=UUID.randomUUID();
+        jdbc.update("INSERT INTO customers(id,user_id,full_name,phone,created_at,updated_at) VALUES (?,NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",id,"Khách vãng lai "+phone,phone);
+        return id;
     }
 
     public String manualMethod(String method) {
@@ -255,7 +262,7 @@ public class PosService {
     }
 
     private String fingerprint(PosSaleRequest r,UUID actor) {
-        String value=actor+"|"+r.getCustomerId()+"|"+r.getBookingId()+"|"+r.getPaymentMethod()+"|"+r.getCourtFee()+"|"+r.getDiscountAmount()+"|"+r.getPromotionCode()+"|"+r.isPaymentConfirmed()+"|"+r.getReference()+"|"+r.getExpectedTotal()+"|"+new java.util.TreeMap<>(aggregateQuantities(r.getItems()));
+        String value=actor+"|"+r.getCustomerPhone()+"|"+r.getCustomerId()+"|"+r.getBookingId()+"|"+r.getPaymentMethod()+"|"+r.getCourtFee()+"|"+r.getDiscountAmount()+"|"+r.getPromotionCode()+"|"+r.isPaymentConfirmed()+"|"+r.getReference()+"|"+r.getExpectedTotal()+"|"+new java.util.TreeMap<>(aggregateQuantities(r.getItems()));
         try { return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8))); }
         catch(java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
     }

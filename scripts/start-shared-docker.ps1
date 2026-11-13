@@ -86,4 +86,4 @@ foreach ($site in @(@{Folder='web-admin';Port=5173}, @{Folder='web-app';Port=517
     if (!$siteReady) { throw "$($site.Folder) chưa sẵn sàng. Xem log trong $runtimeDir." }
 }
 Write-Host 'Web Admin: http://127.0.0.1:5173/ | Web User: http://127.0.0.1:5174/'
-Write-Host 'Cả hai dùng Docker API 8080 và DB badminton_court_db; không dùng DB demo native 55432.'
+Write-Host 'Cả hai dùng Docker API 8080 và DB badminton_court_db; không dùng DB native 55432.'

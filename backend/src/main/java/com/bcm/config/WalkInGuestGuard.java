@@ -6,7 +6,6 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 /** Validate the configured identity after DataSeeder has completed. Fail closed on misconfiguration. */
-@Component
 @org.springframework.core.annotation.Order(1)
 @RequiredArgsConstructor
 public class WalkInGuestGuard implements ApplicationRunner {

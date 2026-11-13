@@ -15,6 +15,8 @@ import java.util.UUID;
 public class PosSaleRequest {
 
     private UUID customerId;
+    @jakarta.validation.constraints.Pattern(regexp="[+0-9][0-9 .-]{7,19}")
+    private String customerPhone;
 
     private UUID bookingId;
 

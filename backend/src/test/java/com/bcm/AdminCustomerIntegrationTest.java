@@ -17,6 +17,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 @SpringBootTest(properties="booking.expiration-enabled=false") @AutoConfigureMockMvc @ActiveProfiles("h2") @Transactional
 class AdminCustomerIntegrationTest {
+ private UUID guestIdForTest(){return jdbc.queryForObject("select id from users where email='guest@bcm.com'",UUID.class);}
  @jakarta.persistence.PersistenceContext jakarta.persistence.EntityManager entityManager;
  @Autowired com.bcm.repository.UserRepository users; @Autowired com.fasterxml.jackson.databind.ObjectMapper mapper; @Autowired AdminCustomerService service; @Autowired JdbcTemplate jdbc; @Autowired PasswordEncoder encoder; @Autowired MockMvc mvc;
  @org.junit.jupiter.api.BeforeEach void completeH2StaffReferenceForAccountQueries()throws Exception{
@@ -27,10 +28,18 @@ class AdminCustomerIntegrationTest {
   }
   for(String column:java.util.List.of("user_id uuid","position varchar(100)","full_name varchar(255)","phone varchar(20)","updated_at timestamp"))
    jdbc.execute("alter table staffs add column if not exists "+column);
+  // Historical fixture only; production seeding no longer creates a guest login.
+  if(jdbc.queryForObject("select count(*) from users where email='guest@bcm.com'",Long.class)==0){
+   UUID uid=UUID.randomUUID();
+   jdbc.update("insert into users(id,email,password_hash,full_name,phone,created_at,updated_at,token_version) values (?,'guest@bcm.com',?,'Historical guest','0000000000',current_timestamp,current_timestamp,0)",uid,encoder.encode("TestOnly123!"));
+   jdbc.update("insert into user_roles(user_id,role_id) select ?,id from roles where role_name='CUSTOMER'",uid);
+   jdbc.update("insert into customers(id,user_id,full_name,phone,created_at,updated_at) values (?,?,'Historical guest','0000000000',current_timestamp,current_timestamp)",UUID.randomUUID(),uid);
+  }
+
  }
  AdminCustomerRequest request(String email){return new AdminCustomerRequest("Test customer",email,"0912345678","Address","Password123!");}
  @Test @WithMockUser(roles="STAFF") void guestInvoiceDoesNotExposeReservedPhone()throws Exception{
-  UUID guestUser=UUID.fromString(System.getenv().getOrDefault("BCM_POS_GUEST_USER_ID","00000000-0000-4000-8000-00000000b001"));
+  UUID guestUser=guestIdForTest();
   UUID customer=jdbc.queryForObject("select id from customers where user_id=?",UUID.class,guestUser);
   UUID invoice=UUID.randomUUID();
   jdbc.update("insert into invoices(id,customer_id,status,court_fee,product_fee,discount_amount,total_amount,created_at,updated_at) values (?,?,'PAID',0,0,0,0,current_timestamp,current_timestamp)",invoice,customer);

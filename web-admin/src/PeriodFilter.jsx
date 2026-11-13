@@ -22,12 +22,14 @@ export default function PeriodFilter({period,month,range={},onRangeChange,onChan
  const [from,setFrom]=useState(range.from||''),[to,setTo]=useState(range.to||'');
  function choose(p,m){setFrom('');setTo('');onChange(p,m);}
  return <div className="toolbar period-filter" aria-label="Lọc thời gian">
-  {[...(showAll?[['ALL','Tất cả']]:[]),['DAY','Hôm nay'],['WEEK','Tuần này'],['MONTH','Tháng này']].map(([p,label])=><button key={p} aria-pressed={!range.from&&!month&&period===p} className={!range.from&&!month&&period===p?'primary':'secondary'} onClick={()=>choose(p,'')}>{label}</button>)}
-  <label className="field">Lịch sử theo tháng<input aria-label="Lịch sử theo tháng" type="month" value={month} onChange={e=>choose('MONTH',e.target.value)}/></label>
+  <div className="period-quick" role="group" aria-label="Chọn kỳ nhanh">
+   {[...(showAll?[['ALL','Tất cả']]:[]),['DAY','Hôm nay'],['WEEK','Tuần này'],['MONTH','Tháng này']].map(([p,label])=><button key={p} aria-pressed={!range.from&&!month&&period===p} className={!range.from&&!month&&period===p?'primary':'secondary'} onClick={()=>choose(p,'')}>{label}</button>)}
+  </div>
+  <label className="field period-month-field">Lịch sử theo tháng<input aria-label="Lịch sử theo tháng" type="month" value={month} onChange={e=>choose('MONTH',e.target.value)}/></label>
   <form className="period-range" onSubmit={e=>{e.preventDefault();if(from&&to&&from<=to)onRangeChange({from,to});}}>
-   <label className="field">Từ ngày<input type="date" aria-label="Từ ngày" value={from} max={to||undefined} onChange={e=>setFrom(e.target.value)} required/></label>
-   <label className="field">Đến ngày<input type="date" aria-label="Đến ngày" value={to} min={from||undefined} onChange={e=>setTo(e.target.value)} required/></label>
-   <button className="secondary" type="submit">Xem lịch sử</button>
+   <label className="field period-date-field">Từ ngày<input type="date" aria-label="Từ ngày" value={from} max={to||undefined} onChange={e=>setFrom(e.target.value)} required/></label>
+   <label className="field period-date-field">Đến ngày<input type="date" aria-label="Đến ngày" value={to} min={from||undefined} onChange={e=>setTo(e.target.value)} required/></label>
+   <button className="secondary period-range-btn" type="submit">Xem lịch sử</button>
   </form>
   {range.from&&<small role="status">Đang xem: {range.from} – {range.to}</small>}
  </div>;

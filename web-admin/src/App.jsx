@@ -17,6 +17,7 @@ const dataNavTabs=[['accounts','Tài khoản'],...masterTabs];
 const opTabs=[['invoices','Hóa đơn'],['pos','Bán tại quầy'],['checkout','Trả sân'],['inventory','Nhập kho'],['statistics','Thống kê'],['revenue-breakdown','Doanh thu']];
 const allTabs=[...dataNavTabs,...opTabs];
 const initial={courts:{courtNumber:1,name:'',type:'STANDARD_MAT',status:'AVAILABLE',basePrice:100000,district:'',address:''},'time-slots':{startTime:'06:00',endTime:'07:00',priceMultiplier:1},categories:{categoryName:''},products:{categoryId:'',name:'',type:'GOODS',unit:'cái',price:0,stockQuantity:0}};
+function validPosPhone(value){const text=value.trim(),digits=text.replace(/[^0-9]/g,'');return /^[+0-9][0-9 .-]{7,19}$/.test(text)&&/^[0-9]{8,15}$/.test(digits)&&!/^0+$/.test(digits)}
 function defaultMultiplier(start,end){return start>='17:00'&&end<='21:00'?1.5:1;}
 function validateCourtLocation(form){
  if(!form.address?.trim())return;
@@ -44,6 +45,7 @@ export default function App(){
  const [posCart,setPosCart]=useState([]);
  const [posQuote,setPosQuote]=useState(null),[posQuoteBusy,setPosQuoteBusy]=useState(false),[posQuoteError,setPosQuoteError]=useState('');
  const [posSearch,setPosSearch]=useState('');
+ const [posPhone,setPosPhone]=useState('');
  const [posQuoteVersion,setPosQuoteVersion]=useState(0);
  const [posHistory,setPosHistory]=useState([]);
  const [draftRefresh,setDraftRefresh]=useState(0);
@@ -69,7 +71,7 @@ export default function App(){
   const [activeBusy,setActiveBusy]=useState(false);
   const [activeError,setActiveError]=useState('');
 
- useEffect(()=>{setPosConfirmed(false);posAttempt.current=null;},[posCart,posMode,posBookingId,posPromotionCode,posPaymentMethod,posReference,posQuote?.totalAmount]);
+ useEffect(()=>{setPosConfirmed(false);posAttempt.current=null;},[posCart,posMode,posBookingId,posPromotionCode,posPaymentMethod,posReference,posQuote?.totalAmount,posPhone]);
  useEffect(()=>{setCheckoutConfirmed(false);setCheckoutReference('');},[checkoutSlip?.bookingId,checkoutSlip?.amountDue,checkoutPaymentMethod]);
 
  // Inventory state
@@ -175,9 +177,10 @@ useEffect(()=>{
   setSaving(true);setError('');
   try{
    const bookingId=posMode==='booking'?posBookingId.trim():null;
+   if(!bookingId&&!validPosPhone(posPhone))throw new Error('Nhập số điện thoại khách hàng hợp lệ.');
    if(posMode==='booking'&&(!bookingId||!posBookingPreview))throw new Error('Vui lòng kiểm tra mã đơn đặt sân trước khi thêm hàng.');
    const payload={
-    customerId:null,
+    customerId:null,customerPhone:bookingId?null:posPhone.trim(),
     bookingId,
     promotionCode:posPromotionCode.trim()||null,
     paymentMethod:posMode==='booking'?null:posPaymentMethod,
@@ -192,7 +195,7 @@ useEffect(()=>{
    const discountAmt=inv.discountAmount??inv.discount_amount??0;
    setPosHistory(h=>[{id:inv.id||`#HD-${Date.now().toString().slice(-4)}`,time:new Date().toLocaleTimeString('vi-VN'),total:totalAmt,discount:discountAmt,status:inv.status,items:[...posCart]},...h]);
    setDraftRefresh(v=>v+1);
-   setPosCart([]);posAttempt.current=null;setPosConfirmed(false);setPosReference('');
+   setPosCart([]);posAttempt.current=null;setPosConfirmed(false);setPosReference('');if(!bookingId)setPosPhone('');
    setPosPromotionCode('');
    setNotice(bookingId?'Đã thêm hàng vào đơn đặt sân. Xem bill gộp và xác nhận phần tiền còn phải thu.':'Bán hàng thành công! Hóa đơn chỉ gồm hàng hóa, không kèm tiền sân.');
    if(bookingId){setCheckoutBookingId(bookingId);setCheckoutOpen(true);setCheckoutPaymentMethod('CASH');setCheckoutSlip(null);setTab('checkout');try{const v=await api('/checkout/'+bookingId);setCheckoutSlip({...v,id:'Xem trước',bookingId,courtFee:v.court_fee,productFee:v.product_fee,totalAmount:v.total_amount,status:'DRAFT'});}catch(e){setError('Đã lưu hàng vào đơn. Không tải được bill; hãy lập phiếu để tải lại. '+e.message);}}
@@ -303,7 +306,7 @@ useEffect(()=>{
      </div>)}
     </div>
    </div>
-   <div className="pos-cart-panel">
+   <div className="pos-cart-panel pos-order-panel">
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h3>Đơn hàng hiện tại</h3><button className="secondary" style={{padding:'5px 10px',fontSize:'11px'}} onClick={()=>setPosCart([])} disabled={!posCart.length}>Xóa trắng</button></div>
     <div className="pos-cart-items">
      {!posCart.length?<p className="muted" style={{textAlign:'center',padding:'30px 0'}}>Chưa có sản phẩm trong đơn.</p>:posCart.map(item=><div className="pos-cart-item" key={item.id}>
@@ -327,9 +330,9 @@ useEffect(()=>{
        <label><input type="radio" name="pos-mode" checked={posMode==='booking'} onChange={()=>{setPosMode('booking');setPosQuote(null);setPosBookingPreview(null);}}/> Khách thuê sân</label>
        <label><input type="radio" name="pos-mode" checked={posMode==='walk-in'} onChange={()=>{setPosMode('walk-in');setPosQuote(null);setPosBookingPreview(null);setPosBookingId('');}}/> Khách vãng lai</label>
       </div>
-      {posMode==='booking'?<label className="field">Mã đơn đặt sân (UUID)<input aria-label="Mã đơn đặt sân (UUID)" placeholder="Nhập UUID trong mục Trả sân" value={posBookingId} onChange={e=>{setPosBookingId(e.target.value.trim());setPosQuote(null);setPosBookingPreview(null);}}/></label>:<p className="muted">Thu tiền hàng ngay, hóa đơn không kèm tiền sân.</p>}
+      {posMode==='booking'?<label className="field">Mã đơn đặt sân (UUID)<input aria-label="Mã đơn đặt sân (UUID)" placeholder="Nhập UUID trong mục Trả sân" value={posBookingId} onChange={e=>{setPosBookingId(e.target.value.trim());setPosQuote(null);setPosBookingPreview(null);}}/></label>:<label className="field">Số điện thoại khách hàng<input aria-label="Số điện thoại khách hàng" aria-describedby="pos-phone-help" aria-invalid={Boolean(posPhone)&&!validPosPhone(posPhone)} type="tel" inputMode="tel" autoComplete="tel" required maxLength={20} placeholder="Ví dụ: 0912 345 678" value={posPhone} onChange={e=>setPosPhone(e.target.value)}/><small id="pos-phone-help" className={posPhone&&!validPosPhone(posPhone)?'invalid':'muted'}>{posPhone&&!validPosPhone(posPhone)?'Số điện thoại cần 8–15 chữ số, không chỉ gồm số 0.':''}</small></label>}
      </fieldset>
-     <label className="field" style={{marginTop:16}}>Mã giảm giá<input aria-label="Mã giảm giá" placeholder="Mã khuyến mãi Theo sản phẩm" maxLength={50} value={posPromotionCode} disabled={saving} onChange={e=>{setPosPromotionCode(e.target.value.toUpperCase());setPosQuote(null);}}/></label>
+     <label className="field">Mã giảm giá<input aria-label="Mã giảm giá" placeholder="Mã khuyến mãi Theo sản phẩm" maxLength={50} value={posPromotionCode} disabled={saving} onChange={e=>{setPosPromotionCode(e.target.value.toUpperCase());setPosQuote(null);}}/></label>
      {posPromotionCode.trim()&&posQuote&&!posQuoteBusy&&!posQuoteError&&<p className="promotion-applied" role="status">Mã hợp lệ. Đã tính ưu đãi tốt nhất cho sản phẩm trong tổng tiền.</p>}
      {posMode==='booking'&&posBookingPreview&&posQuote&&<div className="pos-combined-bill" aria-live="polite">
       <div className="pos-summary-line"><span>Tiền sân sau giảm:</span><strong>{money(Number(posBookingPreview.court_fee)-Number(posBookingPreview.courtDiscount||0))}</strong></div>
@@ -338,8 +341,8 @@ useEffect(()=>{
       <div className="pos-summary-total"><span>Còn phải thu:</span><span>{money(Number(posBookingPreview.amountDue)+Number(posQuote.totalAmount))}</span></div>
      </div>}
      {posMode==='walk-in'&&<label className="field">Phương thức thanh toán<select aria-label="Phương thức POS" value={posPaymentMethod} disabled={saving} onChange={e=>setPosPaymentMethod(e.target.value)}><option value="CASH">Tiền mặt (CASH)</option><option value="VNPAY">VNPay · xác nhận thủ công (VNPAY)</option></select></label>}
-     {posMode==='walk-in'&&<><label className="field">Mã tham chiếu (nếu có)<input maxLength={255} value={posReference} disabled={saving} onChange={e=>setPosReference(e.target.value)}/></label><label><input type="checkbox" checked={posConfirmed} disabled={saving||posQuoteBusy||!posQuote} onChange={e=>setPosConfirmed(e.target.checked)}/> Tôi xác nhận đã nhận {money(posQuote?.totalAmount)} từ khách</label></>}
-     <button className="primary wide" style={{marginTop:'14px'}} disabled={(posMode==='walk-in'&&!posConfirmed)||!posCart.length||saving||posQuoteBusy||!posQuote||!!posQuoteError||(posMode==='booking'&&!posBookingPreview)} onClick={handlePosSale}>{saving?'Đang xử lý…':posMode==='booking'?'Thêm hàng & xem bill gộp':`✓ Thu tiền hàng (${posPaymentMethod})`}</button>
+     {posMode==='walk-in'&&<><label className="field">Mã tham chiếu (nếu có)<input maxLength={255} value={posReference} disabled={saving} onChange={e=>setPosReference(e.target.value)}/></label><label className="pos-receipt-confirm"><input type="checkbox" checked={posConfirmed} disabled={saving||posQuoteBusy||!posQuote} onChange={e=>setPosConfirmed(e.target.checked)}/> Tôi xác nhận đã nhận {money(posQuote?.totalAmount)} từ khách</label></>}
+     <button className="primary wide" style={{marginTop:'14px'}} disabled={(posMode==='walk-in'&&(!posConfirmed||!validPosPhone(posPhone)))||!posCart.length||saving||posQuoteBusy||!posQuote||!!posQuoteError||(posMode==='booking'&&!posBookingPreview)} onClick={handlePosSale}>{saving?'Đang xử lý…':posMode==='booking'?'Thêm hàng & xem bill gộp':`✓ Thu tiền hàng (${posPaymentMethod})`}</button>
     </div>
    </div>
   </div>
