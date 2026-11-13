@@ -11,7 +11,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-p1-acceptance
 
 Runner P1 hiện chạy toàn bộ regression bắt buộc, gồm P2 và các bản sửa browser/backend. Regression dùng container `bcm-p1-tests`, port 55437, DB `bcm_p1_work`. Acceptance dùng `bcm-browser-acceptance`, port 55438, DB `bcm_acceptance_test` và role riêng không phải superuser. Không chạy trên DB project.
 
-Maven chạy tuần tự từ `backend` vì các bài SQL dùng `../db`. Full runner clean trước khi chạy; không ghi log ngoài vào `backend/target` lúc clean. Log và Surefire reports ở `backend/target`. Suite backup BANK_TRANSFER legacy là opt-in riêng, ngoài tổng bắt buộc.
+Maven chạy tuần tự từ `backend` vì các bài SQL dùng `../db`. Full runner clean trước khi chạy; không ghi log ngoài vào `backend/target` lúc clean. Log và Surefire reports ở `backend/target`. Suite `LegacyPaymentCompatibilityPostgresTest` chỉ xác nhận phương thức cũ bị từ chối, không cung cấp khả năng đọc BANK_TRANSFER. Runner regression chạy suite này cùng các kiểm tra bắt buộc.
 
 Chạy nhóm mục tiêu:
 

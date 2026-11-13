@@ -1,11 +1,10 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $runtimeDir = Join-Path $root '.tools/shared-docker'
 New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null
 $dockerCommand = Get-Command docker.exe -ErrorAction SilentlyContinue
 $docker = if ($dockerCommand) { $dockerCommand.Source } else { Join-Path $env:ProgramFiles 'Docker/Docker/resources/bin/docker.exe' }
 if (!(Test-Path -LiteralPath $docker)) { throw 'Cần cài Docker Desktop và mở Docker Engine trước.' }
-$npm = (Get-Command npm.cmd -ErrorAction Stop).Source
 $composeArgs = @('compose', '-p', 'badminton_court_management', '-f', (Join-Path $root 'docker-compose.yml'))
 function Assert-DockerExit([string]$message) {
     if ($LASTEXITCODE -ne 0) { throw $message }
@@ -48,6 +47,10 @@ foreach ($migration in @('booking-ux-upgrade.sql','product-promotions-upgrade.sq
     & $docker exec bcm-postgres sh -c $upgradeCommand
     Assert-DockerExit "Migration $migration thất bại; chưa chuyển giao diện. Kiểm tra log và bản sao lưu DB."
 }
+& $docker cp (Join-Path $root 'db/checks/verify-runtime.sql') 'bcm-postgres:/tmp/bcm-verify-runtime.sql'
+Assert-DockerExit 'Không copy được kiểm tra dữ liệu runtime.'
+& $docker exec bcm-postgres psql -X -U bcm_admin -d badminton_court_db -v ON_ERROR_STOP=1 -f /tmp/bcm-verify-runtime.sql
+Assert-DockerExit 'Dữ liệu DB gốc chưa qua kiểm tra nghiệp vụ; chưa khởi động backend.'
 & $docker @composeArgs up -d --build backend
 Assert-DockerExit 'Không build/khởi động được backend chung.'
 $apiTarget = 'http://127.0.0.1:8080'
@@ -57,33 +60,16 @@ for ($attempt = 0; $attempt -lt 20; $attempt++) {
     Start-Sleep -Seconds 2
 }
 if (!$backendReady) { throw 'Backend Docker chưa healthy; chưa chuyển giao diện. Kiểm tra docker logs bcm-backend.' }
-$env:BCM_API_PROXY_TARGET = $apiTarget
-foreach ($site in @(@{Folder='web-admin';Port=5173}, @{Folder='web-app';Port=5174})) {
-    $siteRoot = Join-Path $root $site.Folder
-    if (!(Test-Path -LiteralPath (Join-Path $siteRoot 'node_modules'))) {
-        & $npm --prefix $siteRoot ci
-        if ($LASTEXITCODE -ne 0) { throw "Không cài được dependency $($site.Folder)." }
+# Both frontends run in the same Compose project and proxy to this backend.
+& $docker @composeArgs up -d --build web-admin web-user
+Assert-DockerExit 'Không build/khởi động được giao diện Docker.'
+foreach ($port in @(5173,5174)) {
+    $siteReady=$false
+    for ($attempt=0; $attempt -lt 20; $attempt++) {
+        if (Test-Api "http://127.0.0.1:$port/api/health") { $siteReady=$true; break }
+        Start-Sleep -Seconds 2
     }
-    $targetFile = Join-Path $runtimeDir "$($site.Folder).target"
-    $owners = @(Get-NetTCPConnection -LocalPort $site.Port -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)
-    $sitePattern = [regex]::Escape(($siteRoot -replace '\\','/') + '/') + '.*vite'
-    foreach ($ownerId in $owners) {
-        $ownedProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$ownerId"
-        if (!$ownedProcess -or ($ownedProcess.CommandLine -replace '\\','/') -notmatch $sitePattern) {
-            throw "Cổng $($site.Port) đang được tiến trình ngoài dự án sử dụng; không dừng tiến trình đó."
-        }
-    }
-    $alreadyShared = $owners.Count -gt 0 -and (Test-Path -LiteralPath $targetFile) -and ((Get-Content -LiteralPath $targetFile -Raw).Trim() -eq $apiTarget) -and (Test-Api "http://127.0.0.1:$($site.Port)/api/health")
-    if ($alreadyShared) { Write-Host "$($site.Folder) đã dùng backend Docker chung."; continue }
-    foreach ($ownerId in $owners) { Stop-Process -Id $ownerId }
-    Start-Process cmd.exe -WindowStyle Hidden -WorkingDirectory $siteRoot -ArgumentList '/c npm.cmd run dev' -RedirectStandardOutput (Join-Path $runtimeDir "$($site.Folder).log") -RedirectStandardError (Join-Path $runtimeDir "$($site.Folder)-error.log") | Out-Null
-    [System.IO.File]::WriteAllText($targetFile, $apiTarget)
-    $siteReady = $false
-    for ($attempt = 0; $attempt -lt 15; $attempt++) {
-        if (Test-Api "http://127.0.0.1:$($site.Port)/api/health") { $siteReady = $true; break }
-        Start-Sleep -Seconds 1
-    }
-    if (!$siteReady) { throw "$($site.Folder) chưa sẵn sàng. Xem log trong $runtimeDir." }
+    if (!$siteReady) { throw "Giao diện Docker cổng $port chưa kết nối được API." }
 }
-Write-Host 'Web Admin: http://127.0.0.1:5173/ | Web User: http://127.0.0.1:5174/'
-Write-Host 'Cả hai dùng Docker API 8080 và DB badminton_court_db; không dùng DB native 55432.'
+Write-Host 'Web Admin: http://127.0.0.1:5173/ | Web App: http://127.0.0.1:5174/'
+Write-Host 'Docker API: http://127.0.0.1:8080/api/health | DB duy nhất: badminton_court_db (5433).'

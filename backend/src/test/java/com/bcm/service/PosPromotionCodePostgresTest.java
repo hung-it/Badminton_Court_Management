@@ -35,7 +35,7 @@ class PosPromotionCodePostgresTest {
     }
     PosSaleRequest request(String voucher,int quantity) {
         var r=new PosSaleRequest(customer,null,null,"CASH",BigDecimal.ZERO,BigDecimal.ZERO,List.of(new PosSaleItemRequest(product,quantity)));
-        r.setPromotionCode(voucher);r.setIdempotencyKey(UUID.randomUUID());r.setPaymentConfirmed(true);return r;
+        r.setCustomerPhone(jdbc.queryForObject("select phone from customers where id=?",String.class,customer));r.setPromotionCode(voucher);r.setIdempotencyKey(UUID.randomUUID());r.setPaymentConfirmed(true);return r;
     }
     com.bcm.entity.Invoice sell(PosSaleRequest request) {
         request.setExpectedTotal(pos.quote(request).totalAmount());return pos.sell(request);

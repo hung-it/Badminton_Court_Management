@@ -50,7 +50,7 @@ class ProductPromotionIntegrationTest {
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).get("data");
     }
     Map<String,Object> cart(int quantity) {
-        return new LinkedHashMap<>(Map.of("paymentMethod","CASH","idempotencyKey",UUID.randomUUID(),"paymentConfirmed",true,"expectedTotal",0,"items",List.of(Map.of("productId",product,"quantity",quantity))));
+        return new LinkedHashMap<>(Map.of("customerPhone","09"+String.format("%08d",Math.floorMod(UUID.randomUUID().getLeastSignificantBits(),100000000L)),"paymentMethod","CASH","idempotencyKey",UUID.randomUUID(),"paymentConfirmed",true,"expectedTotal",0,"items",List.of(Map.of("productId",product,"quantity",quantity))));
     }
     JsonNode quote(Map<String,Object> body) throws Exception {
         return mapper.readTree(mvc.perform(post("/pos/quote").contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(body)))

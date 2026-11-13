@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 public class AdminCustomerService {
  private final AdminAccountService accounts; private final CustomerRepository customers; private final UserRepository users;
  private final com.bcm.security.WalkInGuestIdentity guest; private final RoleRepository roles; private final PasswordEncoder encoder; private final JdbcTemplate jdbc;
+ @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager entityManager;
  public Map<String,Object> list(String search,int page,String sort) {
   if(page<0) throw new BadRequestException("Invalid page");
   String order="name".equals(sort)?"c.full_name asc,c.id":"c.created_at desc,c.id";
@@ -34,10 +35,19 @@ public class AdminCustomerService {
   result.put("invoices",jdbc.queryForList("select id as \"id\",status as \"status\",total_amount as \"total_amount\",created_at as \"created_at\" from invoices where customer_id=? and status='PAID' and deleted_at is null order by created_at desc,id",id));
   return result;
  }
- private Customer active(UUID id) {return customers.findById(id).filter(c->c.getUser()!=null && c.getDeletedAt()==null && !guest.isGuest(c.getUser().getId())).orElseThrow(()->new ResourceNotFoundException("Customer not found"));}
+ private Customer editable(UUID id) {
+  var owners=jdbc.queryForList("select user_id from customers where id=? and user_id is not null",UUID.class,id);
+  if(owners.isEmpty())throw new ResourceNotFoundException("Customer not found");
+  jdbc.queryForList("select id from users where id=? for update",UUID.class,owners.get(0));
+  jdbc.queryForList("select id from customers where id=? for update",UUID.class,id);
+  var c=customers.findById(id).orElseThrow(()->new ResourceNotFoundException("Customer not found"));
+  entityManager.refresh(c);entityManager.refresh(c.getUser());
+  if(guest.isGuest(c.getUser().getId()))throw new BadRequestException("POS guest account is protected");
+  return c;
+ }
  @Transactional public UUID save(UUID id,AdminCustomerRequest r) {
   if("0000000000".equals(r.phone().replaceAll("[^0-9]",""))) throw new BadRequestException("Reserved POS guest phone");
-  Customer c=id==null?new Customer():active(id); User u=id==null?new User():c.getUser();
+  Customer c=id==null?new Customer():editable(id); User u=id==null?new User():c.getUser();
   if(id==null && (r.password()==null||r.password().isBlank())) throw new BadRequestException("Password required");
   if(id==null) com.bcm.security.CredentialPolicy.requireNewPassword(r.password());
   String email=com.bcm.security.CredentialPolicy.email(r.email());

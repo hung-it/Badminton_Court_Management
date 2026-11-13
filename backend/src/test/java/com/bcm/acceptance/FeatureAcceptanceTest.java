@@ -128,7 +128,7 @@ class FeatureAcceptanceTest {
   db.update("update bookings set expires_at=current_timestamp-interval '6 minutes' where id=?",b);assertThat(expiration.expireBooking(b)).isTrue();assertThat(ipn(fields(retry,"00","10000000"))).isEqualTo("99");assertThat(state(b)).isNotEqualTo("PAID");
  }
  @Test void foreignBookingCannotPay()throws Exception{UUID b=book();db.update("update bookings set customer_id=(select id from customers where id<>? limit 1) where id=?",cid,b);try{pay(b,"VNPAY",403);}finally{db.update("update bookings set customer_id=? where id=?",cid,b);}assertThat(payments(b)).isZero();}
- Map<String,Object> sale(UUID b,int quantity,String method){var m=new HashMap<String,Object>();m.put("customerId",cid);if(b!=null)m.put("bookingId",b);m.put("paymentMethod",method);m.put("items",List.of(Map.of("productId",product,"quantity",quantity)));m.put("idempotencyKey",UUID.randomUUID());m.put("paymentConfirmed",true);m.put("expectedTotal",10000L*quantity);return m;}
+ Map<String,Object> sale(UUID b,int quantity,String method){var m=new HashMap<String,Object>();m.put("customerId",cid);m.put("customerPhone",db.queryForObject("select phone from customers where id=?",String.class,cid));if(b!=null)m.put("bookingId",b);m.put("paymentMethod",method);m.put("items",List.of(Map.of("productId",product,"quantity",quantity)));m.put("idempotencyKey",UUID.randomUUID());m.put("paymentConfirmed",true);m.put("expectedTotal",10000L*quantity);return m;}
  @ParameterizedTest @ValueSource(strings={"CASH","VNPAY"}) void posCheckoutInvoiceAndRevenue(String method)throws Exception{
   UUID retail=UUID.fromString(call(json(post("/pos/sales"),sale(null,2,method)),"STAFF",201).path("id").asText());
   assertThat(db.queryForObject("select stock_quantity from products where id=?",Integer.class,product)).isEqualTo(8);
@@ -201,6 +201,25 @@ class FeatureAcceptanceTest {
   UUID first=UUID.fromString(call(json(post("/pos/sales"),sale(null,2,"CASH")),"STAFF",201).path("id").asText());
   UUID second=UUID.fromString(call(json(post("/pos/sales"),sale(null,2,"CASH")),"STAFF",201).path("id").asText());
   assertThat(second).isNotEqualTo(first);assertThat(db.queryForObject("select stock_quantity from products where id=?",Integer.class,product)).isEqualTo(6);
+ }
+ @Test void registeredBuyerCanBeSelectedAfterEarlierWalkInPurchase()throws Exception{
+  String phone="09"+String.format("%08d",Math.floorMod(UUID.randomUUID().getLeastSignificantBits(),100000000L));
+  var first=sale(null,1,"CASH");first.remove("customerId");first.put("customerPhone",phone);
+  UUID invoice=UUID.fromString(call(json(post("/pos/sales"),first),"STAFF",201).path("id").asText());
+  UUID walkIn=db.queryForObject("select customer_id from invoices where id=?",UUID.class,invoice);customers.add(walkIn);
+  String email=UUID.randomUUID()+"@acceptance.invalid";
+  var registered=call(json(post("/auth/register"),Map.of("email",email,"password","Acceptance123!","fullName","Registered buyer","phone",phone)),"CUSTOMER",201);
+  UUID member=db.queryForObject("select id from customers where user_id=?",UUID.class,UUID.fromString(registered.path("user").path("id").asText()));customers.add(member);
+  assertThat(call(get("/pos/customers").param("phone",phone),"STAFF",200)).hasSize(2);
+  var second=sale(null,1,"CASH");second.remove("customerId");second.put("customerPhone",phone);
+  call(json(post("/pos/sales"),second),"STAFF",409);
+  assertThat(db.queryForObject("select stock_quantity from products where id=?",Integer.class,product)).isEqualTo(9);
+  second.put("customerId",member);
+  UUID next=UUID.fromString(call(json(post("/pos/sales"),second),"STAFF",201).path("id").asText());
+  assertThat(db.queryForObject("select customer_id from invoices where id=?",UUID.class,next)).isEqualTo(member);
+  assertThat(db.queryForObject("select customer_id from invoices where id=?",UUID.class,invoice)).isEqualTo(walkIn);
+  assertThat(call(json(post("/pos/sales"),second),"STAFF",201).path("id").asText()).isEqualTo(next.toString());
+  call(get("/pos/customers").param("phone",phone),"CUSTOMER",403);
  }
  @Test void controlledConcurrentBookingHasOneWinner()throws Exception{
   var pool=Executors.newFixedThreadPool(2);var ready=new CountDownLatch(2);var start=new CountDownLatch(1);

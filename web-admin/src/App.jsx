@@ -46,6 +46,7 @@ export default function App(){
  const [posQuote,setPosQuote]=useState(null),[posQuoteBusy,setPosQuoteBusy]=useState(false),[posQuoteError,setPosQuoteError]=useState('');
  const [posSearch,setPosSearch]=useState('');
  const [posPhone,setPosPhone]=useState('');
+ const [posBuyers,setPosBuyers]=useState([]),[posBuyerId,setPosBuyerId]=useState(''),[posBuyerBusy,setPosBuyerBusy]=useState(false),[posBuyerError,setPosBuyerError]=useState(''),[posBuyerLookup,setPosBuyerLookup]=useState(0);
  const [posQuoteVersion,setPosQuoteVersion]=useState(0);
  const [posHistory,setPosHistory]=useState([]);
  const [draftRefresh,setDraftRefresh]=useState(0);
@@ -71,7 +72,7 @@ export default function App(){
   const [activeBusy,setActiveBusy]=useState(false);
   const [activeError,setActiveError]=useState('');
 
- useEffect(()=>{setPosConfirmed(false);posAttempt.current=null;},[posCart,posMode,posBookingId,posPromotionCode,posPaymentMethod,posReference,posQuote?.totalAmount,posPhone]);
+ useEffect(()=>{setPosConfirmed(false);posAttempt.current=null;},[posCart,posMode,posBookingId,posPromotionCode,posPaymentMethod,posReference,posQuote?.totalAmount,posPhone,posBuyerId]);
  useEffect(()=>{setCheckoutConfirmed(false);setCheckoutReference('');},[checkoutSlip?.bookingId,checkoutSlip?.amountDue,checkoutPaymentMethod]);
 
  // Inventory state
@@ -158,6 +159,15 @@ useEffect(()=>{
  }catch(e){if(active)setPosQuoteError(e.message)}finally{if(active)setPosQuoteBusy(false)}},150);
  return ()=>{active=false;clearTimeout(timer)};
 },[session,tab,posCart,posMode,posBookingId,posPromotionCode,posPaymentMethod,posQuoteVersion]);
+ useEffect(()=>{
+  let active=true;setPosBuyers([]);setPosBuyerId('');setPosBuyerError('');
+  if(!session||tab!=='pos'||posMode!=='walk-in'||!validPosPhone(posPhone)){setPosBuyerBusy(false);return;}
+  setPosBuyerBusy(true);
+  const timer=setTimeout(()=>api('/pos/customers?phone='+encodeURIComponent(posPhone.trim())).then(rows=>{
+   if(active){setPosBuyers(rows);if(rows.length===1)setPosBuyerId(rows[0].id);}
+  }).catch(e=>{if(active)setPosBuyerError(e.message)}).finally(()=>{if(active)setPosBuyerBusy(false)}),200);
+  return()=>{active=false;clearTimeout(timer)};
+ },[session,tab,posMode,posPhone,posBuyerLookup]);
  // POS handlers
  function addToCart(p){
   setPosCart(old=>{
@@ -180,13 +190,14 @@ useEffect(()=>{
    if(!bookingId&&!validPosPhone(posPhone))throw new Error('Nhập số điện thoại khách hàng hợp lệ.');
    if(posMode==='booking'&&(!bookingId||!posBookingPreview))throw new Error('Vui lòng kiểm tra mã đơn đặt sân trước khi thêm hàng.');
    const payload={
-    customerId:null,customerPhone:bookingId?null:posPhone.trim(),
+    customerId:bookingId?null:posBuyerId||null,customerPhone:bookingId?null:posPhone.trim(),
     bookingId,
     promotionCode:posPromotionCode.trim()||null,
     paymentMethod:posMode==='booking'?null:posPaymentMethod,
     courtFee:0,
     items:posCart.map(i=>({productId:i.id,quantity:i.quantity}))
    };
+   if(!bookingId&&(posBuyerBusy||posBuyerError||(posBuyers.length>1&&!posBuyerId)))throw new Error('Tra cứu và chọn khách hàng trước khi thanh toán.');
    if(!bookingId&&!posConfirmed)throw new Error('Vui lòng xác nhận đã nhận tiền.');
    if(!posAttempt.current)posAttempt.current={...payload,idempotencyKey:crypto.randomUUID(),paymentConfirmed:posConfirmed,expectedTotal:posQuote.totalAmount,reference:posReference.trim()||null};
    const inv=await api('/pos/sales','POST',posAttempt.current);
@@ -200,7 +211,7 @@ useEffect(()=>{
    setNotice(bookingId?'Đã thêm hàng vào đơn đặt sân. Xem bill gộp và xác nhận phần tiền còn phải thu.':'Bán hàng thành công! Hóa đơn chỉ gồm hàng hóa, không kèm tiền sân.');
    if(bookingId){setCheckoutBookingId(bookingId);setCheckoutOpen(true);setCheckoutPaymentMethod('CASH');setCheckoutSlip(null);setTab('checkout');try{const v=await api('/checkout/'+bookingId);setCheckoutSlip({...v,id:'Xem trước',bookingId,courtFee:v.court_fee,productFee:v.product_fee,totalAmount:v.total_amount,status:'DRAFT'});}catch(e){setError('Đã lưu hàng vào đơn. Không tải được bill; hãy lập phiếu để tải lại. '+e.message);}}
    await load();
-  }catch(e){setError(e.message);if(e.message.includes('Báo giá')){posAttempt.current=null;setPosConfirmed(false);setPosQuoteVersion(v=>v+1);}}finally{setSaving(false);}
+  }catch(e){setError(e.message);if(e.message.includes('tra cứu lại')){posAttempt.current=null;setPosBuyerLookup(v=>v+1);}if(e.message.includes('Báo giá')){posAttempt.current=null;setPosConfirmed(false);setPosQuoteVersion(v=>v+1);}}finally{setSaving(false);}
  }
 
  // Checkout handlers
@@ -331,6 +342,11 @@ useEffect(()=>{
        <label><input type="radio" name="pos-mode" checked={posMode==='walk-in'} onChange={()=>{setPosMode('walk-in');setPosQuote(null);setPosBookingPreview(null);setPosBookingId('');}}/> Khách vãng lai</label>
       </div>
       {posMode==='booking'?<label className="field">Mã đơn đặt sân (UUID)<input aria-label="Mã đơn đặt sân (UUID)" placeholder="Nhập UUID trong mục Trả sân" value={posBookingId} onChange={e=>{setPosBookingId(e.target.value.trim());setPosQuote(null);setPosBookingPreview(null);}}/></label>:<label className="field">Số điện thoại khách hàng<input aria-label="Số điện thoại khách hàng" aria-describedby="pos-phone-help" aria-invalid={Boolean(posPhone)&&!validPosPhone(posPhone)} type="tel" inputMode="tel" autoComplete="tel" required maxLength={20} placeholder="Ví dụ: 0912 345 678" value={posPhone} onChange={e=>setPosPhone(e.target.value)}/><small id="pos-phone-help" className={posPhone&&!validPosPhone(posPhone)?'invalid':'muted'}>{posPhone&&!validPosPhone(posPhone)?'Số điện thoại cần 8–15 chữ số, không chỉ gồm số 0.':''}</small></label>}
+      {posMode==='walk-in'&&validPosPhone(posPhone)&&<div aria-live="polite">
+       {posBuyerBusy?<p role="status">Đang tìm khách…</p>:posBuyerError?<p role="alert" className="alert error">{posBuyerError}</p>:posBuyers.length>0?<label className="field">Hồ sơ khách hàng<select aria-label="Hồ sơ khách hàng" value={posBuyerId} onChange={e=>setPosBuyerId(e.target.value)}>
+        <option value="">Chọn khách hàng</option>{posBuyers.map(c=><option key={c.id} value={c.id}>{c.fullName} · {c.phone} · {c.kind==='REGISTERED'?'Có tài khoản':'Vãng lai'} · {c.id}</option>)}
+       </select></label>:<p>Chưa có hồ sơ. Hồ sơ vãng lai sẽ được tạo khi lưu đơn thành công.</p>}
+      </div>}
      </fieldset>
      <label className="field">Mã giảm giá<input aria-label="Mã giảm giá" placeholder="Mã khuyến mãi Theo sản phẩm" maxLength={50} value={posPromotionCode} disabled={saving} onChange={e=>{setPosPromotionCode(e.target.value.toUpperCase());setPosQuote(null);}}/></label>
      {posPromotionCode.trim()&&posQuote&&!posQuoteBusy&&!posQuoteError&&<p className="promotion-applied" role="status">Mã hợp lệ. Đã tính ưu đãi tốt nhất cho sản phẩm trong tổng tiền.</p>}
@@ -342,7 +358,7 @@ useEffect(()=>{
      </div>}
      {posMode==='walk-in'&&<label className="field">Phương thức thanh toán<select aria-label="Phương thức POS" value={posPaymentMethod} disabled={saving} onChange={e=>setPosPaymentMethod(e.target.value)}><option value="CASH">Tiền mặt (CASH)</option><option value="VNPAY">VNPay · xác nhận thủ công (VNPAY)</option></select></label>}
      {posMode==='walk-in'&&<><label className="field">Mã tham chiếu (nếu có)<input maxLength={255} value={posReference} disabled={saving} onChange={e=>setPosReference(e.target.value)}/></label><label className="pos-receipt-confirm"><input type="checkbox" checked={posConfirmed} disabled={saving||posQuoteBusy||!posQuote} onChange={e=>setPosConfirmed(e.target.checked)}/> Tôi xác nhận đã nhận {money(posQuote?.totalAmount)} từ khách</label></>}
-     <button className="primary wide" style={{marginTop:'14px'}} disabled={(posMode==='walk-in'&&(!posConfirmed||!validPosPhone(posPhone)))||!posCart.length||saving||posQuoteBusy||!posQuote||!!posQuoteError||(posMode==='booking'&&!posBookingPreview)} onClick={handlePosSale}>{saving?'Đang xử lý…':posMode==='booking'?'Thêm hàng & xem bill gộp':`✓ Thu tiền hàng (${posPaymentMethod})`}</button>
+     <button className="primary wide" style={{marginTop:'14px'}} disabled={(posMode==='walk-in'&&(!posConfirmed||!validPosPhone(posPhone)||posBuyerBusy||!!posBuyerError||(posBuyers.length>1&&!posBuyerId)))||!posCart.length||saving||posQuoteBusy||!posQuote||!!posQuoteError||(posMode==='booking'&&!posBookingPreview)} onClick={handlePosSale}>{saving?'Đang xử lý…':posMode==='booking'?'Thêm hàng & xem bill gộp':`✓ Thu tiền hàng (${posPaymentMethod})`}</button>
     </div>
    </div>
   </div>

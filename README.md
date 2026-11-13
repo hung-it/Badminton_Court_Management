@@ -15,19 +15,19 @@ docker compose up -d --build
 - Backend: http://localhost:8080/api/health
 - Docker PostgreSQL host port: 5433.
 
-Fresh volumes load schema and demo data. Accounts and existing-data precautions: [Demo data](docs/DEMO-DATA.md). Configure environment using .env.example; BCM_POS_GUEST_USER_ID must identify the dedicated guest user UUID.
+Fresh volumes load schema and demo data. Accounts and existing-data precautions: [Demo data](docs/DEMO-DATA.md). Configure environment using .env.example. POS creates walk-in customer profiles without a login account.
 
-**Current local manual-test environment:** database bcm_manual_p2_20261111. Use its existing local override instead of the default Compose configuration:
+**Current local environment:** one application database, `badminton_court_db`, restored from the complete manual-test dataset and upgraded. Start all four services in Docker with backup and upgrade checks:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .tools/shared-docker/start-manual-p2.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-shared-docker.ps1
 ```
 
-The .tools helper is machine-local. Other machines must configure their own database using the [Docker guide](docs/SHARED-DOCKER.md). Never rerun the base schema on an existing database.
+The old manual-test override is retired. Both frontends use the same backend and database. See the [Docker guide](docs/SHARED-DOCKER.md). Never rerun the base schema on an existing database.
 
 ## Native development
 
-Requires JDK 17+, Maven and an upgraded PostgreSQL schema. Configure datasource and guest environment first:
+Requires JDK 17+, Maven and an upgraded PostgreSQL schema. Configure the datasource first:
 
 ```powershell
 mvn -f backend/pom.xml spring-boot:run

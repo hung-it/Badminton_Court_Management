@@ -4,23 +4,23 @@
 
 Run docker compose up -d --build from the repository root. The Compose project is badminton_court_management. Frontends use nginx on ports 5173/5174, backend 8080, PostgreSQL host port 5433. A fresh volume loads schema and demo data; see [demo data](DEMO-DATA.md) and [DB upgrades](../db/README.md).
 
-Configure .env.example values for the intended environment, including BCM_POS_GUEST_USER_ID. Both web apps must use the same backend/database.
+Configure .env.example values for the intended environment. Both web apps use the same backend/database; POS walk-in profiles do not require a guest login UUID.
 
 ## Existing development database
 
-scripts/start-shared-docker.ps1 starts the default shared DB, captures a backup in backups/, applies the retained upgrade scripts, builds the backend and launches native Vite frontends. It checks port ownership and keeps existing volumes. It targets the container POSTGRES_DB, not the manual-test override database. Review existing financial history before using it: unsupported legacy transfer data or duplicate emails must stop migration for operator review.
+`scripts/start-shared-docker.ps1` starts PostgreSQL, captures a backup in `backups/`, applies the retained upgrades and runs the read-only runtime invariant checks. It builds the backend and both nginx frontends in Docker and checks API access through ports 5173/5174. It preserves the existing PostgreSQL volume and targets `badminton_court_db`. Unsupported payment history, duplicate emails or invalid financial snapshots stop startup for review.
 
 The retained upgrades are booking-ux-upgrade.sql, product-promotions-upgrade.sql, court-promotions-upgrade.sql and email-identity-upgrade.sql. SQL init mounts only execute on fresh volumes. Do not reset a volume to repair an upgrade failure.
 
-## Current manual-test environment
+## Current local environment
 
-The local stack uses bcm_manual_p2_20261111 through .tools/shared-docker/manual-p2-compose.yml. Start it with:
+The complete manual-test database was backed up, restored, upgraded and promoted to `badminton_court_db` on 13/11/2026. It preserves the existing accounts, 210 courts, 106 bookings and 155 invoices at promotion. The previous original DB and retired test databases have backups in `backups/`.
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .tools/shared-docker/start-manual-p2.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-shared-docker.ps1
 ```
 
-The helper/override is machine-local. Keep it when testing this database; default Compose selects badminton_court_db instead. No cleanup operation migrates either database.
+The manual override has been retired. Use only the base `docker-compose.yml`; the runtime database is `badminton_court_db` on `bcm-postgres`, host port 5433. Regression runners deliberately recreate disposable databases when invoked; they are not part of normal project startup.
 
 ## Native tools
 

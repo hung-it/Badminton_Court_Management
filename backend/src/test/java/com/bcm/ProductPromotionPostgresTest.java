@@ -45,8 +45,10 @@ class ProductPromotionPostgresTest extends ProductPromotionIntegrationTest {
             start.countDown();executor.shutdownNow();
             org.assertj.core.api.Assertions.assertThat(executor.awaitTermination(20,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
             // This test commits worker transactions; the inherited test rollback cannot clean them.
+            var walkIns=jdbc.queryForList("select distinct c.id from customers c join invoices i on i.customer_id=c.id join invoice_details d on d.invoice_id=i.id where c.user_id is null and d.product_id=?",java.util.UUID.class,product);
             jdbc.update("delete from payment_transactions where invoice_id in (select invoice_id from invoice_details where product_id=?)",product);
             jdbc.update("delete from invoices where id in (select invoice_id from invoice_details where product_id=?)",product);
+            for(var id:walkIns)jdbc.update("delete from customers where id=?",id);
             jdbc.update("delete from promotions where id in (select promotion_id from discount_rules where target_product_id=?)",product);
             var category=jdbc.queryForObject("select category_id from products where id=?",java.util.UUID.class,product);
             jdbc.update("delete from products where id=?",product);

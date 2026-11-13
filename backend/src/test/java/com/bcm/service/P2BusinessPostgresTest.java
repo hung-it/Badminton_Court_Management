@@ -68,7 +68,7 @@ class P2BusinessPostgresTest {
     UUID paid() {UUID id=book();promotions.staffReceive(id,"CASH",true,null,new BigDecimal("100000"));return id;}
     PosSaleRequest sale(UUID booking) {
         var r=new PosSaleRequest(owner,booking,null,"CASH",BigDecimal.ZERO,BigDecimal.ZERO,List.of(new PosSaleItemRequest(product,1)));
-        r.setIdempotencyKey(UUID.randomUUID());r.setPaymentConfirmed(true);r.setExpectedTotal(new BigDecimal("10000"));return r;
+        r.setCustomerPhone(jdbc.queryForObject("select phone from customers where id=?",String.class,owner));r.setIdempotencyKey(UUID.randomUUID());r.setPaymentConfirmed(true);r.setExpectedTotal(new BigDecimal("10000"));return r;
     }
     ProductRequest serviceRequest() {var p=master.product(product);return new ProductRequest(category,p.getName(),ProductType.SERVICE,p.getUnit(),p.getPrice(),0,p.getVersion(),null);}
 

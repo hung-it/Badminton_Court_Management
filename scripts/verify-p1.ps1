@@ -58,7 +58,7 @@ New-Item -ItemType Directory -Force backend/target | Out-Null
 $mavenArgs=@('-q','-f','pom.xml','-DforkCount=0')
 if ($Tests) { $mavenArgs += "-Dtest=$Tests" }
 # Acceptance has a separately enforced database URL; run it with its own fixture script.
-else { $mavenArgs += '-Dtest=!com.bcm.acceptance.*Test,!LegacyPaymentCompatibilityPostgresTest' }
+else { $mavenArgs += '-Dtest=!com.bcm.acceptance.*Test' }
 $ErrorActionPreference='Continue'
 Push-Location backend
 & mvn @mavenArgs verify *> target/p1-verify.log

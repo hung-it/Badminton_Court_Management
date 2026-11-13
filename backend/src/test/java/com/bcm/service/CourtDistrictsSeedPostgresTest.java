@@ -53,7 +53,7 @@ class CourtDistrictsSeedPostgresTest {
         assertThat(scalar(sql, "SELECT count(*) FROM courts")).isEqualTo("15");
         assertThat(scalar(sql, "SELECT count(*) FROM courts WHERE NULLIF(btrim(district),'') IS NULL")).isEqualTo("0");
         assertThat(scalar(sql, "SELECT count(DISTINCT district) FROM courts")).isEqualTo("7");
-        assertThat(scalar(sql, "SELECT count(*) FROM courts WHERE name LIKE '%'")).isEqualTo("0");
+        assertThat(scalar(sql, "SELECT count(*) FROM courts WHERE name LIKE '[DEMO]%'")).isEqualTo("0");
     }
     @Test void freshMigrationSeedsFifteenCourtsAndRepeatDoesNotWriteAgain() throws Exception {
         isolated(sql -> {

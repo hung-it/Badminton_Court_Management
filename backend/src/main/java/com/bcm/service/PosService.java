@@ -60,6 +60,7 @@ public class PosService {
         validateBooking(request);
         if(request.getBookingId()==null && !request.isPaymentConfirmed())
             throw new BadRequestException("Confirm receipt of payment before creating a paid sale");
+        UUID customerId = resolveCustomerId(request);
         Map<UUID, Integer> quantitiesByProduct = aggregateQuantities(request.getItems());
         var enteredCode=productPromotions.validatePosCode(request.getPromotionCode(),quantitiesByProduct);
         List<InvoiceDetail> invoiceDetails = new ArrayList<>();
@@ -121,7 +122,6 @@ public class PosService {
         BigDecimal actual=courtFee.add(productFee).subtract(discountAmount);
         if(request.getExpectedTotal()==null || request.getExpectedTotal().compareTo(actual)!=0)
             throw new com.bcm.exception.DuplicateResourceException("Báo giá đã thay đổi; tải lại báo giá và xác nhận lại số tiền.");
-        UUID customerId = resolveCustomerId(request);
 
         UUID cashierId = currentStaff.currentStaffId().orElse(null);
         Invoice invoice = Invoice.builder()
@@ -200,15 +200,40 @@ public class PosService {
 
     private UUID resolveCustomerId(PosSaleRequest request) {
         if(request.getBookingId()!=null)return request.getCustomerId();
-        String phone=request.getCustomerPhone()==null?"":request.getCustomerPhone().replaceAll("[^0-9]","");
-        if(!phone.matches("[0-9]{8,15}")||phone.matches("0+"))throw new BadRequestException("Nhập số điện thoại khách mua hàng hợp lệ");
+        String phone=buyerPhone(request.getCustomerPhone());
         jdbc.query("SELECT pg_advisory_xact_lock(hashtextextended(?,0))",rs->{},"buyer:"+phone);
-        var matches=jdbc.queryForList("SELECT c.id FROM customers c LEFT JOIN users u ON u.id=c.user_id WHERE regexp_replace(c.phone,'[^0-9]','','g')=? AND c.deleted_at IS NULL AND (c.user_id IS NULL OR u.deleted_at IS NULL) ORDER BY c.user_id NULLS LAST,c.id",UUID.class,phone);
-        if(matches.size()>1)throw new BadRequestException("Số điện thoại có nhiều hồ sơ; cần kiểm tra trước khi bán");
-        if(!matches.isEmpty())return matches.get(0);
+        var matches=buyerMatches(phone);
+        UUID selected=request.getCustomerId();
+        if(selected!=null&&!matches.contains(selected))throw new com.bcm.exception.DuplicateResourceException("Khách đã thay đổi hoặc không khớp SĐT; hãy tra cứu lại");
+        if(selected==null&&matches.size()>1)throw new com.bcm.exception.DuplicateResourceException("Số điện thoại có nhiều hồ sơ; hãy chọn khách trước khi bán");
+        if(selected==null&&!matches.isEmpty())selected=matches.get(0);
+        if(selected!=null){
+            var owners=jdbc.queryForList("select user_id from customers where id=? and user_id is not null",UUID.class,selected);
+            if(!owners.isEmpty())jdbc.queryForList("select id from users where id=? for update",UUID.class,owners.get(0));
+            jdbc.queryForList("select id from customers where id=? for update",UUID.class,selected);
+            if(!buyerMatches(phone).contains(selected))throw new com.bcm.exception.DuplicateResourceException("Khách đã thay đổi hoặc bị khóa; hãy tra cứu lại");
+            return selected;
+        }
         UUID id=UUID.randomUUID();
         jdbc.update("INSERT INTO customers(id,user_id,full_name,phone,created_at,updated_at) VALUES (?,NULL,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",id,"Khách vãng lai "+phone,phone);
         return id;
+    }
+
+    private String buyerPhone(String value) {
+        String phone=value==null?"":value.replaceAll("[^0-9]","");
+        if(!phone.matches("[0-9]{8,15}")||phone.matches("0+"))throw new BadRequestException("Nhập số điện thoại khách mua hàng hợp lệ");
+        return phone;
+    }
+
+    private List<UUID> buyerMatches(String phone) {
+        return jdbc.queryForList("SELECT c.id FROM customers c LEFT JOIN users u ON u.id=c.user_id WHERE regexp_replace(c.phone,'[^0-9]','','g')=? AND c.deleted_at IS NULL AND (c.user_id IS NULL OR u.deleted_at IS NULL) ORDER BY c.user_id NULLS LAST,c.id",UUID.class,phone);
+    }
+
+    @org.springframework.transaction.annotation.Transactional(readOnly=true)
+    public List<Map<String,Object>> buyers(String phone) {
+        String sql="SELECT c.id,c.full_name AS \"fullName\",c.phone,CASE WHEN c.user_id IS NULL THEN 'WALK_IN' ELSE 'REGISTERED' END AS kind FROM customers c LEFT JOIN users u ON u.id=c.user_id WHERE c.deleted_at IS NULL AND (c.user_id IS NULL OR u.deleted_at IS NULL) AND c.phone IS NOT NULL";
+        if(phone==null)return jdbc.queryForList(sql+" ORDER BY c.full_name,c.id");
+        return jdbc.queryForList(sql+" AND regexp_replace(c.phone,'[^0-9]','','g')=? ORDER BY c.user_id NULLS LAST,c.id",buyerPhone(phone));
     }
 
     public String manualMethod(String method) {

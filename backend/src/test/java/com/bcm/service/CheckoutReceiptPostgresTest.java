@@ -69,6 +69,7 @@ class CheckoutReceiptPostgresTest {
     }
     @AfterEach void cleanup() {
         SecurityContextHolder.clearContext();
+        var walkIns=jdbc.queryForList("SELECT DISTINCT c.id FROM customers c JOIN invoices i ON i.customer_id=c.id JOIN invoice_details d ON d.invoice_id=i.id WHERE c.user_id IS NULL AND d.product_id=?",UUID.class,product);
         jdbc.update("DELETE FROM import_orders WHERE supplier_id=?",supplier);
         jdbc.update("DELETE FROM suppliers WHERE id=?",supplier);
         var ids=jdbc.queryForList("SELECT id FROM invoices WHERE customer_id=? OR id IN (SELECT invoice_id FROM invoice_details WHERE product_id=?)",UUID.class,customer,product);
@@ -77,6 +78,7 @@ class CheckoutReceiptPostgresTest {
         for(UUID id:ids) jdbc.update("DELETE FROM invoice_details WHERE invoice_id=?",id);
         for(UUID id:ids) jdbc.update("UPDATE invoices SET parent_invoice_id=NULL WHERE id=?",id);
         for(UUID id:ids) jdbc.update("DELETE FROM invoices WHERE id=?",id);
+        for(UUID id:walkIns)jdbc.update("DELETE FROM customers WHERE id=?",id);
         jdbc.update("DELETE FROM booking_details WHERE booking_id=?",booking);
         jdbc.update("DELETE FROM bookings WHERE id=?",booking);
         jdbc.update("DELETE FROM courts WHERE id=?",court);
@@ -88,7 +90,7 @@ class CheckoutReceiptPostgresTest {
     }
     PosSaleRequest sale(boolean attached,String method) {
         var r=new PosSaleRequest(customer,attached?booking:null,UUID.randomUUID(),method,BigDecimal.ZERO,BigDecimal.ZERO,List.of(new PosSaleItemRequest(product,1)));
-        r.setIdempotencyKey(UUID.randomUUID());r.setPaymentConfirmed(true);r.setExpectedTotal(new BigDecimal("10000"));r.setReference("manual-ref");return r;
+        r.setCustomerPhone(jdbc.queryForObject("select phone from customers where id=?",String.class,customer));r.setIdempotencyKey(UUID.randomUUID());r.setPaymentConfirmed(true);r.setExpectedTotal(new BigDecimal("10000"));r.setReference("manual-ref");return r;
     }
     CheckoutRequest receipt(String method,String amount) {
         var r=new CheckoutRequest(method);r.setPaymentConfirmed(true);r.setExpectedAmountDue(new BigDecimal(amount));r.setReference("checkout-ref");return r;
@@ -238,12 +240,13 @@ class CheckoutReceiptPostgresTest {
         assertThat(pos.sell(r).getStatus()).isEqualTo("CANCELLED");assertThat(stock()).isEqualTo(10);
     }
     @Test void walkInAndHistoricalSnapshotNeverFollowOtherCustomerOrCatalog() {
-        var r=sale(false,"CASH");r.setCustomerId(null);var inv=pos.sell(r);
-        assertThat(jdbc.queryForObject("SELECT u.email FROM customers c JOIN users u ON u.id=c.user_id WHERE c.id=?",String.class,inv.getCustomerId())).isEqualTo("guest@bcm.com");
+        var r=sale(false,"CASH");r.setCustomerId(null);r.setCustomerPhone("09"+String.format("%08d",Math.floorMod(product.getLeastSignificantBits(),100000000L)));var inv=pos.sell(r);
+        assertThat(jdbc.queryForObject("SELECT user_id IS NULL FROM customers WHERE id=?",Boolean.class,inv.getCustomerId())).isTrue();
+        assertThat(inv.getBuyerPhone()).isEqualTo(r.getCustomerPhone());
         jdbc.update("UPDATE products SET name='Changed',price=99999 WHERE id=?",product);
         assertThat(analytics.invoice(inv.getId()).items().get(0).name()).isEqualTo("Water snapshot");
         assertThat(analytics.invoice(inv.getId()).items().get(0).unitPrice()).isEqualByComparingTo("10000");
-        var invalid=sale(false,"CASH");invalid.setCustomerId(UUID.randomUUID());invalid.setExpectedTotal(new BigDecimal("99999"));assertThatThrownBy(()->pos.sell(invalid)).hasMessageContaining("Customer not found");
+        var invalid=sale(false,"CASH");invalid.setCustomerId(UUID.randomUUID());invalid.setExpectedTotal(new BigDecimal("99999"));assertThatThrownBy(()->pos.sell(invalid)).hasMessageContaining("tra cứu lại");
         assertThat(stock()).isEqualTo(9);
     }
     @Test void mismatchedCourtReceiptAndUnsupportedMethodDoNotChangeFinancialState() {

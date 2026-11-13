@@ -71,14 +71,9 @@ public class PosController {
     }
 
     @GetMapping("/customers")
-    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getCustomers() {
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getCustomers(@org.springframework.web.bind.annotation.RequestParam(required=false) String phone) {
         return ResponseEntity.ok(ApiResponse.success(
-                customerRepository.findAll().stream()
-                        .map(c -> Map.<String, Object>of(
-                                "id", c.getId(),
-                                "fullName", c.getFullName(),
-                                "phone", c.getPhone()
-                        )).toList()));
+                posService.buyers(phone)));
     }
 
     @PostMapping("/sales/{id}/cancel")

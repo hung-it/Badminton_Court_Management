@@ -56,12 +56,14 @@ public class StatisticsService {
         if(from!=null&&to!=null&&from.isAfter(to))throw new BadRequestException("Từ ngày không được sau Đến ngày");
         var cols=new ArrayList<String>();var starts=new ArrayList<LocalDate>();var ends=new ArrayList<LocalDate>();
         if(type.equals("DATE")||period.equals("DATE")){
+            validateDailyRange(from,to);
             String source=type.equals("IMPORT")?"select min(import_date) as first,max(import_date) as last from import_orders where status='RECEIVED'":"select min(created_at)::date as first,max(created_at)::date as last from invoices where status='PAID' and deleted_at is null";
             var bounds=jdbc.queryForMap(source);
             LocalDate lo=from!=null?from:bounds.get("first")==null?to:((java.sql.Date)bounds.get("first")).toLocalDate();
             LocalDate hi=to!=null?to:bounds.get("last")==null?from:((java.sql.Date)bounds.get("last")).toLocalDate();
             if(lo!=null&&hi!=null){
                 if(lo.isAfter(hi)){if(from!=null)hi=lo;else lo=hi;}
+                validateDailyRange(lo,hi);
                 for(LocalDate d=lo;!d.isAfter(hi);d=d.plusDays(1)){
                     cols.add(d.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")));starts.add(d);ends.add(d.plusDays(1));
                 }
@@ -103,6 +105,13 @@ public class StatisticsService {
         for(var e:data.entrySet()){BigDecimal total=e.getValue().stream().reduce(BigDecimal.ZERO,BigDecimal::add);rows.add(new MatrixRow(e.getKey(),labels.get(e.getKey()),e.getValue(),total));if(!type.equals("TIME")||e.getKey().equals("Tổng thu"))for(int i=0;i<totals.size();i++)totals.set(i,totals.get(i).add(e.getValue().get(i)));}
         rows.sort(java.util.Comparator.comparing(MatrixRow::label).thenComparing(MatrixRow::id));
         return new Matrix(type,cols,rows,totals,totals.stream().reduce(BigDecimal.ZERO,BigDecimal::add),type.equals("COURT")?"Tiền sân sau phân bổ giảm giá, không gồm sản phẩm":type.equals("PRODUCT")?"Giá trị sản phẩm sau phân bổ giảm giá, không gồm tiền sân":"Chỉ hóa đơn PAID chưa xóa và phiếu nhập RECEIVED");
+    }
+
+    private void validateDailyRange(LocalDate from,LocalDate to) {
+        if(from!=null&&(from.getYear()<1||from.getYear()>9998)||to!=null&&(to.getYear()<1||to.getYear()>9998))
+            throw new BadRequestException("Ngày thống kê phải thuộc năm 1–9998");
+        if(from!=null&&to!=null&&java.time.temporal.ChronoUnit.DAYS.between(from,to)>=366)
+            throw new BadRequestException("Báo cáo theo ngày tối đa 366 ngày, tính cả ngày đầu và cuối");
     }
 
     public byte[] excel(Matrix m,String filters) {

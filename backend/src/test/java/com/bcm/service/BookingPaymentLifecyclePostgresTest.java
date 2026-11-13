@@ -139,7 +139,7 @@ class BookingPaymentLifecyclePostgresTest {
             var sale = new com.bcm.dto.request.PosSaleRequest(customer, null, null, "CASH",
                     java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO,
                     List.of(new com.bcm.dto.request.PosSaleItemRequest(product, 1)));
-            sale.setIdempotencyKey(UUID.randomUUID());sale.setPaymentConfirmed(true);sale.setExpectedTotal(new java.math.BigDecimal("10000"));
+            sale.setCustomerPhone(jdbc.queryForObject("select phone from customers where id=?",String.class,customer));sale.setIdempotencyKey(UUID.randomUUID());sale.setPaymentConfirmed(true);sale.setExpectedTotal(new java.math.BigDecimal("10000"));
             var invoice=pos.sell(sale);
             assertThat(invoice.getPaymentMethod()).isEqualTo("CASH");
             assertThat(invoice.getStatus()).isEqualTo("PAID");

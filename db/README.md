@@ -12,7 +12,8 @@ db/
 │   ├── booking-ux-upgrade.sql       # Booking, chi nhánh, receipt và audit
 │   ├── product-promotions-upgrade.sql # Khuyến mãi sản phẩm và catalog cơ bản
 │   ├── court-promotions-upgrade.sql   # Giới hạn ưu đãi tiền sân
-│   └── legacy-bank-transfer-upgrade.sql # Bảo toàn thanh toán cũ, opt-in
+│   ├── legacy-bank-transfer-upgrade.sql # Chặn dữ liệu phương thức không hỗ trợ
+│   └── remove-legacy-transfer-seed.sql # Dọn đúng một fixture cũ, opt-in
 ├── seeds/
 │   ├── branches-seed.sql            # Danh mục cơ sở/sân
 │   └── revenue-breakdown-sample.sql # Mẫu báo cáo cũ, chỉ chạy thủ công
@@ -55,9 +56,12 @@ Khi thực sự cần nâng cấp: sao lưu và kiểm tra bản sao lưu, rồi
 cần thiết sau khi đối chiếu trạng thái schema. `scripts/start-shared-docker.ps1`
 giữ quy trình backup trước upgrade và đã dùng đường dẫn thư mục mới.
 
-- `upgrades/legacy-bank-transfer-upgrade.sql`: dành cho lịch sử BANK_TRANSFER
-  đã được rà soát; chạy trước booking UX upgrade nếu cần giữ dữ liệu đó. Không chạy
-  tự động trên DB mới và không tạo thanh toán BANK_TRANSFER mới.
+- `upgrades/legacy-bank-transfer-upgrade.sql`: chỉ kiểm tra và chặn dữ liệu phương
+  thức không hỗ trợ; không chuyển đổi hoặc cung cấp chế độ đọc BANK_TRANSFER.
+- `scripts/remove-legacy-transfer-seed.ps1 -Database <tên_DB>`: sao lưu đầy đủ rồi
+  dọn đúng hóa đơn seed `b2000000-0000-4000-8000-000000000103` và dòng hàng gốc.
+  SQL đối chiếu toàn bộ bản ghi và từ chối nếu đã sửa hoặc có liên kết phát sinh.
+  Không chạy tự động khi start project; không dùng để xóa giao dịch thật.
 - `seeds/revenue-breakdown-sample.sql`: giữ đầy đủ mẫu báo cáo cũ. Không tự nạp
   cùng demo vì script có `ON CONFLICT DO UPDATE`, có thể ghi đè bản ghi mẫu và
   thay đổi tồn kho/doanh thu. Không chạy chỉ để sắp xếp folder.

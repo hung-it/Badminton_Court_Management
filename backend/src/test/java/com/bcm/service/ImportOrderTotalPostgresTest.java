@@ -64,6 +64,7 @@ class ImportOrderTotalPostgresTest {
         moveToImportCategory();
         jdbc.update("UPDATE products SET price=0,stock_quantity=5 WHERE id=?",product);
         var request=new com.bcm.dto.request.PosSaleRequest(null,null,null,"CASH",BigDecimal.ZERO,BigDecimal.ZERO,List.of(new com.bcm.dto.request.PosSaleItemRequest(product,1)));
+        request.setCustomerPhone("09"+String.format("%08d",Math.floorMod(UUID.randomUUID().getLeastSignificantBits(),100000000L)));
         request.setIdempotencyKey(UUID.randomUUID());request.setPaymentConfirmed(true);request.setExpectedTotal(BigDecimal.ZERO);
         assertThat(prices.sellable()).extracting(com.bcm.entity.Product::getId).doesNotContain(product);
         assertThatThrownBy(()->pos.quote(request)).hasMessageContaining("chưa được duyệt");

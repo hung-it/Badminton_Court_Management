@@ -77,10 +77,10 @@ WHERE c.id=f.actual_id AND NULLIF(btrim(c.district),'') IS NULL;
 INSERT INTO courts(id,court_code,name,type,status,base_price,district)
 SELECT id,court_code,name,type,'AVAILABLE',base_price,district FROM project_additional_court
 ON CONFLICT (id) DO UPDATE SET
-    name=CASE WHEN courts.name IN (EXCLUDED.name,''||EXCLUDED.name) THEN EXCLUDED.name ELSE courts.name END,
+    name=CASE WHEN courts.name IN (EXCLUDED.name,'[DEMO] '||EXCLUDED.name) THEN EXCLUDED.name ELSE courts.name END,
     district=CASE WHEN NULLIF(btrim(courts.district),'') IS NULL THEN EXCLUDED.district ELSE courts.district END,
     updated_at=CURRENT_TIMESTAMP
-WHERE courts.name=''||EXCLUDED.name OR NULLIF(btrim(courts.district),'') IS NULL;
+WHERE courts.name='[DEMO] '||EXCLUDED.name OR NULLIF(btrim(courts.district),'') IS NULL;
 COMMIT;
 -- END SECTION: districts
 

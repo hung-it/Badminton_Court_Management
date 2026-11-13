@@ -25,6 +25,14 @@ public class MasterDataService {
     private final ProductRepository products;
     private final ProductPriceService productPrices;
     private final JdbcTemplate jdbc;
+    @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager entityManager;
+
+    private Category lockedCategory(UUID id) {
+        var c=categories.findForUpdate(id).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy danh mục"));
+        entityManager.refresh(c);
+        if(c.getDeletedAt()!=null)throw new ResourceNotFoundException("Không tìm thấy danh mục");
+        return c;
+    }
 
     public List<Court> courts() {
         return courts.findByDeletedAtIsNullOrderByCourtCodeAsc();
@@ -185,13 +193,13 @@ public class MasterDataService {
         if (categories.existsByCategoryNameIgnoreCaseAndDeletedAtIsNullAndIdNot(
                 r.categoryName().strip(), id == null ? new UUID(0, 0) : id))
             throw new DuplicateResourceException("Tên danh mục đã tồn tại");
-        Category c = id == null ? new Category() : category(id);
+        Category c = id == null ? new Category() : lockedCategory(id);
         c.setCategoryName(r.categoryName().strip());
         return categories.saveAndFlush(c);
     }
 
     public void deleteCategory(UUID id) {
-        Category c = category(id);
+        Category c = lockedCategory(id);
         if (products.existsByCategoryIdAndDeletedAtIsNull(id))
             throw new BadRequestException(
                     "Danh mục còn sản phẩm; hãy chuyển hoặc xóa sản phẩm trước");
@@ -200,7 +208,7 @@ public class MasterDataService {
     }
 
     public Product saveProduct(UUID id, ProductRequest r) {
-        category(r.categoryId());
+        lockedCategory(r.categoryId());
         if (r.type() == ProductType.SERVICE && r.stockQuantity() != 0)
             throw new BadRequestException("Dịch vụ phải có tồn kho bằng 0");
         Product p = id == null ? new Product() : products.findByIdForPriceApproval(id)

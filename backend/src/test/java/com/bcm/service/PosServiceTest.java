@@ -78,7 +78,7 @@ class PosServiceTest {
                 BigDecimal.ZERO,
                 List.of(new PosSaleItemRequest(productId, 1)));
 
-        request.setIdempotencyKey(UUID.randomUUID());request.setPaymentConfirmed(true);
+        request.setCustomerId(null);request.setCustomerPhone("0912345678");request.setIdempotencyKey(UUID.randomUUID());request.setPaymentConfirmed(true);
         when(currentStaff.requireUserId()).thenReturn(UUID.randomUUID());
         BadRequestException exception = assertThrows(
                 BadRequestException.class,

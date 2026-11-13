@@ -15,6 +15,10 @@ const productId='22222222-2222-4222-8222-222222222222';
  await page.route('**/api/**',async route=>{
   const req=route.request(),path=new URL(req.url()).pathname;
   let data=[];
+  if(path==='/api/pos/customers'&&new URL(req.url()).searchParams.get('phone')==='0933557799')data=[
+   {id:'33333333-3333-4333-8333-333333333333',fullName:'Người mua đã đăng ký',phone:'0933557799',kind:'REGISTERED'},
+   {id:'44444444-4444-4444-8444-444444444444',fullName:'Hồ sơ vãng lai cũ',phone:'0933557799',kind:'WALK_IN'}
+  ];
   if(path==='/api/pos/drafts')data={content:[],page:0,totalPages:0,totalElements:0};
   if(path==='/api/pos/products')data=[{id:productId,name:'Nước kiểm thử',type:'GOODS',price:10000,stockQuantity:10,unit:'chai'}];
   if(path==='/api/pos/quote'){
@@ -92,7 +96,19 @@ const productId='22222222-2222-4222-8222-222222222222';
  const pay=page.getByRole('button',{name:'✓ Thu tiền hàng (VNPAY)',exact:true});assert(await pay.isDisabled());
  for(const width of [1440,1024,768,375]){await page.setViewportSize({width,height:1000});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'overflow '+width);const spacing=await page.locator('.pos-order-panel .pos-summary').evaluate(el=>{const fields=[...el.querySelectorAll(':scope > .field')].map(e=>e.getBoundingClientRect());return fields.every((b,i)=>i===0||fields[i-1].bottom<=b.top)});assert(spacing);}
  await page.getByRole('checkbox').check();await pay.click();await page.getByText('Bán hàng thành công! Hóa đơn chỉ gồm hàng hóa, không kèm tiền sân.',{exact:true}).waitFor();
- assert.equal(sales[2].paymentMethod,'VNPAY');assert.equal(sales[2].customerPhone,'+84 987 654 321');assert.deepEqual(errors,[]);
- console.log('PASS: booking unchanged; guest phone visible only in guest mode, invalid phones blocked, CASH/VNPAY request carries phone, phone edits revoke confirmation, responsive spacing 1440/1024/768/375, no JS errors.');
+ assert.equal(sales[2].paymentMethod,'VNPAY');assert.equal(sales[2].customerPhone,'+84 987 654 321');
+ await page.getByRole('button',{name:'Thêm +',exact:true}).click();
+ await page.getByLabel('Số điện thoại khách hàng',{exact:true}).fill('0933557799');
+ const buyer=page.getByLabel('Hồ sơ khách hàng',{exact:true});await buyer.waitFor();
+ assert.equal(await buyer.locator('option').count(),3);
+ assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'duplicate buyer selector overflows mobile viewport');
+ await page.getByRole('checkbox').check();assert(await pay.isDisabled());
+ await buyer.selectOption('33333333-3333-4333-8333-333333333333');
+ await page.waitForFunction(()=>!document.querySelector('.pos-receipt-confirm input').checked);
+ await page.getByRole('checkbox').check();await pay.click();
+ await page.getByText('Bán hàng thành công! Hóa đơn chỉ gồm hàng hóa, không kèm tiền sân.',{exact:true}).waitFor();
+ assert.equal(sales[3].customerId,'33333333-3333-4333-8333-333333333333');
+ assert.equal(sales[3].customerPhone,'0933557799');assert.deepEqual(errors,[]);
+ console.log('PASS: booking unchanged; invalid phones blocked; CASH/VNPAY and selected customer carried; duplicate phone requires selection; edits revoke confirmation; responsive 1440/1024/768/375; no JS errors.');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

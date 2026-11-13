@@ -318,21 +318,3 @@ WHERE d.product_type IS NULL
  AND d.invoice_id=uuid_generate_v5('bcd00000-0000-4000-8000-000000000001'::uuid,'vnpay-invoice-'||seed.n)
  AND d.product_name='Thuê vợt theo lượt';
 COMMIT;
-
--- BCM_LABEL_NORMALIZATION: metadata only; preserve identifiers and all financial fields.
-BEGIN;
-SET LOCAL lock_timeout='5s';
-DO $labels$
-DECLARE r record; expression text; changed bigint;
-BEGIN
- FOR r IN SELECT table_schema,table_name,column_name FROM information_schema.columns
- WHERE table_schema='public' AND data_type IN ('text','character varying')
- AND column_name IN ('email','full_name','name','category_name','product_name','promotion_name','address','district','note','reference','transaction_id','code','voucher_code','contact_full_name','description')
- LOOP
-  expression:=format($expr$regexp_replace(regexp_replace(regexp_replace(regexp_replace(%I,'(?i)\.demo(@)','\1','g'),'(?i)\[demo\][ ]*','','g'),'(?i)(^|[-_])demo([-_]|$)','\1BCM\2','g'),'(?i)\mdemo\M[ ]*','','g')$expr$,r.column_name);
-  EXECUTE format('UPDATE %I.%I SET %I=%s WHERE %I ILIKE ''%%demo%%'' AND %I IS DISTINCT FROM %s',r.table_schema,r.table_name,r.column_name,expression,r.column_name,r.column_name,expression);
-  GET DIAGNOSTICS changed=ROW_COUNT;
-  IF changed>0 THEN RAISE NOTICE 'Normalized %.%: % rows',r.table_name,r.column_name,changed; END IF;
- END LOOP;
-END $labels$;
-COMMIT;

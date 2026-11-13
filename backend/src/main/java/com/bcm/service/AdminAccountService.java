@@ -48,8 +48,9 @@ public class AdminAccountService {
  private void lockUser(UUID id){if(jdbc.queryForList("select id from users where id=? for update",UUID.class,id).isEmpty())throw new ResourceNotFoundException("Account not found");}
  @Transactional public void update(UUID id,AdminAccountUpdateRequest r){
   if("0000000000".equals(r.phone().strip()))throw new BadRequestException("Reserved POS guest phone");
-  lockUser(id);var u=users.findById(id).orElseThrow();
-  if(u.getDeletedAt()!=null||guest.isGuest(u.getId()))throw new BadRequestException("Account cannot be edited");
+  lockUser(id);var u=users.findById(id).orElseThrow();entityManager.refresh(u);
+  jdbc.queryForList("select id from customers where user_id=? for update",UUID.class,id);
+  if(guest.isGuest(u.getId()))throw new BadRequestException("Account cannot be edited");
   String email=com.bcm.security.CredentialPolicy.email(r.email());
   if(jdbc.queryForObject("select count(*) from users where lower(email)=? and id<>?",Long.class,email,id)>0)throw new DuplicateResourceException("Email already registered");
   u.setFullName(r.fullName().strip());u.setEmail(email);u.setPhone(r.phone().strip());u.setAddress(r.address());users.saveAndFlush(u);
