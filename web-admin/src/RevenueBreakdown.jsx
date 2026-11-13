@@ -1,66 +1,66 @@
-import React,{useEffect,useMemo,useRef,useState} from 'react';
-const money=n=>new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND'}).format(n||0);
-const number=n=>new Intl.NumberFormat('vi-VN').format(n||0);
-const tabs=[['staff','Nhân viên','staffName','staffId','staff'],['customer','Khách hàng','customerName','customerId','customers'],['product','Sản phẩm','productName','productId','products'],['court','Tiền sân','courtName','courtId','courts']];
-
-export default function RevenueBreakdown({api,initialDimension}){
- const [dimension,setDimension]=useState(initialDimension||'staff');
- const [period,setPeriod]=useState('QUARTER');
- const [year,setYear]=useState(String(new Date().getFullYear()));
- const [quarter,setQuarter]=useState('');
- const [query,setQuery]=useState('period=QUARTER&year='+new Date().getFullYear()+'&detail=true');
- const [report,setReport]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[search,setSearch]=useState(''),[refresh,setRefresh]=useState(0);
+import React,{useEffect,useRef,useState} from 'react';
+const money=n=>new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND',maximumFractionDigits:2}).format(n||0);
+const number=n=>new Intl.NumberFormat('vi-VN',{maximumFractionDigits:2}).format(n||0);
+const date=d=>new Date(d+'T00:00:00').toLocaleDateString('vi-VN');
+const localDate=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function range(key){const end=new Date(),start=new Date(end);if(key==='7')start.setDate(start.getDate()-6);if(key==='30')start.setDate(start.getDate()-29);if(key==='month')start.setDate(1);if(key==='year'){start.setMonth(0);start.setDate(1)}return {from:localDate(start),to:localDate(end)}}
+const colors=['#174d3a','#47a785','#9bc8ae','#d8a653'];
+export default function RevenueBreakdown({api}){
+ const [form,setForm]=useState(()=>range('month')),[applied,setApplied]=useState(()=>range('month'));
+ const [data,setData]=useState(null),[busy,setBusy]=useState(true),[error,setError]=useState(''),[refresh,setRefresh]=useState(0),[compare,setCompare]=useState(true),[hover,setHover]=useState({});
  const apiRef=useRef(api);apiRef.current=api;
  useEffect(()=>{
-  let active=true;setBusy(true);setError('');setReport(null);
-  apiRef.current('/analytics/revenue-breakdown?'+query).then(v=>{if(active)setReport(v)}).catch(e=>{if(active)setError(e.message)}).finally(()=>{if(active)setBusy(false)});
+  let active=true;setBusy(true);setError('');setData(null);setHover({});
+  const params=new URLSearchParams(applied);
+  apiRef.current('/analytics/revenue-dashboard?'+params).then(v=>{if(active)setData(v)}).catch(e=>{if(active)setError(e.message)}).finally(()=>{if(active)setBusy(false)});
   return()=>{active=false};
- },[query,refresh]);
- const [key,label,nameKey,idKey,responseKey]=tabs.find(t=>t[0]===dimension);
- const rows=report?.[responseKey]||[];
- const visibleRows=useMemo(()=>rows.filter(row=>(row[nameKey]||'').toLocaleLowerCase('vi').includes(search.trim().toLocaleLowerCase('vi'))),[rows,nameKey,search]);
- const maxRevenue=Math.max(0,...rows.map(row=>Number(row.total||0)));
- function submit(e){e.preventDefault();const value=Number(year);if(!Number.isInteger(value)||value<1||value>9998){setError('Nhập năm hợp lệ từ 1 đến 9998.');return;}setQuarter('');setQuery('period='+period+'&year='+value+'&detail=true');setRefresh(v=>v+1);}
- function pickQuarter(value){const quarterNumber=value?value.match(/^Q([1-4])\//)?.[1]:'';setQuarter(value);setQuery('period='+period+'&year='+year+'&detail=true'+(quarterNumber?'&quarter='+quarterNumber:''));setRefresh(v=>v+1);}
- function pickPeriod(value){setPeriod(value);setQuarter('');}
- const detail=report?.details?.find(d=>d.periodKey===(quarter||report?.periods?.[0]?.key));
- return <div className="analytics-panel revenue-breakdown">
-  <div className="page-heading"><div><span className="eyebrow">PHÂN TÍCH DOANH THU</span><h1>Doanh thu theo đối tượng</h1></div></div>
-  <div className="breakdown-tabs" role="tablist" aria-label="Nhóm báo cáo">
-   {tabs.map(([value,text])=><button key={value} role="tab" aria-selected={dimension===value} className={dimension===value?'primary':'secondary'} onClick={()=>{setDimension(value);setSearch('');}}>{text}</button>)}
-  </div>
-  <form className="toolbar period-filter breakdown-filter" onSubmit={submit}>
-   <label className="field">Thống kê theo<select aria-label="Kỳ báo cáo" value={period} onChange={e=>pickPeriod(e.target.value)}><option value="QUARTER">Quý</option><option value="YEAR">Năm</option></select></label>
-   <label className="field year-field">Năm<input aria-label="Năm báo cáo" type="number" min="1" max="9998" value={year} onChange={e=>setYear(e.target.value)}/></label>
-   <button className="primary" type="submit" disabled={busy}>Xem báo cáo</button>
+ },[applied,refresh]);
+ function submit(e){e.preventDefault();if(!form.from||!form.to||form.from>form.to){setError('Chọn khoảng ngày hợp lệ, Từ ngày không sau Đến ngày.');return}setApplied({...form});setRefresh(v=>v+1)}
+ const trend=data?.trend||[],plot=trend.flatMap(p=>compare?[Number(p.current),Number(p.previous)]:[Number(p.current)]),max=Math.max(1,...plot),x=i=>58+(trend.length===1?330:i*660/(trend.length-1)),y=v=>196-Number(v)/max*156;
+ const tip=(key,value)=>setHover(h=>({...h,[key]:value}));
+ const positive=(data?.composition||[]).filter(v=>Number(v.amount)>0),growth=data?.growthPercent;
+ let offset=0;
+ return <section className="revenue-dashboard" aria-label="Dashboard doanh thu">
+  <header className="rd-heading"><div><h1>Tổng quan doanh thu</h1><p>Theo dõi doanh thu hóa đơn và hiệu quả kinh doanh.</p></div></header>
+  <form className="rd-filters" onSubmit={submit}>
+   <label className="field">Từ ngày<input aria-label="Từ ngày" required type="date" value={form.from} onChange={e=>setForm({...form,from:e.target.value})}/></label>
+   <label className="field">Đến ngày<input aria-label="Đến ngày" required type="date" value={form.to} onChange={e=>setForm({...form,to:e.target.value})}/></label>
+   <div className="rd-quick" role="group" aria-label="Chọn nhanh khoảng ngày">{[['today','Hôm nay'],['7','7 ngày'],['30','30 ngày'],['month','Tháng này'],['year','Năm nay']].map(([key,label])=>{const r=range(key);return <button key={key} type="button" aria-pressed={form.from===r.from&&form.to===r.to} onClick={()=>setForm(r)}>{label}</button>})}</div>
+   <button className="primary" disabled={busy}>Xem doanh thu</button>
   </form>
-  {busy?<p role="status" className="empty">Đang tải báo cáo…</p>:error?<p className="alert error" role="alert">{error}</p>:report&&<>
-   <div className="stats three-stats">
-    <div><span>{dimension==='court'?'Tổng tiền sân':dimension==='product'?'Tổng doanh thu sản phẩm':'Tổng doanh thu hóa đơn'}</span><strong>{money(rows.reduce((sum,row)=>sum+Number(row.total||0),0))}</strong></div>
-    <div><span>Số {label.toLocaleLowerCase('vi')}</span><strong>{rows.length}</strong></div>
-    <div><span>Kỳ báo cáo</span><strong>{report.period==='YEAR'?'Năm '+report.year:'4 quý năm '+report.year}</strong></div>
+  {error&&<p role="alert" className="alert error">{error}</p>}
+  {busy?<p className="rd-state" role="status">Đang tải doanh thu…</p>:data&&<>
+   <div className="rd-period">{date(data.from)} – {date(data.to)}<span>So sánh: {date(data.previousFrom)} – {date(data.previousTo)}</span></div>
+   <div className="rd-kpis">
+    <article><span>Tổng doanh thu</span><strong>{money(data.totalRevenue)}</strong><small>Hóa đơn PAID hợp lệ</small></article>
+    <article><span>Tăng trưởng doanh thu</span><strong className={growth===null?'rd-neutral':Number(growth)<0?'rd-down':'rd-up'}>{growth===null?'—':(Number(growth)>0?'↗ ':Number(growth)<0?'↘ ':'→ ')+number(growth)+'%'}</strong><small>{growth===null?'Kỳ trước bằng 0, chưa có cơ sở tính %':'So với kỳ trước cùng số ngày'}</small></article>
+    <article><span>Số hóa đơn</span><strong>{number(data.invoiceCount)}</strong><small>Đã thanh toán</small></article>
+    <article><span>Giá trị hóa đơn trung bình</span><strong>{money(data.averageInvoice)}</strong><small>Trên mỗi hóa đơn hợp lệ</small></article>
    </div>
-   {dimension==='product'&&<p className="muted breakdown-note">Doanh thu sản phẩm đã phân bổ giảm giá cấp hóa đơn và tiền sân, nên cộng với tổng tiền sân sẽ bằng tổng doanh thu hóa đơn.</p>}
-   {dimension==='court'&&<p className="muted breakdown-note">Chỉ tính tiền sân của hóa đơn đã thanh toán, không tính tiền hàng hóa và dịch vụ.</p>}
-   <section className="content-panel">
-    <div className="toolbar breakdown-toolbar"><h3>{label} · {report.period==='YEAR'?'Năm '+report.year:'Quý năm '+report.year}</h3><label className="field">Tìm {label.toLocaleLowerCase('vi')}<input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder={'Tìm theo tên '+label.toLocaleLowerCase('vi')}/></label><span className="count">{visibleRows.length} / {rows.length}</span></div>
-    {!visibleRows.length?<p className="empty">{rows.length?'Không tìm thấy kết quả phù hợp.':'Chưa có dữ liệu trong kỳ này.'}</p>:<div className="table-scroll"><table className="breakdown-table"><thead><tr><th scope="col">{label}</th>{report.periods.map(p=><th scope="col" key={p.key}>{p.label}</th>)}{dimension==='product'&&<th scope="col">Tổng số lượng</th>}<th scope="col">Tổng cộng</th><th scope="col">So với cao nhất</th></tr></thead><tbody>
-     {visibleRows.map(row=>{const values=report.periods.map(p=>row.values?.[p.key]||0);const total=Number(row.total||0);const share=maxRevenue?Math.max(0,Math.min(100,total/maxRevenue*100)):0;return <tr key={row[idKey]||'unattributed'}><th scope="row">{row[nameKey]||'—'}</th>{report.periods.map((p,i)=><td key={p.key}>{dimension==='product'?<><span>{number(row.quantities?.[p.key])}</span><small className="breakdown-money">{money(values[i])}</small></>:money(values[i])}</td>)}{dimension==='product'&&<td>{number(row.totalQuantity)}</td>}<td><strong>{money(total)}</strong></td><td><div className="breakdown-bar" role="img" aria-label={Math.round(share)+'% so với dòng cao nhất'}><span style={{width:share+'%'}}/></div></td></tr>})}
-    </tbody></table></div>}
-   </section>
-   <section className="content-panel breakdown-detail-panel">
-    <div className="toolbar breakdown-toolbar"><h3>Chi tiết nội dung{report.period==='YEAR'?'':' theo quý'}</h3><div className="breakdown-quarters" role="group" aria-label="Chọn kỳ chi tiết">{report.period==='YEAR'?null:report.periods.map(p=><button key={p.key} type="button" aria-pressed={(quarter||report.periods[0]?.key)===p.key} className={(quarter||report.periods[0]?.key)===p.key?'primary':'secondary'} onClick={()=>pickQuarter(p.key)}>{p.label}</button>)}</div></div>
-    {!detail?<p className="empty">Chưa có dữ liệu chi tiết cho kỳ này.</p>:<>
-     <div className="table-scroll"><table className="breakdown-detail-table"><thead><tr><th scope="col">Sản phẩm</th><th scope="col">Nhân viên thêm hàng</th><th scope="col">Khách hàng</th><th scope="col">Số lượng</th><th scope="col">Tiền dòng hàng</th></tr></thead><tbody>
-      {!detail.products.length?<tr><td colSpan="5" className="empty-cell">Không có dòng hàng trong kỳ này.</td></tr>:detail.products.map(row=><tr key={(row.productId||'p')+'-'+(row.staffId||'s')+'-'+(row.customerId||'c')}><th scope="row">{row.productName}</th><td>{row.staffName}</td><td>{row.customerName}</td><td>{number(row.totalQuantity)}</td><td><strong>{money(row.total)}</strong></td></tr>)}
-     </tbody></table></div>
-     <div className="breakdown-totals">
-      <div className="breakdown-total-line"><span>Tổng tiền sản phẩm</span><strong>{money(detail.productTotal)}</strong></div>
-      <div className="breakdown-total-line"><span>+ Tiền sân</span><strong>{money(detail.courtTotal)}</strong></div>
-      <div className="breakdown-total-line grand"><span>= Tổng doanh thu hóa đơn</span><strong>{money(detail.invoiceTotal)}</strong></div>
-     </div>
-    </>}
-   </section>
+   <article className="rd-panel rd-trend"><div className="rd-panel-head"><h2>Xu hướng doanh thu</h2><label className="rd-compare"><input type="checkbox" checked={compare} onChange={e=>{setCompare(e.target.checked);tip('trend',null)}}/>So sánh kỳ trước</label></div>
+    {plot.some(v=>v!==0)?<><svg className="rd-line" viewBox="0 0 750 255" role="img" aria-label="Xu hướng doanh thu">
+     {[0,.5,1].map(v=><g key={v}><line x1="58" y1={y(v*max)} x2="724" y2={y(v*max)} stroke="#e4ebe5"/><text x="54" y={y(v*max)-5} fontSize="10" textAnchor="start">{number(v*max)} đ</text></g>)}
+     {compare&&<polyline fill="none" stroke="#93a798" strokeWidth="2" strokeDasharray="5 4" points={trend.map((p,i)=>`${x(i)},${y(p.previous)}`).join(' ')}/>}
+     <polyline fill="none" stroke="#174d3a" strokeWidth="3" points={trend.map((p,i)=>`${x(i)},${y(p.current)}`).join(' ')}/>
+     {trend.map((p,i)=><g key={p.from}><circle cx={x(i)} cy={y(p.current)} r={hover.trend===i?5:3} fill="#174d3a"/><rect x={x(i)-Math.min(12,325/Math.max(1,trend.length))} y="22" width={Math.min(24,650/Math.max(1,trend.length))} height="180" fill="transparent" tabIndex="0" role="button" aria-label={date(p.from)+': '+money(p.current)} onMouseEnter={()=>tip('trend',i)} onFocus={()=>tip('trend',i)} onClick={()=>tip('trend',i)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' ')tip('trend',i)}}><title>{date(p.from)} – {date(p.to)}: {money(p.current)}{compare?' · Kỳ trước: '+money(p.previous):''}</title></rect>{(i%Math.max(1,Math.ceil(trend.length/7))===0||i===trend.length-1)&&<text x={x(i)} y="228" textAnchor={i===trend.length-1?'end':i===0?'start':'middle'} fontSize="11">{date(p.from)}</text>}</g>)}
+    </svg><div className="rd-legend"><span><i style={{background:colors[0]}}/>Kỳ hiện tại</span>{compare&&<span><i style={{background:'#93a798'}}/>Kỳ trước</span>}</div>{hover.trend!=null&&trend[hover.trend]&&<p className="rd-tooltip" role="status">{date(trend[hover.trend].from)} – {date(trend[hover.trend].to)}: <strong>{money(trend[hover.trend].current)}</strong>{compare&&<span> · {date(trend[hover.trend].previousFrom)} – {date(trend[hover.trend].previousTo)}: {money(trend[hover.trend].previous)}</span>}</p>}</>:<p className="rd-state">Chưa có doanh thu trong kỳ{compare?' và kỳ trước':''}.</p>}
+   </article>
+   <div className="rd-two">
+    <article className="rd-panel rd-composition"><div className="rd-panel-head"><h2>Cơ cấu doanh thu</h2></div>
+     {positive.length?<div className="rd-donut-wrap"><svg className="rd-donut" viewBox="0 0 180 180" role="img" aria-label="Cơ cấu doanh thu"><circle cx="90" cy="90" r="62" fill="none" stroke="#edf2ed" strokeWidth="25"/>{positive.map((v,i)=>{const share=Number(v.amount)/Number(data.totalRevenue)*100,start=offset;offset+=share;return <circle key={v.label} cx="90" cy="90" r="62" fill="none" stroke={colors[i%colors.length]} strokeWidth={hover.composition===i?30:25} pathLength="100" strokeDasharray={`${share} ${100-share}`} strokeDashoffset={-start} transform="rotate(-90 90 90)" tabIndex="0" role="button" aria-label={v.label+': '+money(v.amount)+' · '+number(v.percent)+'%'} onMouseEnter={()=>tip('composition',i)} onFocus={()=>tip('composition',i)} onClick={()=>tip('composition',i)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' ')tip('composition',i)}}><title>{v.label}: {money(v.amount)} ({number(v.percent)}%)</title></circle>})}<text x="90" y="87" textAnchor="middle" fontSize="12">Cơ cấu</text><text x="90" y="107" textAnchor="middle" fontSize="18" fontWeight="700">100%</text></svg><div className="rd-slices">{positive.map((v,i)=><button key={v.label} aria-pressed={hover.composition===i} onMouseEnter={()=>tip('composition',i)} onFocus={()=>tip('composition',i)} onClick={()=>tip('composition',i)}><i style={{background:colors[i%colors.length]}}/><span>{v.label}<strong>{money(v.amount)}</strong></span><b>{number(v.percent)}%</b></button>)}</div></div>:<p className="rd-state">Chưa có dữ liệu phù hợp để phân bổ cơ cấu doanh thu.</p>}
+     {hover.composition!=null&&positive[hover.composition]&&<p className="rd-tooltip" role="status">{positive[hover.composition].label}: {money(positive[hover.composition].amount)} · {number(positive[hover.composition].percent)}%</p>}
+    </article>
+    <article className="rd-panel rd-payments"><div className="rd-panel-head"><h2>Phương thức thanh toán</h2></div>
+     {data.payments.some(v=>Number(v.amount)>0)?<><svg viewBox="0 0 400 225" role="img" aria-label="Doanh thu CASH và VNPAY">{data.payments.map((v,i)=>{const h=Number(v.amount)/Math.max(1,...data.payments.map(p=>Number(p.amount)))*128;return <g key={v.label}><text x={115+i*170} y={178-h-9} textAnchor="middle" fontSize="11">{money(v.amount)}</text><rect x={73+i*170} y={178-h} width="84" height={Math.max(2,h)} rx="5" fill={hover.payment===i?'#0e3527':colors[i]} tabIndex="0" role="button" aria-label={v.label+': '+money(v.amount)+' · '+number(v.percent)+'%'} onMouseEnter={()=>tip('payment',i)} onFocus={()=>tip('payment',i)} onClick={()=>tip('payment',i)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' ')tip('payment',i)}}><title>{v.label}: {money(v.amount)} ({number(v.percent)}%)</title></rect><text x={115+i*170} y="200" textAnchor="middle" fontSize="12">{v.label} · {number(v.percent)}%</text></g>})}</svg><div className="rd-legend">{data.payments.map((v,i)=><span key={v.label}><i style={{background:colors[i]}}/>{v.label}</span>)}</div></>:<p className="rd-state">Chưa có khoản thu CASH/VNPAY khớp hóa đơn trong kỳ.</p>}
+     {hover.payment!=null&&<p className="rd-tooltip" role="status">{data.payments[hover.payment].label}: {money(data.payments[hover.payment].amount)} · {number(data.payments[hover.payment].percent)}%</p>}
+     {Number(data.paymentUnallocated)>0&&<p className="rd-note">Chưa gán phương thức: {money(data.paymentUnallocated)}. Tỷ trọng tính trên tổng doanh thu hóa đơn.</p>}
+    </article>
+   </div>
+   <article className="rd-panel rd-top"><div className="rd-panel-head"><h2>Top 5 sân có doanh thu cao nhất</h2><span>Tiền sân sau giảm giá</span></div>
+    {data.topCourts.length?<div className="rd-bars">{data.topCourts.map((v,i)=><button key={v.label+'-'+i} className={hover.court===i?'is-selected':''} aria-label={v.label+': '+money(v.amount)} onMouseEnter={()=>tip('court',i)} onFocus={()=>tip('court',i)} onClick={()=>tip('court',i)}><span className="rd-court-name" title={v.label}>{i+1}. {v.label}</span><span className="rd-track"><i style={{width:Math.max(1,Number(v.amount)/Number(data.topCourts[0].amount)*100)+'%'}}/></span><strong>{money(v.amount)}</strong></button>)}</div>:<p className="rd-state">Chưa có dữ liệu tiền sân đủ chính xác để xếp hạng.</p>}
+    {hover.court!=null&&data.topCourts[hover.court]&&<p className="rd-tooltip" role="status">{data.topCourts[hover.court].label}: {money(data.topCourts[hover.court].amount)} · {number(data.topCourts[hover.court].percent)}% tiền sân</p>}
+   </article>
+   {data.warnings.length>0&&<div className="rd-notes" aria-label="Lưu ý dữ liệu">{data.warnings.map(w=><p key={w}>{w}</p>)}</div>}
   </>}
- </div>;
+ </section>
 }

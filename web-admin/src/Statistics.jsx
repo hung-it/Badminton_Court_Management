@@ -1,42 +1,31 @@
 import React,{useEffect,useState} from 'react';
 const money=n=>new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND'}).format(n||0);
-const periods={MONTH:'Tháng',QUARTER:'Quý',YEAR:'Năm',YEARS:'Các năm'};
-const metrics=[['revenue','Tổng thu','totalRevenue'],['expense','Giá trị phiếu đã nhận (theo ngày phiếu nhập)','totalExpense'],['profit','Chênh lệch thu – nhập hàng','totalProfit']];
-
+const types={TIME:'Hóa đơn',IMPORT:'Phiếu nhập hàng',STAFF:'Nhân viên',CUSTOMER:'Khách hàng',PRODUCT:'Sản phẩm',COURT:'Tiền sân'};
 export default function Statistics({api,initialYear}){
- const currentYear=initialYear||new Date().getFullYear();
- const [period,setPeriod]=useState('MONTH'),[year,setYear]=useState(currentYear),[fromYear,setFromYear]=useState(currentYear-4),[toYear,setToYear]=useState(currentYear);
- const [query,setQuery]=useState('period=MONTH&year='+currentYear),[report,setReport]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
- const [refresh,setRefresh]=useState(0);
- const [metric,setMetric]=useState('ALL');
- const columns=metrics.filter(([key])=>metric==='ALL'||key===metric);
- useEffect(()=>{
-  let active=true;setBusy(true);setError('');setReport(null);
-  api('/analytics/statistics?'+query).then(v=>{if(active)setReport(v)}).catch(e=>{if(active)setError(e.message)}).finally(()=>{if(active)setBusy(false)});
-  return()=>{active=false};
- },[query,refresh]);
- function submit(e){
-  e.preventDefault();
-  if(period==='YEARS'&&(Number(fromYear)>Number(toYear)||Number(toYear)-Number(fromYear)>49)){setError('Chọn năm bắt đầu không sau năm kết thúc, tối đa 50 năm.');return;}
-  setQuery('period='+period+(period==='YEARS'?'&fromYear='+fromYear+'&toYear='+toYear:'&year='+year));setRefresh(v=>v+1);
- }
- return <div className="analytics-panel">
-  <div className="page-heading"><div><span className="eyebrow">THỐNG KÊ</span><h1>Thống kê</h1></div></div>
-  <form className="toolbar period-filter statistics-filter" onSubmit={submit}>
-   <label className="field">Chỉ tiêu<select value={metric} onChange={e=>setMetric(e.target.value)}><option value="ALL">Tất cả</option>{metrics.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
-   <label className="field">Thống kê theo<select value={period} onChange={e=>setPeriod(e.target.value)}>{Object.entries(periods).map(([v,label])=><option key={v} value={v}>{label}</option>)}</select></label>
-   {period==='YEARS'?<>
-    <label className="field">Từ năm<input type="number" min="1" max="9998" step="1" required value={fromYear} onChange={e=>setFromYear(e.target.value)}/></label>
-    <label className="field">Đến năm<input type="number" min={fromYear||1} max="9998" step="1" required value={toYear} onChange={e=>setToYear(e.target.value)}/></label>
-   </>:<label className="field">Năm<input type="number" min="1" max="9998" step="1" required value={year} onChange={e=>setYear(e.target.value)}/></label>}
-   <button className="primary" type="submit" disabled={busy}>Xem thống kê</button>
-  </form>
-  {busy?<p role="status">Đang tải thống kê…</p>:error?<p className="alert error" role="alert">{error}</p>:report&&<>
-   <div className="stats three-stats">{columns.map(([key,label,total])=><div key={key}><span>{label}</span><strong>{money(report[total])}</strong></div>)}</div>
-   <section className="content-panel"><div className="table-scroll"><table>
-    <thead><tr><th scope="col">{periods[report.period]}</th>{report.rows.map(row=><th scope="col" key={row.from}>{row.label}</th>)}<th scope="col">Tổng cộng</th></tr></thead>
-    <tbody>{columns.map(([key,label,total])=><tr key={key}><th scope="row">{label}</th>{report.rows.map(row=><td key={row.from}>{money(row[key])}</td>)}<td><strong>{money(report[total])}</strong></td></tr>)}</tbody>
-   </table></div></section>
-  </>}
- </div>;
+ const y=initialYear||new Date().getFullYear();
+ const [form,setForm]=useState({type:'TIME',period:'MONTH',year:y,fromYear:y-2,toYear:y,from:'',to:'',search:''});
+ const [query,setQuery]=useState(new URLSearchParams({type:'TIME',period:'MONTH',year:y}).toString()),[data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[selected,setSelected]=useState(null),[point,setPoint]=useState(null),[chart,setChart]=useState('bar'),[exporting,setExporting]=useState(false);
+ useEffect(()=>{let active=true;setBusy(true);setError('');setData(null);setSelected(null);setPoint(null);api('/analytics/statistics/matrix?'+query).then(v=>{if(active)setData(v)}).catch(e=>{if(active)setError(e.message)}).finally(()=>{if(active)setBusy(false)});return()=>{active=false}},[query]);
+ const change=(key,value)=>setForm(f=>({...f,[key]:value}));
+ const makeQuery=f=>{const q=new URLSearchParams({...f,search:['IMPORT','STAFF','CUSTOMER'].includes(f.type)?f.search:''});if(!f.from)q.delete('from');if(!f.to)q.delete('to');return q.toString()};
+ function selectType(type){const next={...form,type,period:form.period,search:''};setForm(next);setError('');setSelected(null);setPoint(null);setQuery(makeQuery(next));}
+ function submit(e){e.preventDefault();if(form.from&&form.to&&form.from>form.to){setError('Từ ngày không được sau Đến ngày');return}if(form.period==='YEARS'&&(Number(form.fromYear)>Number(form.toYear)||form.toYear-form.fromYear>49)){setError('Khoảng năm tối đa 50 năm, từ năm không được sau đến năm');return}setQuery(makeQuery(form))}
+ async function exportExcel(){setExporting(true);setError('');try{const token=JSON.parse(sessionStorage.getItem('bcm-session'))?.accessToken;const r=await fetch('/api/analytics/statistics/excel?'+query,{headers:{Authorization:'Bearer '+token}});if(!r.ok)throw new Error('Không xuất được Excel');const url=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=url;a.download='BCM-'+data.type+'-'+new Date().toISOString().replace(/[:.]/g,'-')+'.xlsx';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){setError(e.message)}finally{setExporting(false)}}
+ const current=data?.rows.find(r=>r.id===selected),values=current?.values||data?.totals||[],max=Math.max(1,...values.map(v=>Math.abs(Number(v)))),width=560,height=320,step=450/Math.max(1,values.length);
+ const min=Math.min(0,...values.map(Number)),top=Math.max(1,...values.map(Number)),yp=v=>220-(Number(v)-min)/(top-min)*180,zero=yp(0);
+ const yearly=form.period==='YEARS';
+ return <section className="bcm-statistics"><header className="toolbar stat-heading"><div><h1>Thống kê</h1></div><button className="secondary" disabled={!data||busy||exporting} onClick={exportExcel}>Xuất Excel (.xlsx)</button></header>
+ <div className="stat-types" role="group" aria-label="Nội dung thống kê">{Object.entries(types).map(([key,label])=><button type="button" key={key} aria-pressed={form.type===key} onClick={()=>selectType(key)}>{label}</button>)}</div>
+ <form className="toolbar stat-filters" onSubmit={submit}>
+ {<label className="field">Kỳ thống kê<select aria-label="Kỳ thống kê" value={form.period} onChange={e=>change('period',e.target.value)}>{[...[['DATE','Từ ngày – Đến ngày']],['MONTH','Tháng'],['QUARTER','Quý'],['YEAR','Năm'],['YEARS','Các năm']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>}
+ {form.period!=='DATE'&&(yearly?<>{['fromYear','toYear'].map((k,i)=><label className="field" key={k}>{i?'Đến năm':'Từ năm'}<input required type="number" min="1" max="9998" value={form[k]} onChange={e=>change(k,e.target.value)}/></label>)}</>:<label className="field">Năm<input required type="number" min="1" max="9998" value={form.year} onChange={e=>change('year',e.target.value)}/></label>)}
+ {['from','to'].map((k,i)=><label className="field" key={k}>{i?'Đến ngày':'Từ ngày'}<input aria-label={i?'Đến ngày':'Từ ngày'} type="date" value={form[k]} onChange={e=>change(k,e.target.value)}/></label>)}
+ {['IMPORT','STAFF','CUSTOMER'].includes(form.type)&&<><label className="field">{form.type==='STAFF'?'Mã nhân viên':form.type==='CUSTOMER'?'Mã khách hàng':'Mã phiếu'}<input aria-label={form.type==='STAFF'?'Mã nhân viên':form.type==='CUSTOMER'?'Mã khách hàng':'Mã phiếu'} value={form.search} onChange={e=>change('search',e.target.value)}/></label>{form.type==='IMPORT'&&<label className="field">Trạng thái<select disabled><option>Đã nhận (RECEIVED)</option></select></label>}</>}
+ <button className="primary" disabled={busy}>Xem thống kê</button></form>
+ {error&&<p role="alert" className="alert error">{error}</p>}{busy?<p role="status">Đang tải thống kê…</p>:data&&<><div className="stats stat-cards">{(data.type==='TIME'?data.rows.map(r=>[r.label,r.total]):[[data.type==='IMPORT'?'Tổng chi phí nhập hàng':data.type==='PRODUCT'?'Tổng giá trị sản phẩm':data.type==='COURT'?'Tổng tiền sân':'Tổng doanh thu hóa đơn',data.total]]).map(([label,value])=><div key={label}><span>{label}</span><strong>{money(value)}</strong></div>)}</div>
+ <div className={'stat-split'+(selected!==null?' has-chart':'')}><div className="stat-table"><table><thead><tr><th>Chỉ tiêu</th>{data.columns.map(c=><th key={c}>{c}</th>)}<th>Tổng cộng</th><th>Chi tiết</th></tr></thead><tbody>{data.rows.map(r=><tr key={r.id} className={r.id===selected?'selected':''}><td title={r.label}>{r.label}</td>{r.values.map((v,i)=><td key={i}>{money(v)}</td>)}<td><strong>{money(r.total)}</strong></td><td><button className="secondary stat-arrow" aria-pressed={r.id===selected} aria-label={'Xem biểu đồ '+r.label} onClick={()=>{setSelected(r.id);setPoint(null)}}>→</button></td></tr>)}</tbody>{data.type!=='TIME'&&<tfoot><tr className={selected==='__TOTAL__'?'selected':''}><th>Tổng cộng</th>{data.totals.map((v,i)=><td key={i}>{money(v)}</td>)}<td>{money(data.total)}</td><td><button className="secondary stat-arrow" aria-pressed={selected==='__TOTAL__'} aria-label="Biểu đồ tổng cộng" onClick={()=>{setSelected('__TOTAL__');setPoint(null)}}>→</button></td></tr></tfoot>}</table>{!data.rows.length&&<p className="empty">{['STAFF','CUSTOMER'].includes(data.type)&&new URLSearchParams(query).get('search')?'Không tìm thấy dữ liệu cho mã đã nhập · 0 đ':'Không có dữ liệu · 0 đ'}</p>}</div>
+ {selected!==null&&<aside className="stat-chart" aria-label="Biểu đồ dòng được chọn"><div className="toolbar"><h3>{current?.label||'Tổng quan'}</h3><button className="secondary stat-close" aria-label="Đóng biểu đồ" title="Đóng biểu đồ" onClick={()=>{setSelected(null);setPoint(null)}}>✕</button><label>Biểu đồ<select aria-label="Kiểu biểu đồ" value={chart} onChange={e=>setChart(e.target.value)}><option value="bar">Cột</option><option value="line">Đường</option></select></label></div>
+ {values.some(v=>Number(v)!==0)?<svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={'Biểu đồ '+(current?.label||'Tổng quan')}><text x="5" y="16" fontSize="11">{money(max)}</text><line x1="50" y1={zero} x2="545" y2={zero} stroke="#94a3b8"/>{chart==='line'&&<polyline fill="none" stroke="#0d9488" strokeWidth="3" points={values.map((v,i)=>`${75+i*step+step/2},${yp(v)}`).join(' ')}/>}{values.map((v,i)=><g key={i}><rect tabIndex="0" role="button" aria-label={data.columns[i]+': '+money(v)} x={75+i*step} y={Math.min(yp(v),zero)} width={Math.max(3,step-8)} height={Math.max(4,Math.abs(yp(v)-zero))} fill={chart==='line'?'transparent':point===i?'#0f172a':'#0d9488'} onMouseEnter={()=>setPoint(i)} onFocus={()=>setPoint(i)} onClick={()=>setPoint(i)} onKeyDown={e=>{if(e.key==='Enter')setPoint(i)}}><title>{data.columns[i]}: {money(v)}</title></rect><text x={75+i*step+step/2} y="246" textAnchor="end" transform={`rotate(-35 ${75+i*step+step/2} 246)`} fontSize="11">{values.length<=12||i%Math.ceil(values.length/12)===0?data.columns[i]:''}</text></g>)}</svg>:<p className="empty">Không có dữ liệu · 0 đ</p>}
+ {point!==null&&<p className="stat-tooltip" role="status">{data.columns[point]+': '+money(values[point])}</p>}<small>● {current?.label||'Tổng quan'}</small></aside>}</div></>}
+ </section>
 }

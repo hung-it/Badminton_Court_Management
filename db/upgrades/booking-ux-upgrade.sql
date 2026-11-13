@@ -345,3 +345,45 @@ BEGIN
 END $account_token_version$;
 COMMIT;
 -- END SECTION: account-token-version
+
+-- INVOICE_TYPE_SNAPSHOT_UPGRADE: nullable history; only evidence-based backfill.
+BEGIN;
+ALTER TABLE invoice_details ADD COLUMN IF NOT EXISTS product_type VARCHAR(20);
+DO $type_check$ BEGIN
+ IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='chk_invoice_detail_product_type' AND conrelid='invoice_details'::regclass) THEN
+  ALTER TABLE invoice_details ADD CONSTRAINT chk_invoice_detail_product_type CHECK(product_type IN ('GOODS','SERVICE'));
+ END IF;
+END $type_check$;
+UPDATE invoice_details SET product_type='GOODS' WHERE product_type IS NULL AND stock_deducted IS TRUE;
+-- Stable original seed identities AND saved names establish SERVICE independently of current products.type.
+UPDATE invoice_details d SET product_type='SERVICE'
+FROM generate_series(1,150) AS seed(n)
+WHERE d.product_type IS NULL AND seed.n%3=0
+ AND d.id=uuid_generate_v5('bcd00000-0000-4000-8000-000000000001'::uuid,'service-line-'||seed.n)
+ AND d.invoice_id=uuid_generate_v5('bcd00000-0000-4000-8000-000000000001'::uuid,'invoice-'||seed.n)
+ AND d.product_name=CASE WHEN seed.n%2=0 THEN 'Thuê vợt theo lượt' ELSE 'Căng cước vợt' END;
+UPDATE invoice_details d SET product_type='SERVICE'
+FROM generate_series(1,12) AS seed(n)
+WHERE d.product_type IS NULL
+ AND d.id=uuid_generate_v5('bcd00000-0000-4000-8000-000000000001'::uuid,'vnpay-line-'||seed.n)
+ AND d.invoice_id=uuid_generate_v5('bcd00000-0000-4000-8000-000000000001'::uuid,'vnpay-invoice-'||seed.n)
+ AND d.product_name='Thuê vợt theo lượt';
+COMMIT;
+
+-- BCM_LABEL_NORMALIZATION: metadata only; preserve identifiers and all financial fields.
+BEGIN;
+SET LOCAL lock_timeout='5s';
+DO $labels$
+DECLARE r record; expression text; changed bigint;
+BEGIN
+ FOR r IN SELECT table_schema,table_name,column_name FROM information_schema.columns
+ WHERE table_schema='public' AND data_type IN ('text','character varying')
+ AND column_name IN ('email','full_name','name','category_name','product_name','promotion_name','address','district','note','reference','transaction_id','code','voucher_code','contact_full_name','description')
+ LOOP
+  expression:=format($expr$regexp_replace(regexp_replace(regexp_replace(regexp_replace(%I,'(?i)\.demo(@)','\1','g'),'(?i)\[demo\][ ]*','','g'),'(?i)(^|[-_])demo([-_]|$)','\1BCM\2','g'),'(?i)\mdemo\M[ ]*','','g')$expr$,r.column_name);
+  EXECUTE format('UPDATE %I.%I SET %I=%s WHERE %I ILIKE ''%%demo%%'' AND %I IS DISTINCT FROM %s',r.table_schema,r.table_name,r.column_name,expression,r.column_name,r.column_name,expression);
+  GET DIAGNOSTICS changed=ROW_COUNT;
+  IF changed>0 THEN RAISE NOTICE 'Normalized %.%: % rows',r.table_name,r.column_name,changed; END IF;
+ END LOOP;
+END $labels$;
+COMMIT;

@@ -28,6 +28,14 @@ public class AnalyticsController {
     private final com.bcm.service.StatisticsService statisticsService;
     private final com.bcm.service.RevenueBreakdownService revenueBreakdownService;
 
+    @GetMapping("/revenue-dashboard")
+    @Operation(summary="Dashboard doanh thu theo khoảng ngày", description="Chỉ ADMIN. Hóa đơn PAID chưa xóa, ghi nhận theo created_at. Hai ngày biên được tính đủ. Kỳ trước có cùng số ngày. Phân bổ và phương thức thiếu căn cứ được báo riêng.")
+    public ApiResponse<com.bcm.service.RevenueBreakdownService.Dashboard> dashboard(
+            @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ApiResponse.success(revenueBreakdownService.dashboard(from,to));
+    }
+
     @GetMapping("/statistics")
     @Operation(summary="Thống kê thu và giá trị hàng đã nhận theo tháng/quý/năm/các năm", description="MONTH: 12 tháng; QUARTER: 4 quý; YEAR: năm được chọn; YEARS: mỗi năm trong fromYear..toYear, tối đa 50 năm. Thu từ hóa đơn PAID chưa xóa; Giá trị phiếu đã nhận chỉ tính RECEIVED, nhóm theo ngày trên phiếu nhập (import_date), không phải ngày duyệt/nhận thực tế. Trường profit tương thích là chênh lệch thu – nhập hàng.")
     public ApiResponse<com.bcm.dto.response.StatisticsResponse> statistics(
@@ -59,8 +67,9 @@ public class AnalyticsController {
             @RequestParam(defaultValue="0") int page,
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(defaultValue="") String search,@RequestParam(defaultValue="") String method) {
-        return ApiResponse.success(analyticsService.history(period,date,page,from,to,search,method));
+            @RequestParam(defaultValue="") String search,@RequestParam(defaultValue="") String method,
+            @RequestParam(required=false) java.util.UUID customerId) {
+        return ApiResponse.success(analyticsService.history(period,date,page,from,to,search,method,customerId));
     }
 
     @GetMapping("/invoices/{id}")
@@ -81,5 +90,26 @@ public class AnalyticsController {
         return ResponseEntity.ok(ApiResponse.success(
                 "Lấy báo cáo doanh thu thành công",
                 analyticsService.getRevenue(period, date, from, to)));
+    }
+
+    @GetMapping("/statistics/matrix")
+    @Operation(summary="Bảng thống kê theo đối tượng", description="type: TIME, DATE, IMPORT, STAFF, CUSTOMER, PRODUCT, COURT (tiền sân); dùng cùng type và bộ lọc cho Excel.")
+    public ApiResponse<com.bcm.service.StatisticsService.Matrix> matrix(
+       @RequestParam(defaultValue="TIME") String type,@RequestParam(defaultValue="MONTH") String period,
+       @RequestParam(defaultValue="2026") int year,@RequestParam(defaultValue="2024") int fromYear,@RequestParam(defaultValue="2026") int toYear,
+       @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate from,
+       @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to,@RequestParam(defaultValue="") String search){
+       return ApiResponse.success(statisticsService.matrix(type,period,year,fromYear,toYear,from,to,search));
+    }
+    @GetMapping("/statistics/excel")
+    public ResponseEntity<byte[]> excel(
+       @RequestParam(defaultValue="TIME") String type,@RequestParam(defaultValue="MONTH") String period,
+       @RequestParam(defaultValue="2026") int year,@RequestParam(defaultValue="2024") int fromYear,@RequestParam(defaultValue="2026") int toYear,
+       @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate from,
+       @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to,@RequestParam(defaultValue="") String search){
+       var report=statisticsService.matrix(type,period,year,fromYear,toYear,from,to,search);
+       return ResponseEntity.ok().header("Content-Disposition","attachment; filename=BCM-"+type+"-"+System.currentTimeMillis()+".xlsx")
+       .header("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+       .body(statisticsService.excel(report,"period="+period+", year="+year+", years="+fromYear+"-"+toYear+", from="+from+", to="+to+", đối tượng="+(search.isBlank()?"Tất cả":report.rows().isEmpty()?"Không tìm thấy":report.rows().stream().map(com.bcm.service.StatisticsService.MatrixRow::label).distinct().collect(java.util.stream.Collectors.joining(", ")))));
     }
 }

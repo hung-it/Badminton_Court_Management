@@ -209,6 +209,7 @@ CREATE TABLE invoices (
 
 -- Invoice Details table
 CREATE TABLE invoice_details (
+    product_type VARCHAR(20) CHECK (product_type IN ('GOODS','SERVICE')),
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
     product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,

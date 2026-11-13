@@ -1,11 +1,11 @@
-param(
-    [ValidatePattern('^bcm-demo-[a-z0-9-]+$')][string]$Container = 'bcm-demo-qa-postgres'
+﻿param(
+    [ValidatePattern('^bcm-seed-[a-z0-9-]+$')][string]$Container = 'bcm-seed-qa-postgres'
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $run = [guid]::NewGuid().ToString('N').Substring(0,8)
-$database = "bcm_demo_verify_$run"
-$output = Join-Path $root ".tools/demo-verify-$run"
+$database = "bcm_seed_verify_$run"
+$output = Join-Path $root ".tools/seed-verify-$run"
 New-Item -ItemType Directory -Force $output | Out-Null
 function Checked {
     param([string[]]$DockerArgs)
@@ -13,11 +13,11 @@ function Checked {
     if ($LASTEXITCODE -ne 0) { throw "Docker test command failed: $DockerArgs" }
 }
 function SqlFile([string]$path) {
-    Checked @('cp',$path,"${Container}:/tmp/demo-test-$run.sql")
-    Checked @('exec',$Container,'psql','-X','-v','ON_ERROR_STOP=1','-U','bcm_admin','-d',$database,'-f',"/tmp/demo-test-$run.sql")
+    Checked @('cp',$path,"${Container}:/tmp/seed-test-$run.sql")
+    Checked @('exec',$Container,'psql','-X','-v','ON_ERROR_STOP=1','-U','bcm_admin','-d',$database,'-f',"/tmp/seed-test-$run.sql")
 }
 function Fingerprint {
-    $value = & docker exec $Container psql -X -At -v ON_ERROR_STOP=1 -U bcm_admin -d $database -f /tmp/demo-fingerprint.sql
+    $value = & docker exec $Container psql -X -At -v ON_ERROR_STOP=1 -U bcm_admin -d $database -f /tmp/seed-fingerprint.sql
     if ($LASTEXITCODE -ne 0) { throw 'Cannot fingerprint test database' }
     return ($value -join "`n")
 }
@@ -33,7 +33,7 @@ Checked @('exec',$Container,'createdb','-U','bcm_admin',$database)
 foreach ($file in @('migration.sql','upgrades/booking-ux-upgrade.sql','seeds/branches-seed.sql','upgrades/product-promotions-upgrade.sql','upgrades/court-promotions-upgrade.sql','upgrades/email-identity-upgrade.sql')) {
     SqlFile (Join-Path $root "db/$file")
 }
-Checked @('cp',(Join-Path $root 'db/demo-seed.sql'),"${Container}:/tmp/demo-seed-$run.sql")
+Checked @('cp',(Join-Path $root 'db/demo-seed.sql'),"${Container}:/tmp/seed-data-$run.sql")
 $docker = (Get-Command docker.exe -ErrorAction Stop).Source
 # Hold the seed lock until both independent seed processes are waiting for it.
 $gate = Start-Process $docker -WindowStyle Hidden -PassThru -ArgumentList @('exec',$Container,'psql','-X','-U','bcm_admin','-d',$database,'-c',
@@ -49,7 +49,7 @@ try {
     }
     if (!$locked) { throw 'Seed gate did not acquire advisory lock' }
     foreach ($worker in 1..2) {
-        $workers += Start-Process $docker -WindowStyle Hidden -PassThru -ArgumentList @('exec',$Container,'psql','-X','-v','ON_ERROR_STOP=1','-U','bcm_admin','-d',$database,'-f',"/tmp/demo-seed-$run.sql") `
+        $workers += Start-Process $docker -WindowStyle Hidden -PassThru -ArgumentList @('exec',$Container,'psql','-X','-v','ON_ERROR_STOP=1','-U','bcm_admin','-d',$database,'-f',"/tmp/seed-data-$run.sql") `
             -RedirectStandardOutput "$output/seed-$worker.log" -RedirectStandardError "$output/seed-$worker-error.log"
     }
     foreach ($process in $workers) {
@@ -73,16 +73,16 @@ foreach ($table in $tables) {
 }
 $fingerprintSql += 'COMMIT;'
 [IO.File]::WriteAllText("$output/fingerprint.sql",$fingerprintSql)
-Checked @('cp',"$output/fingerprint.sql","${Container}:/tmp/demo-fingerprint.sql")
+Checked @('cp',"$output/fingerprint.sql","${Container}:/tmp/seed-fingerprint.sql")
 $before = Fingerprint
 SqlFile (Join-Path $root 'db/demo-seed.sql')
 if ($before -cne (Fingerprint)) { throw 'Rerun changed existing data' }
 # Deliberate edits in this disposable DB must survive a subsequent seed rerun.
 @'
 BEGIN;
-UPDATE users SET password_hash='changed-by-test',deleted_at=current_timestamp WHERE email='customer1.demo@bcm.test';
+UPDATE users SET password_hash='changed-by-test',deleted_at=current_timestamp WHERE email='customer1@bcm.test';
 UPDATE products SET price=price+123,stock_quantity=stock_quantity+7 WHERE name='Nước suối 500ml';
-UPDATE promotions SET is_active=true WHERE code='DEMO-OFF-1';
+UPDATE promotions SET is_active=true WHERE code='KM-OFF-1';
 COMMIT;
 '@ | Set-Content -Encoding utf8 "$output/edits.sql"
 SqlFile "$output/edits.sql"

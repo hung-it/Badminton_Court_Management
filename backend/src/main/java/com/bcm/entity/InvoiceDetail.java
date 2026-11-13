@@ -38,6 +38,9 @@ public class InvoiceDetail {
 
     @Column(name = "product_name", length = 255)
     private String productName;
+    @Enumerated(EnumType.STRING)
+    @Column(name="product_type", length=20)
+    private ProductType productType;
     private UUID addedBy;
     private UUID addedByUser;
     @Builder.Default

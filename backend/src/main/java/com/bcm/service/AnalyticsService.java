@@ -53,10 +53,13 @@ public class AnalyticsService {
         return history(period,date,page,from,to,"","");
     }
     public InvoiceReportResponse.History history(String period,LocalDate date,int page,LocalDate from,LocalDate to,String search,String method) {
+        return history(period,date,page,from,to,search,method,null);
+    }
+    public InvoiceReportResponse.History history(String period,LocalDate date,int page,LocalDate from,LocalDate to,String search,String method,UUID customerId) {
         if(!List.of("","CASH","VNPAY").contains(method)) throw new BadRequestException("Invalid payment method");
         if(page<0) throw new BadRequestException("Trang phải từ 0 trở lên");
         var range=resolveRange(period,date,from,to);
-        var result=invoiceRepository.searchPaidHistory(range.from().atStartOfDay(),range.toExclusive().atStartOfDay(),"%"+search.trim().toLowerCase(java.util.Locale.ROOT)+"%",method,
+        var result=invoiceRepository.searchPaidHistory(range.from().atStartOfDay(),range.toExclusive().atStartOfDay(),"%"+search.trim().toLowerCase(java.util.Locale.ROOT)+"%",method,customerId,
             PageRequest.of(page,20,Sort.by(
                 Sort.Order.desc("createdAt"),Sort.Order.desc("id"))));
         return new InvoiceReportResponse.History(result.stream().map(this::summary).toList(),page,result.getTotalPages(),result.getTotalElements());
@@ -69,26 +72,48 @@ public class AnalyticsService {
         var names=products.findAllById(details.stream().map(InvoiceDetail::getProductId).distinct().toList())
             .stream().collect(Collectors.toMap(Product::getId,Product::getName));
         var items=details.stream().map(d->new InvoiceReportResponse.Item(d.getProductId(),d.getProductName()!=null?d.getProductName():"[Chưa lưu snapshot] "+names.getOrDefault(d.getProductId(),"Sản phẩm"),
-            d.getQuantity(),d.getUnitPrice(),d.getDiscountAmount(),d.getPromotionName(),d.getUnitPrice().multiply(BigDecimal.valueOf(d.getQuantity())).subtract(d.getDiscountAmount()))).toList();
+            d.getQuantity(),d.getUnitPrice(),d.getDiscountAmount(),d.getPromotionName(),d.getUnitPrice().multiply(BigDecimal.valueOf(d.getQuantity())).subtract(d.getDiscountAmount()),d.getProductType()==null?null:d.getProductType().name())).toList();
         var courts=invoice.getBookingId()==null?List.<InvoiceReportResponse.CourtLine>of():
             bookingDetails.findHistoryDetails(invoice.getBookingId()).stream().map(d->new InvoiceReportResponse.CourtLine(
                 d.getCourt().getName(),d.getBookingDate(),d.getTimeSlot().getStartTime(),d.getTimeSlot().getEndTime(),d.getPrice())).toList();
-        var receipts=payments.findInvoiceReceipts(id,invoice.getBookingId()).stream().map(p->
-            new InvoiceReportResponse.Receipt(p.getId(),p.getInvoice()==null?"COURT_PREPAYMENT":"CHECKOUT_OR_POS",
+        var receipts=payments.findInvoiceReceipts(id,invoice.getBookingId()).stream().map(p->{
+            String actorName;
+            if("LEGACY".equals(p.getSource())){
+                actorName="Lịch sử · chưa lưu người xác nhận";
+            }else if(p.getConfirmedBy()!=null){
+                var staffList=jdbc.query("SELECT full_name FROM staffs WHERE id=?",(rs,n)->rs.getString("full_name"),p.getConfirmedBy());
+                actorName=staffList.isEmpty()?(p.getConfirmedByUser()!=null?jdbc.queryForObject("SELECT full_name FROM users WHERE id=?",String.class,p.getConfirmedByUser()):"Nhân viên"):staffList.get(0);
+            }else if(p.getConfirmedByUser()!=null){
+                actorName=jdbc.queryForObject("SELECT full_name FROM users WHERE id=?",String.class,p.getConfirmedByUser());
+            }else{
+                actorName="VNPay Gateway";
+            }
+            return new InvoiceReportResponse.Receipt(p.getId(),p.getInvoice()==null?"COURT_PREPAYMENT":"CHECKOUT_OR_POS",
                 p.getPaymentMethod().name(),p.getSource(),p.getStatus().name(),p.getAmount(),p.getConfirmedBy(),p.getConfirmedByUser(),
-                "LEGACY".equals(p.getSource())?"Lịch sử · chưa lưu người xác nhận":p.getConfirmedByUser()==null?"VNPay Gateway":jdbc.queryForObject("SELECT full_name FROM users WHERE id=?",String.class,p.getConfirmedByUser()),
-                p.getTransactionDate(),p.getReference()==null?p.getTransactionId():p.getReference())).toList();
-        return new InvoiceReportResponse(summary(invoice),items,courts,receipts,invoice.getCreatedBy(),invoice.getCreatedByUser());
+                actorName,p.getTransactionDate(),p.getReference()==null?p.getTransactionId():p.getReference());
+        }).toList();
+
+        String creatorName=null;
+        if(invoice.getCreatedBy()!=null){
+            var staffList=jdbc.query("SELECT full_name FROM staffs WHERE id=?",(rs,n)->rs.getString("full_name"),invoice.getCreatedBy());
+            if(!staffList.isEmpty())creatorName=staffList.get(0);
+        }else if(invoice.getCreatedByUser()!=null){
+            var userList=jdbc.query("SELECT full_name FROM users WHERE id=?",(rs,n)->rs.getString("full_name"),invoice.getCreatedByUser());
+            if(!userList.isEmpty())creatorName=userList.get(0);
+        }
+
+        return new InvoiceReportResponse(summary(invoice),items,courts,receipts,invoice.getCreatedBy(),invoice.getCreatedByUser(),creatorName);
     }
 
     private InvoiceReportResponse.Summary summary(Invoice i) {
         var customer=customers.findById(i.getCustomerId());
         String name=customer.map(Customer::getFullName).orElse("Khách vãng lai");
-        String phone=customer.filter(c->!guest.isGuest(c.getUser().getId())).map(Customer::getPhone).orElse(null);
+        String phone=customer.filter(c->c.getUser()==null||!guest.isGuest(c.getUser().getId())).map(Customer::getPhone).orElse(null);
+        String email=customer.filter(c->c.getUser()!=null&&!guest.isGuest(c.getUser().getId())).map(c->c.getUser().getEmail()).orElse(null);
         return new InvoiceReportResponse.Summary(i.getId(),i.getBookingId(),name,i.getCreatedAt(),i.getPaymentMethod(),
             valueOrZero(i.getCourtFee()),i.getProductFee(),i.getDiscountAmount(),i.getTotalAmount(),i.getStatus(),i.getBookingId()==null?null:bookings.findById(i.getBookingId()).map(b->b.getStatus().name()).orElse(null),
             payments.findInvoiceReceipts(i.getId(),i.getBookingId()).stream().filter(p->p.getStatus()==com.bcm.entity.PaymentStatus.SUCCESS)
-                .map(p->p.getPaymentMethod().name()).distinct().toList(),i.getCustomerId(),phone);
+                .map(p->p.getPaymentMethod().name()).distinct().toList(),i.getCustomerId(),phone,email);
     }
 
     public RevenueReportResponse getRevenue(String period, LocalDate date) {

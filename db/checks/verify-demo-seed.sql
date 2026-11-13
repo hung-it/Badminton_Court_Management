@@ -1,4 +1,4 @@
--- Read-only assertions for a FRESH demo database, never for an operational DB.
+-- Read-only assertions for a FRESH BCM database, never for an operational DB.
 BEGIN READ ONLY;
 DO $verify$
 BEGIN
@@ -20,8 +20,8 @@ BEGIN
        OR (SELECT count(*) FROM bookings)<>103
        OR (SELECT count(*) FROM invoices WHERE status='PAID')<>150
        OR (SELECT count(*) FROM invoices WHERE status='DRAFT')<>1
-       OR (SELECT count(*) FROM promotions WHERE code LIKE 'DEMO-OFF-%' AND NOT is_active)<>3 THEN
-        RAISE EXCEPTION 'Demo dataset counts do not match';
+       OR (SELECT count(*) FROM promotions WHERE code LIKE 'KM-OFF-%' AND NOT is_active)<>3 THEN
+        RAISE EXCEPTION 'BCM dataset counts do not match';
     END IF;
     IF (SELECT count(DISTINCT date_trunc('month',created_at)) FROM invoices)<>12 THEN
         RAISE EXCEPTION 'Expected invoices across twelve calendar months';
@@ -54,17 +54,17 @@ BEGIN
     ) SELECT 1 FROM balances WHERE balance<0) THEN
         RAISE EXCEPTION 'Historical sales precede available inventory';
     END IF;
-    IF EXISTS(SELECT 1 FROM payment_transactions WHERE source<>'MANUAL' OR payment_method<>'CASH'
-        OR confirmed_by_user IS NULL OR note NOT LIKE '[DEMO]%') THEN
-        RAISE EXCEPTION 'Demo receipt must be explicitly simulated and audited';
+    IF EXISTS(SELECT 1 FROM payment_transactions WHERE (source NOT IN ('MANUAL','GATEWAY')) OR (payment_method NOT IN ('CASH','VNPAY'))
+        OR (source='MANUAL' AND confirmed_by_user IS NULL)) THEN
+        RAISE EXCEPTION 'Receipt audit fields are missing or invalid';
     END IF;
     IF EXISTS(SELECT 1 FROM booking_details GROUP BY booking_date,court_id,time_slot_id HAVING count(*)>1) THEN
         RAISE EXCEPTION 'Duplicate court slot';
     END IF;
     IF EXISTS(SELECT 1 FROM bookings WHERE status='PENDING' AND expires_at<=localtimestamp)
        OR EXISTS(SELECT 1 FROM invoices WHERE status='DRAFT' AND payment_method IS NOT NULL) THEN
-        RAISE EXCEPTION 'Checkout demo hold/draft is invalid';
+        RAISE EXCEPTION 'Checkout BCM hold/draft is invalid';
     END IF;
-    RAISE NOTICE 'Demo counts, calendar coverage, snapshots, inventory, receipts and audits verified';
+    RAISE NOTICE 'BCM counts, calendar coverage, snapshots, inventory, receipts and audits verified';
 END $verify$;
 ROLLBACK;

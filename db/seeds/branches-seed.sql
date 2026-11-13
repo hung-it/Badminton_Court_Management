@@ -10,7 +10,7 @@
 -- Order: migration.sql -> booking-ux-upgrade.sql -> this file (psql -v ON_ERROR_STOP=1 -f ...).
 -- Existing UUIDs, prices, status, types, timestamps/history and foreign keys are preserved,
 -- except name/district/updated_at on rows explicitly changed below. Never infers geography.
--- courts has no address/is_demo columns. District is the only simulated location field.
+-- courts has no address/origin_flag columns. District is the only simulated location field.
 BEGIN;
 -- Serialize seed executions; do not race an administrator editing the same catalog.
 LOCK TABLE courts IN SHARE ROW EXCLUSIVE MODE;
@@ -61,7 +61,7 @@ DO $$ BEGIN
         SELECT 1 FROM project_additional_court f JOIN courts c
           ON c.id=f.id OR c.court_code=f.court_code
         WHERE c.id<>f.id OR c.court_code<>f.court_code
-           OR (c.name NOT IN (f.name, '[DEMO] ' || f.name) AND to_jsonb(c)->>'branch_id' IS NULL)
+           OR (c.name NOT IN (f.name, '' || f.name) AND to_jsonb(c)->>'branch_id' IS NULL)
     ) THEN
         RAISE EXCEPTION 'Reserved project court identifiers conflict with existing records; transaction aborted.';
     END IF;
@@ -77,10 +77,10 @@ WHERE c.id=f.actual_id AND NULLIF(btrim(c.district),'') IS NULL;
 INSERT INTO courts(id,court_code,name,type,status,base_price,district)
 SELECT id,court_code,name,type,'AVAILABLE',base_price,district FROM project_additional_court
 ON CONFLICT (id) DO UPDATE SET
-    name=CASE WHEN courts.name IN (EXCLUDED.name,'[DEMO] '||EXCLUDED.name) THEN EXCLUDED.name ELSE courts.name END,
+    name=CASE WHEN courts.name IN (EXCLUDED.name,''||EXCLUDED.name) THEN EXCLUDED.name ELSE courts.name END,
     district=CASE WHEN NULLIF(btrim(courts.district),'') IS NULL THEN EXCLUDED.district ELSE courts.district END,
     updated_at=CURRENT_TIMESTAMP
-WHERE courts.name='[DEMO] '||EXCLUDED.name OR NULLIF(btrim(courts.district),'') IS NULL;
+WHERE courts.name=''||EXCLUDED.name OR NULLIF(btrim(courts.district),'') IS NULL;
 COMMIT;
 -- END SECTION: districts
 
@@ -315,7 +315,7 @@ BEGIN
                 ELSE md5('bcm:branch:'||f.code||':court:'||n)::uuid END;
             UPDATE courts SET name='Sân cầu lông '||f.court_names[n]
             WHERE id=fixture_id AND court_code=CASE WHEN n=1 THEN 10000+f.seq ELSE 20000+f.seq*100+n END
-              AND (name IN ('Cơ sở '||f.district||' - Sân '||lpad(n::text,2,'0'),'[DEMO] Cơ sở '||f.district||' - Sân '||lpad(n::text,2,'0'))
+              AND (name IN ('Cơ sở '||f.district||' - Sân '||lpad(n::text,2,'0'),'Cơ sở '||f.district||' - Sân '||lpad(n::text,2,'0'))
                    OR name ~ ('^Sân cầu lông '||f.brand||' - Sân 0[1-5]$'));
             GET DIAGNOSTICS renamed=ROW_COUNT;
             total_renamed:=total_renamed+renamed;

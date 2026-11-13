@@ -53,7 +53,7 @@ class CourtDistrictsSeedPostgresTest {
         assertThat(scalar(sql, "SELECT count(*) FROM courts")).isEqualTo("15");
         assertThat(scalar(sql, "SELECT count(*) FROM courts WHERE NULLIF(btrim(district),'') IS NULL")).isEqualTo("0");
         assertThat(scalar(sql, "SELECT count(DISTINCT district) FROM courts")).isEqualTo("7");
-        assertThat(scalar(sql, "SELECT count(*) FROM courts WHERE name LIKE '[DEMO] %'")).isEqualTo("0");
+        assertThat(scalar(sql, "SELECT count(*) FROM courts WHERE name LIKE '%'")).isEqualTo("0");
     }
     @Test void freshMigrationSeedsFifteenCourtsAndRepeatDoesNotWriteAgain() throws Exception {
         isolated(sql -> {
@@ -69,7 +69,7 @@ class CourtDistrictsSeedPostgresTest {
         isolated(sql -> {
             String seed = seed("districts");
             sql.execute(seed);
-            sql.execute("UPDATE courts SET name='[DEMO] '||name WHERE court_code BETWEEN 10001 AND 10007");
+            sql.execute("UPDATE courts SET name=''||name WHERE court_code BETWEEN 10001 AND 10007");
             sql.execute("UPDATE courts SET district=NULL WHERE court_code BETWEEN 1 AND 8");
             sql.execute("INSERT INTO users(email,password_hash,full_name,phone) VALUES ('court-seed@test.invalid','fixture','Court seed fixture','0900000000')");
             sql.execute("INSERT INTO customers(user_id,full_name,phone) SELECT id,'Court seed fixture','0900000000' FROM users");

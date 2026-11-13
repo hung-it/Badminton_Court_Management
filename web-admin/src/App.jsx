@@ -14,7 +14,7 @@ const money=n=>new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND'}).
 const labels={STANDARD_MAT:'Thảm tiêu chuẩn',WOODEN_FLOOR:'Sàn gỗ',AVAILABLE:'Hoạt động',MAINTENANCE:'Bảo trì',CLOSED:'Đóng cửa',GOODS:'Hàng hóa',SERVICE:'Dịch vụ'};
 const masterTabs=[['courts','Sân cầu'],['time-slots','Khung giờ & giá'],['categories','Danh mục'],['products','Hàng hóa & dịch vụ'],['product-promotions','Khuyến mãi']];
 const dataNavTabs=[['accounts','Tài khoản'],...masterTabs];
-const opTabs=[['invoices','Hóa đơn'],['pos','Bán tại quầy'],['checkout','Trả sân'],['inventory','Nhập kho'],['statistics','Thống kê'],['revenue-breakdown','Doanh thu theo đối tượng']];
+const opTabs=[['invoices','Hóa đơn'],['pos','Bán tại quầy'],['checkout','Trả sân'],['inventory','Nhập kho'],['statistics','Thống kê'],['revenue-breakdown','Doanh thu']];
 const allTabs=[...dataNavTabs,...opTabs];
 const initial={courts:{courtNumber:1,name:'',type:'STANDARD_MAT',status:'AVAILABLE',basePrice:100000,district:'',address:''},'time-slots':{startTime:'06:00',endTime:'07:00',priceMultiplier:1},categories:{categoryName:''},products:{categoryId:'',name:'',type:'GOODS',unit:'cái',price:0,stockQuantity:0}};
 function defaultMultiplier(start,end){return start>='17:00'&&end<='21:00'?1.5:1;}
@@ -57,6 +57,7 @@ export default function App(){
 
  // Checkout state
  const [openedInvoice,setOpenedInvoice]=useState(null);
+ const [invoiceCustomer,setInvoiceCustomer]=useState(null);
  const [checkoutBookingId,setCheckoutBookingId]=useState('');
  const [posBookingId,setPosBookingId]=useState('');
  const [checkoutPaymentMethod,setCheckoutPaymentMethod]=useState('CASH');
@@ -186,7 +187,7 @@ useEffect(()=>{
    if(!bookingId&&!posConfirmed)throw new Error('Vui lòng xác nhận đã nhận tiền.');
    if(!posAttempt.current)posAttempt.current={...payload,idempotencyKey:crypto.randomUUID(),paymentConfirmed:posConfirmed,expectedTotal:posQuote.totalAmount,reference:posReference.trim()||null};
    const inv=await api('/pos/sales','POST',posAttempt.current);
-   if(!bookingId&&session.user?.roles?.includes('ADMIN')){setOpenedInvoice(inv.id);setTab('invoices');}
+   if(!bookingId&&session.user?.roles?.includes('ADMIN')){setInvoiceCustomer(null);setOpenedInvoice(inv.id);setTab('invoices');}
    const totalAmt=inv.total_amount??inv.totalAmount;
    const discountAmt=inv.discountAmount??inv.discount_amount??0;
    setPosHistory(h=>[{id:inv.id||`#HD-${Date.now().toString().slice(-4)}`,time:new Date().toLocaleTimeString('vi-VN'),total:totalAmt,discount:discountAmt,status:inv.status,items:[...posCart]},...h]);
@@ -216,7 +217,7 @@ useEffect(()=>{
    setCheckoutOpen(false);
    setActiveBookings(rows=>rows.filter(b=>b.bookingId!==checkoutSlip.bookingId));
    setNotice('Kết toán thành công! Hóa đơn '+res.invoiceId+' gồm tiền sân và hàng tại quầy đã ghi nhận vào Doanh thu.');
-   if(session.user?.roles?.includes('ADMIN')){setOpenedInvoice(res.invoiceId);setTab('invoices');}
+   if(session.user?.roles?.includes('ADMIN')){setInvoiceCustomer(null);setOpenedInvoice(res.invoiceId);setTab('invoices');}
   }catch(e){setError(e.message);}finally{setSaving(false);}
  }
 
@@ -486,8 +487,8 @@ useEffect(()=>{
 
 
  {/* ANALYTICS PANEL */}
- {isAdmin&&tab==='accounts'&&<Accounts api={api} currentUserId={session.user?.id}/>}
- {(isAdmin||isStaff)&&tab==='invoices'&&<RevenueInvoices key={openedInvoice} openId={openedInvoice} api={api} params="from=1900-01-01&to=2100-12-31"/>}
+ {isAdmin&&tab==='accounts'&&<Accounts api={api} currentUserId={session.user?.id} onViewInvoices={customer=>{setOpenedInvoice(null);setInvoiceCustomer(customer);setTab('invoices')}}/>}
+ {(isAdmin||isStaff)&&tab==='invoices'&&<RevenueInvoices key={(invoiceCustomer?.id||'')+':'+(openedInvoice||'')} customer={invoiceCustomer} onClearCustomer={()=>setInvoiceCustomer(null)} openId={openedInvoice} api={api} params="from=1900-01-01&to=2100-12-31"/>}
 
 
 

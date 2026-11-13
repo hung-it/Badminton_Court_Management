@@ -90,7 +90,7 @@ public class PosService {
                 var discount = productPromotions.best(product, quantity, candidates,enteredCode);
                 automaticDiscount = automaticDiscount.add(discount.amount());
                 invoiceDetails.add(InvoiceDetail.builder()
-                        .productId(product.getId()).productName(product.getName())
+                        .productId(product.getId()).productName(product.getName()).productType(product.getType())
                         .addedBy(currentStaff.currentStaffId().orElse(null)).addedByUser(actor)
                         .stockDeducted(product.getType()==ProductType.GOODS)
                         .quantity(quantity)

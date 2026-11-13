@@ -57,4 +57,52 @@ class P2RegressionTest {
             assertThat(factory.getValidator().validate(r)).isNotEmpty();
         }
     }
+    @Test void courtAndProductStatisticsKeepIdsInternalForEveryPeriodAndExcel() throws Exception {
+        var allocation=mock(RevenueBreakdownService.class);
+        UUID a=UUID.randomUUID(),b=UUID.randomUUID();
+        when(allocation.allocationValues(any(),any(),anyBoolean())).thenReturn(List.of(
+                new RevenueBreakdownService.AllocationValue(a,"Cùng tên",BigDecimal.TEN),
+                new RevenueBreakdownService.AllocationValue(b,"Cùng tên",BigDecimal.ONE)));
+        var statistics=new StatisticsService(mock(InvoiceRepository.class),mock(ImportOrderRepository.class),mock(org.springframework.jdbc.core.JdbcTemplate.class),allocation);
+        for(String type:List.of("COURT","PRODUCT"))for(String period:List.of("MONTH","QUARTER","YEAR","YEARS")) {
+            var m=statistics.matrix(type,period,2026,2025,2026,null,null,"");
+            assertThat(m.rows()).hasSize(2);assertThat(m.rows()).extracting(StatisticsService.MatrixRow::label).containsOnly("Cùng tên");
+            assertThat(m.rows()).extracting(StatisticsService.MatrixRow::id).containsExactlyInAnyOrder(a.toString(),b.toString());
+            try(var zip=new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(statistics.excel(m,"Tất cả")))) {
+                for(var entry=zip.getNextEntry();entry!=null;entry=zip.getNextEntry())if(entry.getName().equals("xl/worksheets/sheet1.xml")) {
+                    var xml=new String(zip.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
+                    assertThat(xml).contains("Cùng tên").doesNotContain(a.toString(),b.toString());
+                }
+            }
+        }
+        verify(allocation,atLeastOnce()).allocationValues(any(),any(),eq(true));
+        verify(allocation,atLeastOnce()).allocationValues(any(),any(),eq(false));
+    }
+
+    @Test void excelFilterMetadataUsesObjectNameInsteadOfUuid() {
+        var statistics=mock(StatisticsService.class);String id=UUID.randomUUID().toString();
+        var report=new StatisticsService.Matrix("STAFF",List.of("2026"),List.of(new StatisticsService.MatrixRow(id,"Thu ngân",List.of(BigDecimal.TEN),BigDecimal.TEN)),List.of(BigDecimal.TEN),BigDecimal.TEN,"");
+        when(statistics.matrix("STAFF","YEAR",2026,2024,2026,null,null,id)).thenReturn(report);
+        when(statistics.excel(any(),anyString())).thenReturn(new byte[0]);
+        new com.bcm.controller.AnalyticsController(mock(AnalyticsService.class),statistics,mock(RevenueBreakdownService.class))
+                .excel("STAFF","YEAR",2026,2024,2026,null,null,id);
+        var filters=org.mockito.ArgumentCaptor.forClass(String.class);verify(statistics).excel(eq(report),filters.capture());
+        assertThat(filters.getValue()).contains("Thu ngân").doesNotContain(id);
+    }
+    @Test void datePeriodUsesEveryInclusiveDayForAllSixTypesWithoutYearRestriction() {
+        var jdbc=mock(org.springframework.jdbc.core.JdbcTemplate.class);
+        when(jdbc.queryForMap(anyString())).thenReturn(Map.of("first",java.sql.Date.valueOf("2026-09-20"),"last",java.sql.Date.valueOf("2026-11-13")));
+        var invoices=mock(InvoiceRepository.class);var totals=mock(InvoiceRepository.RevenueTotals.class);
+        when(invoices.sumRevenueByPeriod(anyString(),any(),any())).thenReturn(totals);
+        when(totals.getTotalAmount()).thenReturn(BigDecimal.ZERO);
+        var statistics=new StatisticsService(invoices,mock(ImportOrderRepository.class),jdbc,mock(RevenueBreakdownService.class));
+        for(String type:List.of("TIME","IMPORT","STAFF","CUSTOMER","PRODUCT","COURT")) {
+            for(int bounds=0;bounds<4;bounds++) {
+                var m=statistics.matrix(type,"DATE",-1,-1,-1,(bounds&1)!=0?java.time.LocalDate.of(2026,9,20):null,(bounds&2)!=0?java.time.LocalDate.of(2026,11,13):null,"");
+                assertThat(m.columns()).hasSize(55).startsWith("20/09/2026").endsWith("13/11/2026");
+                assertThat(m.totals()).hasSize(55).containsOnly(BigDecimal.ZERO);
+                assertThat(m.total()).isZero();
+            }
+        }
+    }
 }

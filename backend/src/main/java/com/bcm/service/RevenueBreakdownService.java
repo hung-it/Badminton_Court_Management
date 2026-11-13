@@ -46,6 +46,89 @@ public class RevenueBreakdownService {
 
     private final JdbcTemplate jdbc;
 
+    public record DashboardPoint(LocalDate from, LocalDate to, LocalDate previousFrom, LocalDate previousTo,
+                                 BigDecimal current, BigDecimal previous) {}
+    public record DashboardSlice(String label, BigDecimal amount, BigDecimal percent) {}
+    public record Dashboard(LocalDate from, LocalDate to, LocalDate previousFrom, LocalDate previousTo,
+                            BigDecimal totalRevenue, BigDecimal previousRevenue, BigDecimal growthPercent,
+                            long invoiceCount, BigDecimal averageInvoice,
+                            List<DashboardPoint> trend, List<DashboardSlice> composition,
+                            List<DashboardSlice> payments, BigDecimal paymentUnallocated,
+                            List<DashboardSlice> topCourts, List<String> warnings) {
+    }
+
+    public Dashboard dashboard(LocalDate from, LocalDate to) {
+        if (from == null || to == null || from.isAfter(to) || from.getYear()<2 || to.getYear()>9998) {
+            throw new BadRequestException("Chọn Từ ngày và Đến ngày hợp lệ, Từ ngày không sau Đến ngày");
+        }
+        long days=java.time.temporal.ChronoUnit.DAYS.between(from,to)+1;
+        if(days>3660 || from.minusDays(days).getYear()<1)
+            throw new BadRequestException("Khoảng thời gian tối đa 3660 ngày và phải có kỳ trước hợp lệ");
+        LocalDate previousFrom=from.minusDays(days), previousTo=from.minusDays(1);
+        var start=from.atStartOfDay();var end=to.plusDays(1).atStartOfDay();
+        String population=" FROM invoices i WHERE i.status='PAID' AND i.deleted_at IS NULL AND i.created_at>=? AND i.created_at<?";
+        BigDecimal total=dashboardTotal(from,to.plusDays(1));
+        BigDecimal previous=dashboardTotal(previousFrom,from);
+        long count=jdbc.queryForObject("SELECT COUNT(*)"+population,Long.class,start,end);
+        BigDecimal growth=previous.signum()==0?null:total.subtract(previous).multiply(BigDecimal.valueOf(100)).divide(previous,2,RoundingMode.HALF_UP);
+        List<DashboardPoint> trend=new ArrayList<>();
+        // Read both periods once; fill gaps and group calendar months without an N+1 query.
+        Map<LocalDate,BigDecimal> daily=new LinkedHashMap<>();
+        jdbc.query("SELECT CAST(i.created_at AS DATE) AS revenue_day,SUM(i.total_amount) AS amount"+population+" GROUP BY CAST(i.created_at AS DATE)",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs->daily.put(rs.getDate("revenue_day").toLocalDate(),rs.getBigDecimal("amount")),previousFrom.atStartOfDay(),end);
+        for(LocalDate day=from;!day.isAfter(to);) {
+            LocalDate next=days<=62?day.plusDays(1):day.withDayOfMonth(1).plusMonths(1);
+            if(next.isAfter(to.plusDays(1)))next=to.plusDays(1);
+            BigDecimal now=BigDecimal.ZERO,before=BigDecimal.ZERO;
+            for(LocalDate d=day;d.isBefore(next);d=d.plusDays(1)) {
+                now=now.add(daily.getOrDefault(d,BigDecimal.ZERO));
+                before=before.add(daily.getOrDefault(d.minusDays(days),BigDecimal.ZERO));
+            }
+            trend.add(new DashboardPoint(day,next.minusDays(1),day.minusDays(days),next.minusDays(days).minusDays(1),now,before));day=next;
+        }
+        List<String> warnings=new ArrayList<>();
+        List<DashboardSlice> composition=new ArrayList<>(), top=new ArrayList<>();
+        try {
+            var allocation=allocate(start,end,Map.of(),Map.of(),Map.of(),courtNames());
+            composition.add(slice("Tiền sân",allocation.courtTotal(),total));
+            composition.add(slice("Hàng hóa",allocation.categories().get("GOODS"),total));
+            composition.add(slice("Dịch vụ",allocation.categories().get("SERVICE"),total));
+            if(allocation.categories().get("UNKNOWN").signum()!=0)
+                composition.add(slice("Chưa phân loại",allocation.categories().get("UNKNOWN"),total));
+            if(allocation.unknownLines()>0)warnings.add("Chưa phân loại: "+allocation.unknownLines()+" dòng, "+allocation.categories().get("UNKNOWN").toPlainString()+" VND.");
+            allocation.courts().stream().filter(r->r.courtId()!=null && r.total().signum()>0)
+                    .sorted(Comparator.comparing(RevenueBreakdownResponse.CourtRow::total).reversed().thenComparing(RevenueBreakdownResponse.CourtRow::courtName))
+                    .limit(5).forEach(r->top.add(slice(r.courtName(),r.total(),allocation.courtTotal())));
+            if(allocation.courts().stream().anyMatch(r->r.courtId()==null && r.total().signum()!=0))warnings.add("Một phần tiền sân thiếu chi tiết booking, chưa thể gán vào Top sân.");
+        }catch(BadRequestException ex) {
+            warnings.add("Snapshot hóa đơn chưa đủ nhất quán để phân bổ cơ cấu và Top sân; tổng doanh thu vẫn lấy từ hóa đơn PAID.");
+        }
+        BigDecimal[] methods={BigDecimal.ZERO,BigDecimal.ZERO};
+        var receipts=jdbc.query("SELECT i.total_amount,COALESCE(SUM(CASE WHEN p.payment_method='CASH' THEN p.amount ELSE 0 END),0) AS cash,COALESCE(SUM(CASE WHEN p.payment_method='VNPAY' THEN p.amount ELSE 0 END),0) AS vnpay "
+                +"FROM invoices i LEFT JOIN payment_transactions p ON p.status='SUCCESS' AND (p.invoice_id=i.id OR (p.booking_id=i.booking_id AND i.parent_invoice_id IS NULL AND i.court_fee>0)) "
+                +"WHERE i.status='PAID' AND i.deleted_at IS NULL AND i.created_at>=? AND i.created_at<? GROUP BY i.id,i.total_amount",
+                (rs,n)->List.of(rs.getBigDecimal("total_amount"),rs.getBigDecimal("cash"),rs.getBigDecimal("vnpay")),start,end);
+        BigDecimal unallocated=BigDecimal.ZERO;
+        for(var r:receipts) {
+            if(r.get(1).signum()>=0 && r.get(2).signum()>=0 && r.get(1).add(r.get(2)).compareTo(r.get(0))==0) {
+                methods[0]=methods[0].add(r.get(1));methods[1]=methods[1].add(r.get(2));
+            }else unallocated=unallocated.add(r.get(0));
+        }
+        if(unallocated.signum()!=0)warnings.add("Một số hóa đơn chưa có khoản thu SUCCESS khớp tổng tiền; phần này chưa gán CASH/VNPAY.");
+        return new Dashboard(from,to,previousFrom,previousTo,total,previous,growth,count,
+                count==0?BigDecimal.ZERO:total.divide(BigDecimal.valueOf(count),2,RoundingMode.HALF_UP),trend,composition,
+                List.of(slice("CASH",methods[0],total),slice("VNPAY",methods[1],total)),unallocated,top,warnings);
+    }
+
+
+    private BigDecimal dashboardTotal(LocalDate from,LocalDate end) {
+        return jdbc.queryForObject("SELECT COALESCE(SUM(i.total_amount),0) FROM invoices i WHERE i.status='PAID' AND i.deleted_at IS NULL AND i.created_at>=? AND i.created_at<?",
+                BigDecimal.class,from.atStartOfDay(),end.atStartOfDay());
+    }
+    private DashboardSlice slice(String label,BigDecimal amount,BigDecimal total) {
+        return new DashboardSlice(label,amount,total.signum()==0?BigDecimal.ZERO:amount.multiply(BigDecimal.valueOf(100)).divide(total,2,RoundingMode.HALF_UP));
+    }
+
     public RevenueBreakdownResponse report(String period, int year) {
         return report(period, year, null, false);
     }
@@ -213,6 +296,13 @@ public class RevenueBreakdownService {
      * Splits every paid invoice of the window into product lines and court lines so that both
      * sides add up to the invoice total.
      */
+    public record AllocationValue(UUID id,String label,BigDecimal amount) {}
+    public List<AllocationValue> allocationValues(LocalDateTime from,LocalDateTime to,boolean court) {
+        var a=allocate(from,to,staffNames(),customerNames(),productNames(),courtNames());
+        if(court)return a.courts().stream().map(r->new AllocationValue(r.courtId(),r.courtName(),r.total())).toList();
+        return a.products().stream().map(r->new AllocationValue(r.productId(),r.productName(),r.total())).toList();
+    }
+
     private PeriodAllocation allocate(LocalDateTime from, LocalDateTime to,
                                        Map<UUID, String> staffNames, Map<UUID, String> customerNames,
                                        Map<UUID, String> productNames, Map<UUID, String> courtNames) {
@@ -231,7 +321,7 @@ public class RevenueBreakdownService {
 
         Map<UUID, List<LineRow>> linesByInvoice = new LinkedHashMap<>();
         for (LineRow row : jdbc.query(
-                "SELECT d.invoice_id, d.product_id, d.quantity, d.unit_price, d.discount_amount, d.added_by "
+                "SELECT d.invoice_id, d.product_id, d.quantity, d.unit_price, d.discount_amount, d.added_by,COALESCE(d.product_type,CASE WHEN d.stock_deducted=TRUE THEN 'GOODS' ELSE NULL END) AS product_type "
                         + "FROM invoice_details d JOIN invoices i ON i.id = d.invoice_id "
                         + "WHERE i.status = '" + PAID_STATUS + "' AND i.deleted_at IS NULL "
                         + "AND i.created_at >= ? AND i.created_at < ?",
@@ -239,7 +329,7 @@ public class RevenueBreakdownService {
                         rs.getObject("product_id", UUID.class),
                         rs.getBigDecimal("quantity"),
                         rs.getBigDecimal("unit_price"),
-                        rs.getBigDecimal("discount_amount"),rs.getObject("added_by",UUID.class)),
+                        rs.getBigDecimal("discount_amount"),rs.getObject("added_by",UUID.class),rs.getString("product_type")),
                 from, to)) {
             linesByInvoice.computeIfAbsent(row.invoiceId(), k -> new ArrayList<>()).add(row);
         }
@@ -259,6 +349,8 @@ public class RevenueBreakdownService {
         Map<DetailKey, DetailAccumulator> products = new LinkedHashMap<>();
         Map<UUID, DetailAccumulator> courts = new LinkedHashMap<>();
         BigDecimal invoiceTotal = BigDecimal.ZERO;
+        Map<String,BigDecimal> categories=new LinkedHashMap<>(Map.of("GOODS",BigDecimal.ZERO,"SERVICE",BigDecimal.ZERO,"UNKNOWN",BigDecimal.ZERO));
+        long unknownLines=0;
 
         for (InvoiceRow invoice : invoices) {
             invoiceTotal = invoiceTotal.add(invoice.totalAmount());
@@ -296,9 +388,13 @@ public class RevenueBreakdownService {
                 DetailKey key = new DetailKey(null, invoice.staffId(), invoice.customerId());
                 DetailAccumulator accumulator = products.computeIfAbsent(key, k -> new DetailAccumulator());
                 accumulator.amount = accumulator.amount.add(productPool);
+                categories.merge("UNKNOWN",productPool,BigDecimal::add);
             }
             for (int index = 0; index < lineShares.size(); index++) {
                 LineShare share = lineShares.get(index);
+                String category=share.line().productType();
+                if(category==null || !categories.containsKey(category)){category="UNKNOWN";unknownLines++;}
+                categories.merge(category,productAmounts.get(index),BigDecimal::add);
                 DetailKey key = new DetailKey(share.line().productId(), share.line().addedBy(),
                         invoice.customerId());
                 DetailAccumulator accumulator = products.computeIfAbsent(key, k -> new DetailAccumulator());
@@ -357,7 +453,7 @@ public class RevenueBreakdownService {
                     Map.of(), accumulator.amount));
         }
 
-        return new PeriodAllocation(productRows, courtRows, productTotal, courtTotal, invoiceTotal);
+        return new PeriodAllocation(productRows, courtRows, productTotal, courtTotal, invoiceTotal,categories,unknownLines);
     }
 
     /**
@@ -509,7 +605,7 @@ public class RevenueBreakdownService {
                               BigDecimal totalAmount, BigDecimal productFee, BigDecimal courtDiscount) {}
 
     private record LineRow(UUID invoiceId, UUID productId, BigDecimal quantity, BigDecimal unitPrice,
-                           BigDecimal discountAmount, UUID addedBy) {}
+                           BigDecimal discountAmount, UUID addedBy,String productType) {}
 
     private record LineShare(LineRow line, BigDecimal weight) {}
 
@@ -524,5 +620,5 @@ public class RevenueBreakdownService {
 
     private record PeriodAllocation(List<RevenueBreakdownResponse.ProductDetailRow> products,
                                     List<RevenueBreakdownResponse.CourtRow> courts,
-                                    BigDecimal productTotal, BigDecimal courtTotal, BigDecimal invoiceTotal) {}
+                                    BigDecimal productTotal, BigDecimal courtTotal, BigDecimal invoiceTotal,Map<String,BigDecimal> categories,long unknownLines) {}
 }

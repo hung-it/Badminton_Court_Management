@@ -46,4 +46,29 @@ class StatisticsPostgresTest {
         assertThat(statistics.report("MONTH",2087,null,null).rows()).hasSize(12);
         assertThat(statistics.report("YEARS",2087,2087,2088).rows()).hasSize(2);
     }
+
+    @Test void matrixIncludesBoundariesRejectsInvalidRangeAndExportsAllRows()throws Exception {
+        UUID customer=jdbc.queryForObject("select id from customers order by id limit 1",UUID.class);
+        for(String date:java.util.List.of("2090-01-01T00:00:00","2090-01-31T23:59:59"))
+            jdbc.update("insert into invoices(id,customer_id,status,payment_method,court_fee,product_fee,discount_amount,total_amount,created_at,updated_at) values (?,?,'PAID','VNPAY',100,0,0,100,?,?)",UUID.randomUUID(),customer,LocalDateTime.parse(date),LocalDateTime.parse(date));
+        jdbc.update("insert into invoices(id,customer_id,status,payment_method,court_fee,product_fee,discount_amount,total_amount,created_at,updated_at) values (?,?,'DRAFT',NULL,900,0,0,900,'2090-01-15','2090-01-15')",UUID.randomUUID(),customer);
+        var date=statistics.matrix("DATE","MONTH",2090,2090,2090,LocalDate.of(2090,1,1),LocalDate.of(2090,1,31),"");
+        assertThat(date.total()).isEqualByComparingTo("200");assertThat(date.rows()).hasSize(2);
+        for(String type:java.util.List.of("TIME","STAFF","CUSTOMER")){
+            var m=statistics.matrix(type,"YEAR",2090,2090,2090,null,null,"");assertThat(m.total()).isEqualByComparingTo("200");
+        }
+        assertThat(statistics.matrix("TIME","MONTH",2090,2090,2090,null,null,"").columns()).hasSize(12);
+        assertThat(statistics.matrix("TIME","QUARTER",2090,2090,2090,null,null,"").columns()).hasSize(4);
+        assertThat(statistics.matrix("TIME","YEARS",2090,2089,2091,null,null,"").columns()).hasSize(3);
+        assertThat(statistics.matrix("IMPORT","YEAR",2090,2090,2090,null,null,"").total()).isEqualByComparingTo("0");
+        assertThat(statistics.matrix("PRODUCT","QUARTER",2090,2090,2090,null,null,"").total()).isEqualByComparingTo("0");
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->statistics.matrix("DATE","MONTH",2090,2090,2090,LocalDate.of(2090,2,1),LocalDate.of(2090,1,1),"")).isInstanceOf(com.bcm.exception.BadRequestException.class);
+        byte[] excel=statistics.excel(date,"2090-01");
+        try(var zip=new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(excel))){
+            String sheet="";java.util.zip.ZipEntry entry;
+            while((entry=zip.getNextEntry())!=null)if(entry.getName().equals("xl/worksheets/sheet1.xml"))sheet=new String(zip.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
+            assertThat(sheet).contains("2090-01","<v>200","<v>100");
+            javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new java.io.ByteArrayInputStream(sheet.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        }
+    }
 }

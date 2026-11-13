@@ -8,11 +8,12 @@ const admin=process.env.ADMIN_TEST_URL||'http://127.0.0.1:5173';
   for(const role of ['ADMIN','STAFF','CUSTOMER']){
    const page=await browser.newPage({viewport:{width:1366,height:900}});
  await page.route("https://fonts.googleapis.com/**",r=>r.fulfill({body:"",contentType:"text/css"}));
+   const jsErrors=[];page.on('pageerror',e=>jsErrors.push(e.message));
    const requests=[];let fail=false,failLock=false,failUnlock=false,holdMutation=null;
    const invoice={id:'11111111-1111-4111-8111-111111111111',customerId:'33333333-3333-4333-8333-333333333333',customerPhone:'0912345678',customerName:'Khách kiểm thử',createdAt:'2026-11-11T10:00:00',courtFee:200000,productFee:30000,discountAmount:5000,totalAmount:225000,invoiceStatus:'PAID'};
-   const customer={id:'22222222-2222-4222-8222-222222222222',fullName:'Khách kiểm thử',email:'customer@ui.test',phone:'0912345678',address:'Test',roles:['CUSTOMER'],createdAt:'2026-11-11T10:00:00',deletedAt:null,canLock:true,canUnlock:false,customerId:'customer-profile',bookingCount:0,totalSpent:0,bookings:[],invoices:[]};
+   const customer={id:'22222222-2222-4222-8222-222222222222',fullName:'Khách kiểm thử',email:'customer@ui.test',phone:'0912345678',address:'Test',roles:['CUSTOMER'],createdAt:'2026-11-11T10:00:00',deletedAt:null,canLock:true,canUnlock:false,customerId:invoice.customerId,bookingCount:0,totalSpent:0,bookings:[],invoices:[]};
    await page.route('**/api/**',async route=>{
-    const r=route.request(),u=new URL(r.url());requests.push({method:r.method(),path:u.pathname,body:r.postDataJSON()});let data=[];
+    const r=route.request(),u=new URL(r.url());requests.push({method:r.method(),path:u.pathname,query:u.search,body:r.postDataJSON()});let data=[];
     if(u.pathname==='/api/admin/accounts')data={accounts:[customer],totalPages:1,totalElements:1};
     if(u.pathname==='/api/admin/accounts/'+customer.id&&r.method()==='DELETE'){
      if(holdMutation)await holdMutation;
@@ -40,7 +41,7 @@ const admin=process.env.ADMIN_TEST_URL||'http://127.0.0.1:5173';
    assert(await page.getByRole('button',{name:'Đổi mật khẩu',exact:true}).isVisible());
    const nav=page.locator('.sidebar button.nav');assert.equal(await nav.count(),12);
    if(role==='STAFF'){
-    for(const name of ['Tài khoản','Thống kê','Doanh thu theo đối tượng','Nhập kho','Sân cầu']){
+    for(const name of ['Tài khoản','Thống kê','Doanh thu','Nhập kho','Sân cầu']){
      const b=nav.filter({hasText:name});assert(await b.isDisabled());assert.doesNotMatch(await b.innerText(),/🔒/);assert.equal(await b.getAttribute('title'),'Chức năng chỉ dành cho Quản lý');
     }
     for(const name of ['Bán tại quầy','Trả sân','Hóa đơn','Khuyến mãi'])assert(await page.getByRole('button',{name,exact:true}).isEnabled());
@@ -52,7 +53,25 @@ const admin=process.env.ADMIN_TEST_URL||'http://127.0.0.1:5173';
    }else{
     assert.equal(await nav.locator(':disabled').count(),0);
     assert.equal(await page.getByRole('button',{name:'Sửa',exact:true}).count(),0);
-    await page.getByRole('button',{name:'Chi tiết',exact:true}).click();await page.getByRole('dialog').getByText('Lịch sử đặt sân',{exact:true}).waitFor();await page.getByRole('button',{name:'X',exact:true}).click();
+    await page.getByRole('button',{name:'Chi tiết',exact:true}).click();await page.getByRole('dialog').getByText('Vai trò: Khách hàng',{exact:true}).waitFor();
+    const accountDialog=page.getByRole('dialog');
+    assert.equal(await accountDialog.locator('.invoices-panel,table,input,select').count(),0);
+    assert.equal(await accountDialog.getByText('Lịch sử hóa đơn',{exact:true}).count(),0);
+    assert.equal(await accountDialog.getByText('Lịch sử đặt sân',{exact:true}).count(),0);
+    assert.equal(requests.filter(r=>r.path.startsWith('/api/analytics/invoices')).length,0);
+    await accountDialog.getByRole('button',{name:'Xem hóa đơn đã thanh toán',exact:true}).click();
+    await page.waitForURL('**/?tab=invoices');
+    await page.getByRole('cell',{name:invoice.customerId,exact:true}).waitFor();
+    assert.equal(new URLSearchParams(requests.filter(r=>r.path==='/api/analytics/invoices').at(-1).query).get('customerId'),invoice.customerId);
+    await page.getByLabel('Tìm hóa đơn',{exact:true}).fill('same-name');
+    await page.waitForResponse(r=>new URL(r.url()).searchParams.get('search')==='same-name');
+    await page.getByRole('button',{name:'Chi tiết',exact:true}).waitFor();
+    assert.equal(new URLSearchParams(requests.filter(r=>r.path==='/api/analytics/invoices').at(-1).query).get('customerId'),invoice.customerId);
+    await page.getByRole('button',{name:'Bỏ lọc khách hàng',exact:true}).click();
+    await page.getByRole('cell',{name:invoice.customerId,exact:true}).waitFor();
+    assert.equal(new URLSearchParams(requests.filter(r=>r.path==='/api/analytics/invoices').at(-1).query).has('customerId'),false);
+    await page.getByRole('button',{name:'Tài khoản',exact:true}).click();
+    await page.getByRole('button',{name:'Chi tiết',exact:true}).waitFor();
     await page.getByRole('button',{name:'+ Thêm khách hàng',exact:true}).click();
     const d=page.getByRole('dialog');for(const [name,value] of [['Họ tên','Khách mới'],['Email','new@ui.test'],['Số điện thoại','0987654321'],['Địa chỉ','Test'],['Mật khẩu','Password123!']])await d.getByLabel(name,{exact:true}).fill(value);
     await d.getByRole('button',{name:'Lưu',exact:true}).click();await d.waitFor({state:'hidden'});
@@ -92,15 +111,17 @@ const admin=process.env.ADMIN_TEST_URL||'http://127.0.0.1:5173';
 
    }
    await page.getByRole('button',{name:'Hóa đơn',exact:true}).click();await page.getByRole('columnheader',{name:'Mã khách hàng',exact:true}).waitFor();await page.getByRole('cell',{name:invoice.customerId,exact:true}).waitFor();assert.equal(await page.getByRole('cell',{name:invoice.customerName,exact:true}).count(),0);await page.getByRole('button',{name:'Chi tiết',exact:true}).click();
-   const dialog=page.getByRole('dialog');await dialog.locator('.invoice-detail-phone').filter({hasText:invoice.customerPhone}).waitFor();assert.equal(await dialog.locator('.invoice-detail-customer strong').innerText(),invoice.customerName);assert.equal(await dialog.locator('h2').evaluate(e=>getComputedStyle(e).fontSize),'20px');await dialog.getByText('Nước suối',{exact:true}).waitFor();assert.match(await dialog.innerText(),/225.000/);assert.match(await dialog.innerText(),/Thu ngân/);assert.equal(await dialog.getByRole('button').count(),2);
-   require('node:fs').mkdirSync('.tools/invoice-detail-ui',{recursive:true});await page.screenshot({path:'.tools/invoice-detail-ui/'+role+'-desktop.png',fullPage:true});
+   const dialog=page.getByRole('dialog');await dialog.locator('.invoice-detail-phone').filter({hasText:invoice.customerPhone}).waitFor();assert.equal(await dialog.locator('.invoice-detail-customer strong').innerText(),invoice.customerName);assert.equal(await dialog.locator('h2').evaluate(e=>getComputedStyle(e).fontSize),'20px');await dialog.getByText('Nước suối',{exact:true}).waitFor();
+   for(const width of [1440,1024,768,375]){await page.setViewportSize({width,height:900});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert(await dialog.evaluate(el=>{const family=getComputedStyle(el).fontFamily;return [...el.querySelectorAll('code,td,th,dt,dd,small,h2,h3')].every(e=>getComputedStyle(e).fontFamily===family)}));assert(await dialog.locator('small').evaluateAll(nodes=>nodes.every(e=>getComputedStyle(e).marginTop==='0px')));}
+   await page.setViewportSize({width:1366,height:900});assert.match(await dialog.innerText(),/225.000/);assert.match(await dialog.innerText(),/Thu ngân/);assert.equal(await dialog.getByRole('button').count(),2);
    await page.keyboard.press('Escape');await page.getByRole('button',{name:'Trang sau',exact:true}).click();await page.getByText('Trang 2 / 2',{exact:true}).waitFor();
    await page.getByLabel('Tìm hóa đơn',{exact:true}).fill('none');await page.getByText('Chưa có hóa đơn đã thanh toán trong kỳ này.',{exact:true}).waitFor();
    await page.getByLabel('Tìm hóa đơn',{exact:true}).fill('');await page.getByRole('button',{name:'Chi tiết',exact:true}).waitFor();
-   await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Chi tiết',exact:true}).click();await page.getByRole('dialog').getByText('Nước suối',{exact:true}).waitFor();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));require('node:fs').mkdirSync('.tools/invoice-detail-ui',{recursive:true});await page.screenshot({path:'.tools/invoice-detail-ui/'+role+'-mobile.png',fullPage:true});await page.getByRole('button',{name:'Đóng',exact:true}).click();invoice.customerPhone=null;await page.getByRole('button',{name:'Chi tiết',exact:true}).click();await page.getByRole('dialog').getByText('Nước suối',{exact:true}).waitFor();assert.equal(await page.getByRole('dialog').locator('.invoice-detail-phone').innerText(),'');await page.getByRole('button',{name:'Đóng',exact:true}).click();invoice.customerPhone='0912345678';
+   await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Chi tiết',exact:true}).click();await page.getByRole('dialog').getByText('Nước suối',{exact:true}).waitFor();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.getByRole('button',{name:'Đóng',exact:true}).click();invoice.customerPhone=null;await page.getByRole('button',{name:'Chi tiết',exact:true}).click();await page.getByRole('dialog').getByText('Nước suối',{exact:true}).waitFor();assert.equal(await page.getByRole('dialog').locator('.invoice-detail-phone').innerText(),'');await page.getByRole('button',{name:'Đóng',exact:true}).click();invoice.customerPhone='0912345678';
    fail=true;await page.getByRole('button',{name:'Làm mới',exact:true}).click();await page.getByText('Không tải được lịch sử',{exact:true}).waitFor();
    assert(requests.filter(r=>r.path.startsWith('/api/analytics/invoices')).every(r=>r.method==='GET'));
    if(role==='STAFF')assert(!requests.some(r=>r.path.startsWith('/api/admin/')||r.path==='/api/analytics/statistics'||r.path==='/api/analytics/revenue-breakdown'));
+   assert.deepEqual(jsErrors,[]);
    console.log('PASS '+role+': menu/URL guards, read-only invoices, pagination, details, payment information, errors and mobile'+(role==='ADMIN'?'; create/view/lock/unlock customer; one toggle button/modal; cancel/busy/error states preserve server state':''));await page.close();
   }
  }finally{await browser.close()}

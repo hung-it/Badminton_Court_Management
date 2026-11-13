@@ -44,7 +44,7 @@ class BookingUxMigrationPostgresTest {
                 }
                 String demo = seed("districts");
                 statement.execute(demo); statement.execute(demo);
-                try (var rows = statement.executeQuery("SELECT count(*),count(DISTINCT district),count(*) FILTER (WHERE name LIKE '[DEMO] %') FROM courts WHERE district IS NOT NULL")) {
+                try (var rows = statement.executeQuery("SELECT count(*),count(DISTINCT district),count(*) FILTER (WHERE name LIKE '%') FROM courts WHERE district IS NOT NULL")) {
                     rows.next(); assertThat(rows.getInt(1)).isEqualTo(15); assertThat(rows.getInt(2)).isEqualTo(7);
                     assertThat(rows.getInt(3)).isZero();
                 }
