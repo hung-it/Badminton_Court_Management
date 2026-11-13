@@ -65,6 +65,11 @@ giữ quy trình backup trước upgrade và đã dùng đường dẫn thư m�
 - `seeds/revenue-breakdown-sample.sql`: giữ đầy đủ mẫu báo cáo cũ. Không tự nạp
   cùng demo vì script có `ON CONFLICT DO UPDATE`, có thể ghi đè bản ghi mẫu và
   thay đổi tồn kho/doanh thu. Không chạy chỉ để sắp xếp folder.
+- `seeds/vnpay-extra-demo.sql`: tùy chọn, thêm 3 hóa đơn dịch vụ VNPay mô phỏng vào
+  ngày chạy lần đầu. Mỗi hóa đơn có snapshot SERVICE và receipt SUCCESS ghi rõ DEMO;
+  không gọi gateway hoặc trừ kho. Chạy lại giữ nguyên dữ liệu/ngày cũ, từ chối bộ seed
+  thiếu hoặc đã sửa. Không tự chạy khi start project. Kiểm tra bằng
+  `node scripts/verify-vnpay-demo-seed.cjs` (chỉ ghi bảng TEMP theo session).
 - `checks/verify-demo-seed.sql`: chỉ đọc, dành cho DB demo vừa khởi tạo; số lượng
   không còn khớp khi người dùng đã kết toán/nhập kho hoặc thêm giao dịch.
 
