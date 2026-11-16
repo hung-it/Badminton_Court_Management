@@ -38,7 +38,6 @@ const admin=process.env.ADMIN_TEST_URL||'http://127.0.0.1:5173';
    await page.goto(admin+'/?tab=accounts');
    if(role==='CUSTOMER'){await page.getByRole('heading',{name:'Đăng nhập quản trị'}).waitFor();assert.equal(await page.locator('.sidebar').count(),0);console.log('PASS CUSTOMER: admin UI denied');await page.close();continue;}
    await page.locator('.sidebar').waitFor();
-   assert(await page.getByRole('button',{name:'Đổi mật khẩu',exact:true}).isVisible());
    const nav=page.locator('.sidebar button.nav');assert.equal(await nav.count(),12);
    if(role==='STAFF'){
     for(const name of ['Tài khoản','Thống kê','Doanh thu','Nhập kho','Sân cầu']){

@@ -593,7 +593,7 @@ export default function CustomerCheckout() {
               <fieldset className="checkout-methods" disabled={loading || Boolean(error) || submitting}>
                 <legend>Phương thức thanh toán</legend>
                 <label className="checkout-method selected">
-                  <span><strong>VNPAY</strong><small>Thanh toán qua cổng VNPay Sandbox</small></span><input type="radio" name="paymentMethod" value="VNPAY" checked readOnly/>
+                  <span><strong>VNPAY</strong><small>Thanh toán qua cổng VNPay</small></span><input type="radio" name="paymentMethod" value="VNPAY" checked readOnly/>
                 </label>
               </fieldset>
 

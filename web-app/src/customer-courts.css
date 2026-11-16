@@ -43,6 +43,18 @@
 .customer-slot-row > span:first-child { flex: 0 0 100%; font-weight: 600; }
 .customer-slot-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; }
 .customer-slot-chip input { margin: 0; accent-color: var(--cc-green-600); }
+.customer-slot-chip.maintenance,
+.customer-page .customer-slot-chip.maintenance,
+.customer-page .customer-slot-chip.maintenance:hover {
+  background: #f3f4f6;
+  color: #9ca3af;
+  border: 1px solid #e5e7eb;
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+.customer-slot-chip.maintenance input {
+  cursor: not-allowed;
+}
 .customer-district-filter { border: 0; padding: 0; margin: 0; min-width: 0; }
 .customer-district-options { max-height: 320px; overflow-y: auto; margin-top: 6px; }
 .customer-district-options .customer-check-row { align-items: center; min-height: 40px; line-height: 1.5; padding: 6px 2px; }

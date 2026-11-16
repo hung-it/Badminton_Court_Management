@@ -1,6 +1,7 @@
 package com.bcm.service;
 
 import com.bcm.dto.response.BranchResponse;
+import com.bcm.entity.Branch;
 import com.bcm.entity.Court;
 import com.bcm.entity.CourtStatus;
 import com.bcm.exception.ResourceNotFoundException;
@@ -25,13 +26,40 @@ public class BranchService {
             .filter(c -> c.getBranchId() != null && c.getStatus() == CourtStatus.AVAILABLE && c.getBasePrice().signum() > 0)
             .collect(Collectors.groupingBy(Court::getBranchId, Collectors.counting()));
         return branches.findByActiveTrueAndDeletedAtIsNullOrderByCodeAsc().stream()
-            .map(b -> new BranchResponse(b.getId(), b.getCode(), b.getName(), b.getDistrict(), b.getAddress(), counts.getOrDefault(b.getId(), 0L)))
+            .map(b -> new BranchResponse(b.getId(), b.getCode(), b.getName(), b.getDistrict(), b.getAddress(), b.isActive(), counts.getOrDefault(b.getId(), 0L)))
+            .toList();
+    }
+
+    public List<BranchResponse> listAll() {
+        var counts = courts.findByDeletedAtIsNullOrderByCourtCodeAsc().stream()
+            .filter(c -> c.getBranchId() != null && c.getBasePrice().signum() > 0)
+            .collect(Collectors.groupingBy(Court::getBranchId, Collectors.counting()));
+        return branches.findByDeletedAtIsNullOrderByCodeAsc().stream()
+            .map(b -> new BranchResponse(b.getId(), b.getCode(), b.getName(), b.getDistrict(), b.getAddress(), b.isActive(), counts.getOrDefault(b.getId(), 0L)))
             .toList();
     }
 
     public List<Court> courts(UUID branchId) {
         if (!branches.existsByIdAndActiveTrueAndDeletedAtIsNull(branchId)) throw new ResourceNotFoundException("Branch not found");
         return courts.findByBranchIdAndDeletedAtIsNullOrderByBranchCourtNumberAsc(branchId).stream()
-            .filter(c -> c.getStatus() == CourtStatus.AVAILABLE && c.getBasePrice().signum() > 0).toList();
+            .filter(c -> (c.getStatus() == CourtStatus.AVAILABLE || c.getStatus() == CourtStatus.MAINTENANCE) && c.getBasePrice().signum() > 0).toList();
+    }
+
+    public boolean isBranchActive(UUID branchId) {
+        if (branchId == null) return false;
+        return courts.isBranchActive(branchId);
+    }
+
+    @Transactional
+    public BranchResponse updateStatus(UUID branchId, Boolean active) {
+        Branch branch = branches.findByIdAndDeletedAtIsNull(branchId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chi nhánh: " + branchId));
+        boolean targetActive = (active != null) ? active : !branch.isActive();
+        branch.setActive(targetActive);
+        branches.saveAndFlush(branch);
+        var counts = courts.findByDeletedAtIsNullOrderByCourtCodeAsc().stream()
+                .filter(c -> c.getBranchId() != null && c.getBasePrice().signum() > 0)
+                .collect(Collectors.groupingBy(Court::getBranchId, Collectors.counting()));
+        return new BranchResponse(branch.getId(), branch.getCode(), branch.getName(), branch.getDistrict(), branch.getAddress(), branch.isActive(), counts.getOrDefault(branch.getId(), 0L));
     }
 }

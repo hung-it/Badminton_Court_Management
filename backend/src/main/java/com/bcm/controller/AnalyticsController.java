@@ -60,7 +60,7 @@ public class AnalyticsController {
 
     @GetMapping("/invoices")
     @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
-    @Operation(summary="Lịch sử hóa đơn PAID trong kỳ doanh thu, 20 hóa đơn mỗi trang", description="from/to lọc khoảng ngày bao gồm cả hai ngày, ưu tiên hơn period/date; phải truyền đủ cả hai.")
+    @Operation(summary="Lịch sử hóa đơn trong kỳ, 20 hóa đơn mỗi trang", description="from/to lọc khoảng ngày bao gồm cả hai ngày, ưu tiên hơn period/date; status: rỗng (tất cả), PAID, DRAFT, CANCELLED.")
     public ApiResponse<com.bcm.dto.response.InvoiceReportResponse.History> invoices(
             @RequestParam(defaultValue="DAY") String period,
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate date,
@@ -68,8 +68,9 @@ public class AnalyticsController {
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(defaultValue="") String search,@RequestParam(defaultValue="") String method,
-            @RequestParam(required=false) java.util.UUID customerId) {
-        return ApiResponse.success(analyticsService.history(period,date,page,from,to,search,method,customerId));
+            @RequestParam(required=false) java.util.UUID customerId,
+            @RequestParam(defaultValue="") String status) {
+        return ApiResponse.success(analyticsService.history(period,date,page,from,to,search,method,customerId,status));
     }
 
     @GetMapping("/invoices/{id}")

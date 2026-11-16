@@ -18,6 +18,18 @@ const STATUS_OPTIONS = [
 
 const STATUS_LABELS = Object.fromEntries(STATUS_OPTIONS.map(({value, label}) => [value, label]));
 
+const PAYMENT_METHODS = {
+  CASH: 'Tiền mặt',
+  VNPAY: 'VNPay',
+};
+
+const PAYMENT_STATUS_LABELS = {
+  SUCCESS: 'Thành công',
+  PENDING: 'Đang xử lý',
+  FAILED: 'Thất bại',
+  REFUNDED: 'Đã hoàn tiền',
+};
+
 function formatDateTime(value) {
   if (!value) return '—';
   const date = new Date(value);
@@ -70,19 +82,38 @@ function BookingDetail({detail, loading, error, onRetry}) {
           </div>)}
         </div> : <p className="history-muted">Booking này không còn chi tiết khung giờ. Có thể lịch đã hết hạn.</p>}
       </section>
-      <section>
+      <section className="history-payment-section">
         <h3>Lịch sử thanh toán</h3>
-        {detail.payments?.length ? <div className="history-payments">
-          {detail.payments.map(payment => <div className="history-payment" key={payment.paymentAttemptId}>
-            <div>
-              <strong>{payment.paymentMethod || '—'}</strong>
-              <span>{formatDateTime(payment.createdAt)}</span>
-            </div>
-            <span className={`history-payment__status history-payment__status--${String(payment.paymentStatus || '').toLowerCase()}`}>
-              {payment.paymentStatus || '—'}
-            </span>
-            <strong>{formatVND(payment.amount)}</strong>
-          </div>)}
+        {detail.payments?.length ? <div className="history-payment-table-wrap">
+          <table className="history-payment-table">
+            <thead>
+              <tr>
+                <th>Thời gian</th>
+                <th>Phương thức</th>
+                <th>Mã giao dịch</th>
+                <th>Số tiền</th>
+                <th>Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.payments.map(payment => {
+                const methodLabel = PAYMENT_METHODS[payment.paymentMethod] || payment.paymentMethod || '—';
+                const statusLabel = PAYMENT_STATUS_LABELS[payment.paymentStatus] || payment.paymentStatus || '—';
+                const statusCls = String(payment.paymentStatus || '').toLowerCase();
+                return <tr key={payment.paymentAttemptId}>
+                  <td>{formatDateTime(payment.transactionDate || payment.createdAt)}</td>
+                  <td>{methodLabel}</td>
+                  <td><code>{payment.transactionId || '—'}</code></td>
+                  <td><strong>{formatVND(payment.amount)}</strong></td>
+                  <td>
+                    <span className={`history-payment__status history-payment__status--${statusCls}`}>
+                      {statusLabel}
+                    </span>
+                  </td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
         </div> : <p className="history-muted">Chưa có giao dịch thanh toán.</p>}
       </section>
     </div>

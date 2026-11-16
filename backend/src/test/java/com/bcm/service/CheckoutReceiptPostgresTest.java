@@ -371,9 +371,10 @@ class CheckoutReceiptPostgresTest {
     }
     @Test void checkoutRequiresTheActualStartAndRejectsMissingDetails() {
         jdbc.update("UPDATE booking_details SET booking_date=? WHERE booking_id=?",LocalDate.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).plusDays(1),booking);
-        assertThat(checkout.preview(booking).isCheckoutEligible()).isFalse();
-        assertThatThrownBy(()->checkout.checkout(booking,receipt(null,"0"))).hasMessageContaining("không thể kết toán");
+        assertThat(checkout.preview(booking).isCheckoutEligible()).isTrue();
+        assertThat(checkout.checkout(booking,receipt(null,"0")).getData().getInvoiceId()).isNotNull();
         jdbc.update("DELETE FROM booking_details WHERE booking_id=?",booking);
+        assertThat(checkout.preview(booking).isCheckoutEligible()).isFalse();
         assertThat(checkout.preview(booking).getCheckoutMessage()).contains("Không đủ chi tiết");
         assertThatThrownBy(()->checkout.checkout(booking,receipt(null,"0"))).hasMessageContaining("Không đủ chi tiết");
     }
@@ -490,22 +491,12 @@ class CheckoutReceiptPostgresTest {
         var attempt=paymentAttempts.createAttempt(booking,new CreatePaymentAttemptRequest(PaymentMethod.VNPAY));
         var notification=new PaymentNotification(attempt.paymentAttemptId(),PaymentMethod.VNPAY,attempt.amount(),true,"3456789",java.time.LocalDateTime.now().withNano(0),false);
         assertThat(callbacks.settle(notification,booking)).isEqualTo(PaymentCallbackTransactionService.Result.SUCCESS);actor(false);
-        pos.sell(sale(true,null));assertThat(checkout.preview(booking).isCheckoutEligible()).isFalse();
-        assertThatThrownBy(()->checkout.checkout(booking,receipt("CASH","10000"))).hasMessageContaining("không thể kết toán");
-        Object target=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(checkout);
-        var previous=(java.time.Clock)org.springframework.test.util.ReflectionTestUtils.getField(target,"clock");
-        var start=jdbc.queryForObject("SELECT min(d.booking_date+t.start_time) FROM booking_details d JOIN time_slots t ON t.id=d.time_slot_id WHERE d.booking_id=?",java.time.LocalDateTime.class,booking);
-        try {
-            var zone=java.time.ZoneId.of("Asia/Ho_Chi_Minh");
-            org.springframework.test.util.ReflectionTestUtils.setField(target,"clock",java.time.Clock.fixed(start.atZone(zone).toInstant().minusNanos(1),zone));
-            assertThat(checkout.preview(booking).isCheckoutEligible()).isFalse();
-            org.springframework.test.util.ReflectionTestUtils.setField(target,"clock",java.time.Clock.fixed(start.atZone(zone).toInstant(),zone));
-            assertThat(checkout.preview(booking).isCheckoutEligible()).isTrue();
-            var result=checkout.checkout(booking,receipt("CASH","10000")).getData();
-            assertThat(result.getRemainingDue()).isEqualByComparingTo("0");assertThat(result.getPaymentMethods()).containsExactly("VNPAY","CASH");
-            assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,booking)).isEqualTo("COMPLETED");
-            assertThat(expiration.expireBooking(booking)).isFalse();
-        } finally {org.springframework.test.util.ReflectionTestUtils.setField(target,"clock",previous);}
+        pos.sell(sale(true,null));
+        assertThat(checkout.preview(booking).isCheckoutEligible()).isTrue();
+        var result=checkout.checkout(booking,receipt("CASH","10000")).getData();
+        assertThat(result.getRemainingDue()).isEqualByComparingTo("0");assertThat(result.getPaymentMethods()).containsExactly("VNPAY","CASH");
+        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,booking)).isEqualTo("COMPLETED");
+        assertThat(expiration.expireBooking(booking)).isFalse();
     }
     @Test void pendingExpiresAtomicallyAndZeroFinalAmountCannotStartPayment() {
         createPendingBookingAsCustomer();

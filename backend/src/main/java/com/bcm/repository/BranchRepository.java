@@ -7,5 +7,7 @@ import java.util.UUID;
 
 public interface BranchRepository extends JpaRepository<Branch, UUID> {
     List<Branch> findByActiveTrueAndDeletedAtIsNullOrderByCodeAsc();
+    List<Branch> findByDeletedAtIsNullOrderByCodeAsc();
     boolean existsByIdAndActiveTrueAndDeletedAtIsNull(UUID id);
+    java.util.Optional<Branch> findByIdAndDeletedAtIsNull(UUID id);
 }
