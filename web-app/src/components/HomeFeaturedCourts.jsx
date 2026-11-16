@@ -44,7 +44,7 @@ function CourtCard({ court, imageUrl }) {
 }
 
 export default function HomeFeaturedCourts({ courts, loading, error, onRetry }) {
-  const featured = useMemo(() => courts.slice(0, 3), [courts]);
+  const featured = useMemo(() => courts.filter(c => c.status === 'AVAILABLE').slice(0, 3), [courts]);
 
   if (loading) {
     return (

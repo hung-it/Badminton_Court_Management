@@ -72,6 +72,9 @@ public class MasterDataService {
     }
 
     public Court saveCourt(UUID id, CourtRequest r) {
+        if (r.status() == CourtStatus.CLOSED) {
+            throw new BadRequestException("Sân con chỉ có trạng thái Hoạt động (AVAILABLE) hoặc Bảo trì (MAINTENANCE)");
+        }
         if (r.basePrice().signum() <= 0) throw new BadRequestException("Giá sân phải lớn hơn 0");
         Court c = id == null ? new Court() : courts.findAllForBookingWithLock(List.of(id)).stream()
             .filter(v->v.getDeletedAt()==null).findFirst().orElseThrow(()->new ResourceNotFoundException("Không tìm thấy sân"));
@@ -252,7 +255,8 @@ public class MasterDataService {
     public Map<String, Object> quote(UUID courtId, UUID slotId) {
         Court c = court(courtId);
         TimeSlot s = slot(slotId);
-        if (c.getStatus() != CourtStatus.AVAILABLE || c.getBasePrice().signum() <= 0)
+        if (c.getStatus() != CourtStatus.AVAILABLE || c.getBasePrice().signum() <= 0
+                || (c.getBranchId() != null && !courts.isBranchActive(c.getBranchId())))
             throw new BadRequestException("Sân không hoạt động");
         return Map.of(
                 "courtId",

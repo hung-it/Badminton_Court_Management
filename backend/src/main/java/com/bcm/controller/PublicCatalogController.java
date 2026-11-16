@@ -40,7 +40,9 @@ public class PublicCatalogController {
     public ApiResponse<?> courts(@RequestParam(required = false) UUID branchId) {
         return ApiResponse.success(
                 (branchId == null ? service.courts() : branchService.courts(branchId)).stream()
-                        .filter(c -> c.getStatus() == com.bcm.entity.CourtStatus.AVAILABLE && c.getBasePrice().signum() > 0)
+                        .filter(c -> (c.getStatus() == com.bcm.entity.CourtStatus.AVAILABLE || c.getStatus() == com.bcm.entity.CourtStatus.MAINTENANCE)
+                                && (c.getBranchId() == null || branchService.isBranchActive(c.getBranchId()))
+                                && c.getBasePrice().signum() > 0)
                         .map(c -> {
                             Map<String, Object> court = new LinkedHashMap<>();
                             court.put("id", c.getId());

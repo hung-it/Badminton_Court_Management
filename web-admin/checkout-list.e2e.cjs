@@ -38,7 +38,7 @@ const admin=process.env.ADMIN_TEST_URL||'http://127.0.0.1:5173';
  assert.match(await page.locator('.invoice-paper').innerText(),/Còn phải thu:\s*30\.000/);
  assert.equal(await page.locator('.payment-picker button').count(),2);
  assert.equal(await page.getByRole('dialog').locator('input[type=checkbox]').count(),1);
- assert.deepEqual(await page.locator('.payment-picker button').allTextContents(),['💵 Tiền mặt (CASH)✓','💳 VNPay · xác nhận thủ công (VNPAY)']);
+ assert.deepEqual(await page.locator('.payment-picker button').allTextContents(),['💵 Tiền mặt (CASH)✓','💳 VNPay']);
  await page.screenshot({fullPage:true}); // Keep capture in memory; no artifact files.
  await page.getByRole('button',{name:'Đóng bill',exact:true}).click();
  assert.equal(await page.getByRole('dialog').count(),0);
@@ -46,7 +46,7 @@ const admin=process.env.ADMIN_TEST_URL||'http://127.0.0.1:5173';
  await page.getByRole('button',{name:'Kết toán',exact:true}).click();
  await page.getByText('TỔNG BILL SAU GIẢM:',{exact:true}).waitFor();
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
- await page.getByRole('button',{name:'💳 VNPay · xác nhận thủ công (VNPAY)',exact:false}).click();
+ await page.getByRole('button',{name:'💳 VNPay',exact:false}).click();
  await page.screenshot({fullPage:true}); // Keep capture in memory; no artifact files.
  assert.equal(await page.getByRole('button',{name:'✓ Xác nhận & thu tiền',exact:true}).isDisabled(),true);
  await page.getByRole('checkbox').check();

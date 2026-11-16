@@ -184,7 +184,6 @@ public class CheckoutService {
             throw new BadRequestException("Booking already has a paid main invoice; reconciliation required");
         var start=earliestStart(bookingId);
         if(start==null) throw new BadRequestException("Không đủ chi tiết lịch chơi để xác minh giờ bắt đầu.");
-        if(nowVietnam().isBefore(start)) throw new BadRequestException("Ca chơi chưa bắt đầu, không thể kết toán.");
         BigDecimal paidCourt=verifiedCourtReceipt(booking);
         var drafts=invoiceRepository.findByBookingIdAndStatusForUpdate(bookingId,PENDING_POS_STATUS);
         for(var draft:drafts) {
@@ -254,12 +253,12 @@ public class CheckoutService {
         BigDecimal paidCourt=verifiedCourtReceipt(b);
         var end=latestEnd(id);
         var start=earliestStart(id);
-        boolean eligible=start!=null && !nowVietnam().isBefore(start);
+        boolean eligible=start!=null;
         return CheckoutResponse.builder().bookingId(id).courtFee(b.getCourtFee()).productFee(products)
             .discountAmount(b.getDiscountAmount().add(productDiscount)).courtDiscount(b.getDiscountAmount())
             .productDiscount(productDiscount).totalAmount(total).paidCourtAmount(paidCourt)
             .amountDue(total.subtract(paidCourt)).collectedAmount(BigDecimal.ZERO).remainingDue(total.subtract(paidCourt))
-            .latestEndAt(end).checkoutEligible(eligible).checkoutMessage(eligible?null:start==null?"Không đủ chi tiết lịch chơi để xác minh giờ bắt đầu.":"Ca chơi chưa bắt đầu, không thể kết toán.").build();
+            .latestEndAt(end).checkoutEligible(eligible).checkoutMessage(eligible?null:"Không đủ chi tiết lịch chơi để xác minh giờ bắt đầu.").build();
     }
 
     private java.time.LocalDateTime nowVietnam() {

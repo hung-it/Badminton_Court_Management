@@ -56,18 +56,25 @@ public class AnalyticsService {
         return history(period,date,page,from,to,search,method,null);
     }
     public InvoiceReportResponse.History history(String period,LocalDate date,int page,LocalDate from,LocalDate to,String search,String method,UUID customerId) {
+        return history(period,date,page,from,to,search,method,customerId,"");
+    }
+    public InvoiceReportResponse.History history(String period,LocalDate date,int page,LocalDate from,LocalDate to,String search,String method,UUID customerId,String status) {
         if(!List.of("","CASH","VNPAY").contains(method)) throw new BadRequestException("Invalid payment method");
+        if(status!=null && !status.isEmpty() && !List.of("PAID","DRAFT","CANCELLED","REFUNDED").contains(status.trim().toUpperCase(java.util.Locale.ROOT))) {
+            throw new BadRequestException("Invalid invoice status");
+        }
         if(page<0) throw new BadRequestException("Trang phải từ 0 trở lên");
         var range=resolveRange(period,date,from,to);
-        var result=invoiceRepository.searchPaidHistory(range.from().atStartOfDay(),range.toExclusive().atStartOfDay(),"%"+search.trim().toLowerCase(java.util.Locale.ROOT)+"%",method,customerId,
+        String normalizedStatus = status==null?"":status.trim().toUpperCase(java.util.Locale.ROOT);
+        var result=invoiceRepository.searchPaidHistory(range.from().atStartOfDay(),range.toExclusive().atStartOfDay(),"%"+search.trim().toLowerCase(java.util.Locale.ROOT)+"%",method,customerId,normalizedStatus,
             PageRequest.of(page,20,Sort.by(
                 Sort.Order.desc("createdAt"),Sort.Order.desc("id"))));
         return new InvoiceReportResponse.History(result.stream().map(this::summary).toList(),page,result.getTotalPages(),result.getTotalElements());
     }
 
     public InvoiceReportResponse invoice(UUID id) {
-        var invoice=invoiceRepository.findById(id).filter(i->i.getDeletedAt()==null && PAID_STATUS.equals(i.getStatus()))
-            .orElseThrow(()->new ResourceNotFoundException("Không tìm thấy hóa đơn doanh thu"));
+        var invoice=invoiceRepository.findById(id).filter(i->i.getDeletedAt()==null)
+            .orElseThrow(()->new ResourceNotFoundException("Không tìm thấy hóa đơn"));
         var details=invoiceDetails.findByInvoiceId(id);
         var names=products.findAllById(details.stream().map(InvoiceDetail::getProductId).distinct().toList())
             .stream().collect(Collectors.toMap(Product::getId,Product::getName));
@@ -110,10 +117,14 @@ public class AnalyticsService {
         String name=customer.map(Customer::getFullName).orElse("Khách vãng lai");
         String phone=i.getBuyerPhone()!=null?i.getBuyerPhone():customer.filter(c->c.getUser()==null||!guest.isGuest(c.getUser().getId())).map(Customer::getPhone).orElse(null);
         String email=customer.filter(c->c.getUser()!=null&&!guest.isGuest(c.getUser().getId())).map(c->c.getUser().getEmail()).orElse(null);
+        var methods=payments.findInvoiceReceipts(i.getId(),i.getBookingId()).stream().filter(p->p.getStatus()==com.bcm.entity.PaymentStatus.SUCCESS)
+                .map(p->p.getPaymentMethod().name()).distinct().toList();
+        if(methods.isEmpty() && i.getPaymentMethod()!=null){
+            methods=List.of(i.getPaymentMethod());
+        }
         return new InvoiceReportResponse.Summary(i.getId(),i.getBookingId(),name,i.getCreatedAt(),i.getPaymentMethod(),
             valueOrZero(i.getCourtFee()),i.getProductFee(),i.getDiscountAmount(),i.getTotalAmount(),i.getStatus(),i.getBookingId()==null?null:bookings.findById(i.getBookingId()).map(b->b.getStatus().name()).orElse(null),
-            payments.findInvoiceReceipts(i.getId(),i.getBookingId()).stream().filter(p->p.getStatus()==com.bcm.entity.PaymentStatus.SUCCESS)
-                .map(p->p.getPaymentMethod().name()).distinct().toList(),i.getCustomerId(),phone,email);
+            methods,i.getCustomerId(),phone,email);
     }
 
     public RevenueReportResponse getRevenue(String period, LocalDate date) {

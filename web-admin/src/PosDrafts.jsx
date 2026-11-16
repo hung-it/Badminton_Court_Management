@@ -12,7 +12,10 @@ export default function PosDrafts({api,refreshKey,onCancelled}){
   if(!valid){setLoading(false);return;}
   setLoading(true);
   const params=new URLSearchParams({page,size:20,search});if(booking)params.set('bookingId',booking);
-  apiRef.current('/pos/drafts?'+params).then(result=>{if(active){if(page>0&&!result.content.length&&result.totalElements>0)setPage(Math.max(0,result.totalPages-1));else setData(result);}})
+  apiRef.current('/pos/drafts?'+params).then(result=>{
+   const norm=Array.isArray(result)?{content:result,page:0,totalPages:1,totalElements:result.length}:result;
+   if(active){if(page>0&&!norm?.content?.length&&norm?.totalElements>0)setPage(Math.max(0,(norm.totalPages||1)-1));else setData(norm);}
+  })
    .catch(e=>{if(active)setError(e.message)}).finally(()=>{if(active)setLoading(false)});
   return()=>{active=false};
  },[search,booking,page,reload,refreshKey,valid]);
@@ -24,7 +27,7 @@ export default function PosDrafts({api,refreshKey,onCancelled}){
  return <section className="content-panel" style={{marginTop:24}} aria-label="Đơn POS chờ kết toán">
   <div className="toolbar"><h3>Đơn POS chờ kết toán</h3><button className="secondary" disabled={loading||saving} onClick={()=>setReload(v=>v+1)}>Làm mới đơn nháp</button></div>
   <div className="toolbar"><label className="field">Tìm đơn nháp<input aria-label="Tìm đơn nháp" maxLength={255} placeholder="UUID hóa đơn, booking hoặc tên khách" value={search} onChange={e=>{setSearch(e.target.value);setPage(0)}}/></label><label className="field">Lọc theo UUID booking<input aria-label="Lọc theo UUID booking" value={booking} onChange={e=>{setBooking(e.target.value.trim());setPage(0)}}/></label></div>
-  {!valid?<p role="alert">Nhập đầy đủ UUID booking hợp lệ hoặc để trống.</p>:loading?<p role="status">Đang tải đơn nháp…</p>:error?<p role="alert" className="alert error">{error} <button onClick={()=>setReload(v=>v+1)}>Thử lại</button></p>:data&&!data.content.length?<p className="empty">Không có đơn POS nháp phù hợp.</p>:data&&<>
+  {!valid?<p role="alert">Nhập đầy đủ UUID booking hợp lệ hoặc để trống.</p>:loading?<p role="status">Đang tải đơn nháp…</p>:error?<p role="alert" className="alert error">{error} <button onClick={()=>setReload(v=>v+1)}>Thử lại</button></p>:data&&!data.content?.length?<p className="empty">Không có đơn POS nháp phù hợp.</p>:data&&data.content&&<>
    <div className="table-scroll"><table><thead><tr><th>Hóa đơn / Booking</th><th>Khách / Người tạo</th><th>Thời điểm</th><th>Tiền hàng sau giảm</th><th>Thao tác</th></tr></thead><tbody>{data.content.map(d=><tr key={d.id}><td><code>{d.id}</code><small>{d.bookingId||'Không gắn booking'}</small></td><td>{d.customerName}<small>{d.createdByName||'Chưa có người tạo'}</small></td><td>{d.createdAt?new Date(d.createdAt).toLocaleString('vi-VN'):'—'}</td><td>{money(d.totalAmount)}<details><summary>Xem mặt hàng</summary>{d.items.map((item,i)=><p key={i}>{item.productName} · {item.quantity} × {money(item.unitPrice)} · Giảm {money(item.discountAmount)} · Còn {money(item.lineAmount)}</p>)}</details></td><td><button className="secondary" disabled={saving} onClick={()=>{setTarget(d);setCancelError('')}}>Hủy đơn nháp</button></td></tr>)}</tbody></table></div>
    <div className="toolbar"><button className="secondary" disabled={page===0||saving} onClick={()=>setPage(v=>v-1)}>Trang trước</button><span>Trang {page+1}/{Math.max(1,data.totalPages)} · {data.totalElements} đơn nháp</span><button className="secondary" disabled={page+1>=data.totalPages||saving} onClick={()=>setPage(v=>v+1)}>Trang sau</button></div>
   </>}

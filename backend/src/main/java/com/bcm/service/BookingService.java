@@ -125,6 +125,9 @@ public class BookingService {
             if (court == null) {
                 throw new ResourceNotFoundException("Court not found: " + item.getCourtId());
             }
+            if (court.getBranchId() != null && !courts.isBranchActive(court.getBranchId())) {
+                throw new BadRequestException("Chi nhánh đang đóng cửa, không thể đặt sân");
+            }
             if (court.getStatus() != CourtStatus.AVAILABLE || court.getDeletedAt() != null || court.getBasePrice().signum() <= 0) {
                 throw new BadRequestException("Court is not available for booking: " + court.getId());
             }

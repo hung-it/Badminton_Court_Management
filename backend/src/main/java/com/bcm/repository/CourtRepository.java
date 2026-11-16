@@ -32,6 +32,7 @@ public interface CourtRepository extends JpaRepository<Court, UUID> {
     @Query("""
             select c from Court c
             where c.status = :status and c.deletedAt is null and c.basePrice > 0
+              and (c.branchId is null or exists(select 1 from Branch b where b.id = c.branchId and b.active = true and b.deletedAt is null))
               and (:courtId is null or c.id = :courtId)
             order by c.courtCode
             """)

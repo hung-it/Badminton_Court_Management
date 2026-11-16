@@ -28,7 +28,10 @@
 .history-status--no_show,.history-status--expired{background:#f2f3f2;color:#6b746e}
 
 .history-detail{padding:0 18px 18px;border-top:1px solid var(--cc-border)}
-.history-detail__columns{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(240px,1fr);gap:24px;padding-top:18px}
+.history-detail__columns{display:grid;grid-template-columns:1fr;gap:20px;padding-top:18px}
+@media(min-width:960px){
+  .history-detail__columns{grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:24px}
+}
 .history-detail h3{margin:0 0 12px;font-size:13px;color:var(--cc-green-900)}
 .history-slots,.history-payments{display:grid;gap:8px}
 .history-slot,.history-payment{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:10px;background:var(--cc-green-50,#f2f9f4)}
@@ -37,9 +40,18 @@
 .history-slot strong,.history-payment strong{font-size:13px;color:var(--cc-green-900);white-space:nowrap}
 .history-slot__time{white-space:nowrap}
 .history-muted{margin:0;line-height:1.6}
-.history-payment__status--success{color:var(--cc-green-900);font-weight:700}
-.history-payment__status--pending{color:#9a6b00;font-weight:700}
-.history-payment__status--failed{color:#a34127;font-weight:700}
+.history-payment-table-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--cc-border,#d7ebd9);background:#fff}
+.history-payment-table{width:100%;border-collapse:collapse;font-size:12px;text-align:left}
+.history-payment-table th,.history-payment-table td{padding:8px 10px;border-bottom:1px solid var(--cc-border,#d7ebd9)}
+.history-payment-table th{background:var(--cc-green-50,#f2f9f4);color:var(--cc-green-900,#1b4332);font-weight:700;white-space:nowrap}
+.history-payment-table tr:last-child td{border-bottom:0}
+.history-payment-table code{font-family:monospace;font-size:11px;background:var(--cc-green-50,#f2f9f4);padding:2px 5px;border-radius:4px;color:var(--cc-green-900,#1b4332)}
+.history-payment-table strong{color:var(--cc-green-900,#1b4332);white-space:nowrap}
+.history-payment__status{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
+.history-payment__status--success{color:#166534;background:#dcfce7}
+.history-payment__status--pending{color:#854d0e;background:#fef9c3}
+.history-payment__status--failed{color:#991b1b;background:#fee2e2}
+.history-payment__status--refunded{color:#475569;background:#f1f5f9}
 
 .history-detail-state{display:flex;align-items:center;gap:12px;padding-top:16px;font-size:12px;color:var(--cc-muted)}
 .history-detail-state--error{color:#a34127}
