@@ -15,16 +15,9 @@ const masterTabs=[['courts','Sân cầu'],['time-slots','Khung giờ & giá'],['
 const dataNavTabs=[['accounts','Tài khoản'],...masterTabs];
 const opTabs=[['invoices','Hóa đơn'],['pos','Bán tại quầy'],['checkout','Trả sân'],['inventory','Nhập kho'],['statistics','Thống kê'],['revenue-breakdown','Doanh thu']];
 const allTabs=[...dataNavTabs,...opTabs];
-const initial={courts:{courtNumber:1,name:'',type:'STANDARD_MAT',status:'AVAILABLE',basePrice:100000,district:'',address:''},'time-slots':{startTime:'06:00',endTime:'07:00',priceMultiplier:1},categories:{categoryName:''},products:{categoryId:'',name:'',type:'GOODS',unit:'cái',price:0,stockQuantity:0}};
+const initial={courts:{branchId:'',branchName:'',courtCount:1,courtNumber:'',name:'',type:'STANDARD_MAT',status:'AVAILABLE',basePrice:100000,district:'',newDistrict:'',address:''},'time-slots':{startTime:'06:00',endTime:'07:00',priceMultiplier:1},categories:{categoryName:''},products:{categoryId:'',name:'',type:'GOODS',unit:'cái',price:0,stockQuantity:0}};
 function validPosPhone(value){const text=value.trim(),digits=text.replace(/[^0-9]/g,'');return /^[+0-9][0-9 .-]{7,19}$/.test(text)&&/^[0-9]{8,15}$/.test(digits)&&!/^0+$/.test(digits)}
 function defaultMultiplier(start,end){return start>='17:00'&&end<='21:00'?1.5:1;}
-function validateCourtLocation(form){
- if(!form.address?.trim())return;
- if(!form.district?.trim())throw new Error('Vui lòng nhập quận / huyện cho địa chỉ sân');
- const normalize=value=>value.trim().toLocaleLowerCase('vi').replace(/^quận\s+/,'');
- const known=['bình thạnh','tân bình','gò vấp'];
- for(const part of form.address.split(/[,;]/))if((/^quận\s+\d+$/i.test(part.trim())||known.includes(normalize(part)))&&normalize(part)!==normalize(form.district))throw new Error('Địa chỉ sân không khớp quận / huyện');
-}
 
 export default function App(){
  const [session,setSession]=useState(()=>{try{return JSON.parse(sessionStorage.getItem('bcm-session'))}catch{return null}});
@@ -140,9 +133,36 @@ export default function App(){
   return()=>{active=false};
  },[tab,quoteCourt,data]);
  async function login(e){e.preventDefault();setSaving(true);setError('');try{const s=await api('/auth/login','POST',credentials,null);if(!s.user?.roles?.some(r=>['ADMIN','STAFF'].includes(r)))throw new Error('Tài khoản cần quyền ADMIN hoặc STAFF.');setTab(s.user.roles.includes('ADMIN')?'accounts':'pos');sessionStorage.setItem('bcm-session',JSON.stringify(s));setSession(s);setCredentials({email:'',password:''})}catch(e){setError(e.message)}finally{setSaving(false)}}
- function open(item=null){setModal({id:item?.id||null});setForm(item?{...item,...(tab==='courts'?{courtNumber:item.courtCode??item.courtNumber}:{})}:{...initial[tab],...(tab==='courts'?{courtNumber:Math.max(0,...data.courts.map(c=>c.courtCode??c.courtNumber))+1}:{}),...(tab==='products'?{categoryId:data.categories[0]?.id||''}:{})});setFieldErrors({});setError('');}
- function change(key,value){setForm(old=>{const next={...old,[key]:value};if(tab==='products'&&key==='type'&&value==='SERVICE')next.stockQuantity=0;if(tab==='time-slots'&&(key==='startTime'||key==='endTime'))next.priceMultiplier=defaultMultiplier(next.startTime.slice(0,5),next.endTime.slice(0,5));return next});}
- async function save(e){e.preventDefault();setSaving(true);setFieldErrors({});setError('');try{let payload={...form};if(tab==='courts')validateCourtLocation(payload);for(const key of ['courtNumber','basePrice','priceMultiplier','price','stockQuantity'])if(key in payload)payload[key]=Number(payload[key]);await api('/admin/'+tab+(modal.id?'/'+modal.id:''),modal.id?'PUT':'POST',payload);setModal(null);setNotice('Đã lưu dữ liệu thành công.');await load()}catch(e){setError(e.message);if(e.fields&&typeof e.fields==='object')setFieldErrors(e.fields)}finally{setSaving(false)}}
+ function open(item=null){setModal({id:item?.id||null});setForm(item?{...item,...(tab==='courts'?{courtNumber:item.branchCourtNumber??'',branchId:item.branchId??''}:{})}:{...initial[tab],...(tab==='products'?{categoryId:data.categories[0]?.id||''}:{})});setFieldErrors({});setError('');}
+ function change(key,value){setForm(old=>{
+  const next={...old,[key]:value};
+  if(tab==='courts'){
+   if(key==='district'){next.branchId=value==='__new_district__'?'__new__':'';next.newDistrict='';next.branchName='';next.courtNumber='';next.address='';next.name='';}
+   if(key==='branchId'){
+    const branch=priceBranches.find(b=>b.id===value);
+    next.district=branch?.district||old.district;next.address=branch?.address||'';next.branchName='';
+    if(modal.id&&branch){
+     const used=new Set(data.courts.filter(c=>c.branchId===branch.id&&c.id!==modal.id).map(c=>c.branchCourtNumber));
+     let number=1;while(used.has(number))number++;
+     next.courtNumber=number;next.name=`${branch.name} · Sân ${String(number).padStart(2,'0')}`;
+    }
+   }
+  }
+  if(tab==='products'&&key==='type'&&value==='SERVICE')next.stockQuantity=0;
+  if(tab==='time-slots'&&(key==='startTime'||key==='endTime'))next.priceMultiplier=defaultMultiplier(next.startTime.slice(0,5),next.endTime.slice(0,5));
+  return next;
+ });}
+ async function save(e){e.preventDefault();setSaving(true);setFieldErrors({});setError('');try{
+  let payload={...form},path='/admin/'+tab+(modal.id?'/'+modal.id:'');
+  if(tab==='courts'&&!payload.branchId)throw new Error('Vui lòng chọn chi nhánh cho sân.');
+  if(tab==='courts'&&!modal.id){
+   const {branchId,branchName,district,address,courtCount,type,status,basePrice}=form;
+   payload={branchId:branchId==='__new__'?null:branchId,branchName,district:district==='__new_district__'?form.newDistrict:district,address,courtCount:Number(courtCount),type,status,basePrice:Number(basePrice)};
+   path='/admin/courts/batch';
+  }
+  for(const key of ['courtNumber','basePrice','priceMultiplier','price','stockQuantity'])if(key in payload)payload[key]=Number(payload[key]);
+  await api(path,modal.id?'PUT':'POST',payload);setModal(null);setNotice(tab==='courts'&&!modal.id?`Đã tạo ${payload.courtCount} sân thành công.`:'Đã lưu dữ liệu thành công.');await load();
+ }catch(e){setError(e.message);if(e.fields&&typeof e.fields==='object')setFieldErrors(e.fields)}finally{setSaving(false)}}
  async function remove(){setSaving(true);setError('');try{await api('/admin/'+tab+'/'+deleteTarget.id,'DELETE');setDeleteTarget(null);setNotice('Đã xóa dữ liệu thành công.');await load()}catch(e){setError(e.message)}finally{setSaving(false)}}
 
 useEffect(()=>{
@@ -267,8 +287,10 @@ useEffect(()=>{
  const checkoutPaidCourt=Number(checkoutSlip?.paidCourtAmount||0);
  const checkoutDue=Math.max(0,Number(checkoutSlip?.totalAmount||0)-checkoutPaidCourt);
  const filteredBookings=activeBookings.filter(b=>[b.bookingId,b.shortId,b.courtDetails,b.customerName,b.customerPhone].join(' ').toLocaleLowerCase('vi').includes(query.trim().toLocaleLowerCase('vi')));
+ const courtAssignmentLocked=!!modal?.id&&!!data.courts.find(c=>c.id===modal.id)?.branchId;
+ const courtBatchStart=Math.max(0,...data.courts.filter(c=>c.branchId===form.branchId).map(c=>c.branchCourtNumber??0))+1;
  function field(key,label,type='text',extra={}){return <label className="field" key={key}>{label}<input aria-label={label} name={key} type={type} value={form[key]??''} onChange={e=>change(key,e.target.value)} required {...extra}/>{fieldErrors[key]&&<small className="invalid">{fieldErrors[key]}</small>}</label>}
- function select(key,label,options){return <label className="field" key={key}>{label}<select aria-label={label} name={key} value={form[key]??''} onChange={e=>change(key,e.target.value)} required>{options.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>{fieldErrors[key]&&<small className="invalid">{fieldErrors[key]}</small>}</label>}
+ function select(key,label,options,extra={}){return <label className="field" key={key}>{label}<select aria-label={label} name={key} value={form[key]??''} onChange={e=>change(key,e.target.value)} required {...extra}>{options.map(([v,l,disabled])=><option key={v} value={v} disabled={!!disabled}>{l}</option>)}</select>{fieldErrors[key]&&<small className="invalid">{fieldErrors[key]}</small>}</label>}
 
  if(!session||(!isAdmin&&!isStaff))return <div className="login-layout"><section className="login-story"><div className="brand">BCM<span>COURT MANAGEMENT</span></div><div><span className="eyebrow">KHÔNG GIAN QUẢN TRỊ</span><h1>Mọi sân chơi.<br/>Một nơi quản lý.</h1><p>Quản lý sân, khung giờ và danh mục hàng hóa<br/>để vận hành câu lạc bộ mỗi ngày.</p><div className="court-illustration"><i/><b/></div></div><small>BADMINTON COURT MANAGEMENT</small></section><section className="login-panel"><form onSubmit={login}><span className="eyebrow">CHÀO MỪNG TRỞ LẠI</span><h2>Đăng nhập quản trị</h2><p className="muted">Sử dụng tài khoản Admin hoặc Nhân viên của bạn.</p><label className="field">Email<input type="email" required autoComplete="username" value={credentials.email} onChange={e=>setCredentials({...credentials,email:e.target.value})}/></label><label className="field">Mật khẩu<input type="password" required autoComplete="current-password" value={credentials.password} onChange={e=>setCredentials({...credentials,password:e.target.value})}/></label>{error&&<div role="alert" className="alert error">{error}</div>}
 
@@ -513,7 +535,7 @@ useEffect(()=>{
 
  </div><footer>BCM · Master Data & Operations Desk <span>Sân cầu · Khung giờ · Danh mục · Hàng hóa · POS · Trả sân · Kho</span></footer></main>
 
- {modal&&<div className="overlay"><section className="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><div className="dialog-head"><h2 id="dialog-title">{modal.id?'Chỉnh sửa':'Thêm mới'} · {title}</h2><button aria-label="Đóng" disabled={saving} onClick={()=>{setModal(null);setError('')}}>✕</button></div><form onSubmit={save}><div className="form-grid">{tab==='courts'?<>{field('courtNumber','Số sân','number',{min:1,step:1})}{field('name','Tên sân','text',{maxLength:255})}{field('district','Quận / Huyện','text',{maxLength:150,required:false})}{field('address','Địa chỉ sân','text',{maxLength:500,required:false})}<p className="form-help">Địa chỉ tối đa 500 ký tự, thống nhất với quận / huyện. Để trống địa chỉ khi sửa sẽ giữ dữ liệu đang lưu.</p>{select('type','Loại sân',['STANDARD_MAT','WOODEN_FLOOR'].map(v=>[v,labels[v]]))}{select('status','Trạng thái',['AVAILABLE','MAINTENANCE'].map(v=>[v,labels[v]]))}{field('basePrice','Giá gốc (VNĐ / khung giờ)','number',{min:0.01,max:99999999.99,step:0.01})}</>:tab==='time-slots'?<>{field('startTime','Giờ bắt đầu','time')}{field('endTime','Giờ kết thúc','time')}{field('priceMultiplier','Hệ số giá','number',{min:0.01,max:9.99,step:0.01})}<p className="form-help">Mặc định 17:00–21:00 ×1.5, giờ khác ×1.0. Có thể điều chỉnh hệ số riêng. Khung giờ không được chồng lấn.</p></>:tab==='categories'?field('categoryName','Tên danh mục','text',{maxLength:255}):<>{field('name','Tên hàng hóa / dịch vụ','text',{maxLength:255})}{select('categoryId','Danh mục',data.categories.map(c=>[c.id,c.categoryName]))}{select('type','Loại',['GOODS','SERVICE'].map(v=>[v,labels[v]]))}{field('unit','Đơn vị tính','text',{maxLength:50})}{field('price','Giá niêm yết (VNĐ)','number',{min:0,max:99999999.99,step:0.01,disabled:isImportProduct(form)})}{field('stockQuantity',modal.id?'Tồn kho hiện tại':'Tồn ban đầu','number',{min:0,max:2147483647,step:1,disabled:!!modal.id||form.type==='SERVICE'})}<p className="form-help">Tồn ban đầu chỉ nhập khi tạo sản phẩm. Dịch vụ không theo dõi tồn kho. Điều chỉnh tồn sau này thuộc phân hệ kho.</p></>}</div>{error&&<div className="alert error" role="alert">{error}</div>}
+ {modal&&<div className="overlay"><section className="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><div className="dialog-head"><h2 id="dialog-title">{modal.id?'Chỉnh sửa':'Thêm mới'} · {title}</h2><button aria-label="Đóng" disabled={saving} onClick={()=>{setModal(null);setError('')}}>✕</button></div><form onSubmit={save}><div className="form-grid">{tab==='courts'?<>{select('district','Quận / Huyện',[['','Chọn quận / huyện'],...[...new Set(priceBranches.map(b=>b.district))].sort((a,b)=>a.localeCompare(b,'vi',{numeric:true})).map(d=>[d,d]),...(!modal.id?[['__new_district__','＋ Thêm quận / huyện mới']]:[])],{disabled:courtAssignmentLocked})}{!modal.id&&form.district==='__new_district__'&&field('newDistrict','Tên quận / huyện mới','text',{maxLength:150,placeholder:'Ví dụ: Bình Tân'})}{select('branchId','Chi nhánh',[['','Chọn chi nhánh'],...(!modal.id?[['__new__','＋ Tạo chi nhánh mới']]:[]),...priceBranches.filter(b=>b.district===form.district).map(b=>[b.id,b.name])],{disabled:!form.district||courtAssignmentLocked})}{!modal.id&&form.branchId==='__new__'&&field('branchName','Tên chi nhánh mới','text',{maxLength:200})}{modal.id?select('courtNumber','Số sân',[[form.courtNumber,`Sân ${String(form.courtNumber).padStart(2,'0')}`]],{disabled:true}):select('courtCount','Số lượng sân',Array.from({length:1000},(_,i)=>[i+1,`${i+1} sân`]))}{modal.id&&field('name','Tên sân','text',{maxLength:255})}{field('address',!modal.id&&form.branchId==='__new__'?'Địa chỉ chi nhánh mới':'Địa chỉ chi nhánh','text',{maxLength:500,readOnly:modal.id||form.branchId!=='__new__',required:!modal.id&&form.branchId==='__new__'})}{!modal.id?<p className="form-help" role="status">{form.branchId?`Sẽ tạo ${form.courtCount} sân, từ Sân ${String(courtBatchStart).padStart(2,'0')} đến Sân ${String(courtBatchStart+Number(form.courtCount)-1).padStart(2,'0')}. `:''}Tên sân được đặt tự động theo chi nhánh. Loại sân, trạng thái và giá bên dưới áp dụng cho tất cả sân mới. Mỗi lần thêm tối đa 1.000 sân; có thể thêm tiếp vào cùng chi nhánh.</p>:<p className="form-help">Chi nhánh và số sân được giữ cố định để bảo toàn lịch sử. Quận và địa chỉ lấy từ chi nhánh.</p>}{select('type','Loại sân',['STANDARD_MAT','WOODEN_FLOOR'].map(v=>[v,labels[v]]))}{select('status','Trạng thái',['AVAILABLE','MAINTENANCE'].map(v=>[v,labels[v]]))}{field('basePrice','Giá gốc (VNĐ / khung giờ)','number',{min:0.01,max:99999999.99,step:0.01})}</>:tab==='time-slots'?<>{field('startTime','Giờ bắt đầu','time')}{field('endTime','Giờ kết thúc','time')}{field('priceMultiplier','Hệ số giá','number',{min:0.01,max:9.99,step:0.01})}<p className="form-help">Mặc định 17:00–21:00 ×1.5, giờ khác ×1.0. Có thể điều chỉnh hệ số riêng. Khung giờ không được chồng lấn.</p></>:tab==='categories'?field('categoryName','Tên danh mục','text',{maxLength:255}):<>{field('name','Tên hàng hóa / dịch vụ','text',{maxLength:255})}{select('categoryId','Danh mục',data.categories.map(c=>[c.id,c.categoryName]))}{select('type','Loại',['GOODS','SERVICE'].map(v=>[v,labels[v]]))}{field('unit','Đơn vị tính','text',{maxLength:50})}{field('price','Giá niêm yết (VNĐ)','number',{min:0,max:99999999.99,step:0.01,disabled:isImportProduct(form)})}{field('stockQuantity',modal.id?'Tồn kho hiện tại':'Tồn ban đầu','number',{min:0,max:2147483647,step:1,disabled:!!modal.id||form.type==='SERVICE'})}<p className="form-help">Tồn ban đầu chỉ nhập khi tạo sản phẩm. Dịch vụ không theo dõi tồn kho. Điều chỉnh tồn sau này thuộc phân hệ kho.</p></>}</div>{error&&<div className="alert error" role="alert">{error}</div>}
 
 <div className="dialog-foot"><button type="button" className="secondary" disabled={saving} onClick={()=>{setModal(null);setError('')}}>Hủy</button><button className="primary" disabled={saving}>{saving?'Đang lưu…':'Lưu thay đổi'}</button></div></form></section></div>}
 

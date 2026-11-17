@@ -1,9 +1,11 @@
 package com.bcm.controller;
 
 import com.bcm.dto.request.CourtRequest;
+import com.bcm.dto.request.CourtBatchRequest;
 import com.bcm.dto.response.ApiResponse;
 import com.bcm.entity.Court;
 import com.bcm.service.MasterDataService;
+import com.bcm.service.CourtBatchService;
 
 import jakarta.validation.Valid;
 
@@ -19,6 +21,14 @@ import java.util.*;
 @RequiredArgsConstructor
 public class CourtController {
     private final MasterDataService service;
+    private final CourtBatchService batchService;
+
+    @PostMapping("/batch")
+    @ResponseStatus(HttpStatus.CREATED)
+    @io.swagger.v3.oas.annotations.Operation(summary = "Tạo nhiều sân theo số lượng, có thể tạo kèm chi nhánh mới; toàn bộ thao tác cùng một transaction")
+    public ApiResponse<List<Court>> createBatch(@Valid @RequestBody CourtBatchRequest r) {
+        return ApiResponse.success(batchService.create(r));
+    }
 
     @GetMapping
     public ApiResponse<List<Court>> list() {

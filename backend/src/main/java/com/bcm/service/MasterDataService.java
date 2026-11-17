@@ -76,28 +76,46 @@ public class MasterDataService {
             throw new BadRequestException("Sân con chỉ có trạng thái Hoạt động (AVAILABLE) hoặc Bảo trì (MAINTENANCE)");
         }
         if (r.basePrice().signum() <= 0) throw new BadRequestException("Giá sân phải lớn hơn 0");
+        // Serialize branch-aware allocation, including the globally unique business code.
+        if (r.branchId() != null) jdbc.execute("SELECT pg_advisory_xact_lock(20261117, 1)");
         Court c = id == null ? new Court() : courts.findAllForBookingWithLock(List.of(id)).stream()
             .filter(v->v.getDeletedAt()==null).findFirst().orElseThrow(()->new ResourceNotFoundException("Không tìm thấy sân"));
         if(id!=null && r.status()!=CourtStatus.AVAILABLE && c.getStatus()!=r.status()) {
             boolean affected=Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM booking_details d JOIN bookings b ON b.id=d.booking_id JOIN time_slots t ON t.id=d.time_slot_id WHERE d.court_id=? AND b.status IN ('PENDING','PAID') AND d.booking_date+t.end_time>=?)",Boolean.class,id,LocalDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"))));
             if(affected) throw new BadRequestException("Sân còn lịch PENDING/PAID hiện tại hoặc tương lai, không thể bảo trì/đóng cửa.");
         }
-        if (courts.existsByCourtCodeAndIdNot(r.courtNumber(), id == null ? new UUID(0, 0) : id))
-            throw new DuplicateResourceException("Số sân đã được sử dụng");
-        c.setCourtCode(r.courtNumber());
+        if (r.branchId() != null || c.getBranchId() != null) {
+            UUID branchId = r.branchId() != null ? r.branchId() : c.getBranchId();
+            int number = r.branchId() != null ? r.courtNumber() : c.getBranchCourtNumber();
+            if (number < 1) throw new BadRequestException("Số sân phải lớn hơn 0");
+            if (c.getBranchId() != null && (!c.getBranchId().equals(branchId) || !Objects.equals(c.getBranchCourtNumber(), number)))
+                throw new BadRequestException("Không thể đổi chi nhánh hoặc số của sân đã được phân chi nhánh.");
+            var branch = jdbc.queryForList("SELECT district,address FROM branches WHERE id=? AND active=true AND deleted_at IS NULL FOR SHARE", branchId);
+            if (branch.isEmpty()) throw new BadRequestException("Vui lòng chọn chi nhánh đang hoạt động.");
+            boolean occupied = Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM courts WHERE branch_id=? AND court_number=? AND deleted_at IS NULL AND id<>?)", Boolean.class, branchId, number, id == null ? new UUID(0,0) : id));
+            if (occupied) throw new DuplicateResourceException("Số sân đã được sử dụng trong chi nhánh này.");
+            if (id == null) c.setCourtCode(jdbc.queryForObject("SELECT COALESCE(MAX(court_code),0)+1 FROM courts", Integer.class));
+            c.setBranchId(branchId);
+            c.setBranchCourtNumber(number);
+            c.setDistrict((String) branch.get(0).get("district"));
+            c.setAddress((String) branch.get(0).get("address"));
+        } else {
+            // Compatibility for callers managing existing unassigned legacy courts.
+            if (courts.existsByCourtCodeAndIdNot(r.courtNumber(), id == null ? new UUID(0, 0) : id))
+                throw new DuplicateResourceException("Số sân đã được sử dụng");
+            c.setCourtCode(r.courtNumber());
+            if (r.district() != null) c.setDistrict(r.district().isBlank() ? null : r.district().strip());
+            if (r.address() != null && !r.address().isBlank()) c.setAddress(r.address().strip());
+            validateCourtAddress(c.getDistrict(), c.getAddress());
+        }
         c.setName(r.name().strip());
         c.setType(r.type());
         c.setStatus(r.status());
         c.setBasePrice(r.basePrice());
-        // Omitted optional field preserves legacy updates; an explicit blank clears the label.
-        if (r.district() != null) c.setDistrict(r.district().isBlank() ? null : r.district().strip());
-        // Omitted, null or blank addresses preserve existing metadata on legacy updates.
-        if (r.address() != null && !r.address().isBlank()) c.setAddress(r.address().strip());
-        validateCourtAddress(c.getDistrict(), c.getAddress());
         return courts.saveAndFlush(c);
     }
 
-    private void validateCourtAddress(String district, String address) {
+    void validateCourtAddress(String district, String address) {
         if (address == null || address.isBlank()) return;
         if (district == null || district.isBlank())
             throw new BadRequestException("Vui lòng nhập quận / huyện cho địa chỉ sân");

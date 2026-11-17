@@ -391,7 +391,7 @@ BEGIN
         RAISE EXCEPTION 'BLOCKED: each branch must have persisted court numbers 1..6';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='courts'::regclass AND conname='chk_court_number_range') THEN
-        ALTER TABLE courts ADD CONSTRAINT chk_court_number_range CHECK (court_number BETWEEN 1 AND 6);
+        ALTER TABLE courts ADD CONSTRAINT chk_court_number_range CHECK (court_number > 0);
     END IF;
 END $local_number_range$;
 COMMIT;

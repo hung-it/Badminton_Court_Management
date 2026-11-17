@@ -25,6 +25,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-shared-docker.
 
 The old manual-test override is retired. Both frontends use the same backend and database. See the [Docker guide](docs/SHARED-DOCKER.md). Never rerun the base schema on an existing database.
 
+## Creating branches and multiple courts
+
+In Admin → Sân cầu → Thêm sân, choose a district (or “Thêm quận / huyện mới”), an existing branch or “Tạo chi nhánh mới”, and the court quantity. New districts are saved with their first branch and become available in subsequent dropdowns; matching ignores case, repeated spaces and the Quận/Huyện prefix. New branches start at Court 01; existing branches append after their highest active court number. Type, status and initial price apply to the whole batch and can then be edited per court.
+
+ADMIN-only `POST /api/admin/courts/batch` accepts `branchId` (existing branch), or a null `branchId` with `branchName`, `district`, and `address` (new branch), plus `courtCount`, `type`, `status`, and `basePrice`. A new branch can introduce a district; existing branch location is canonical. The response is the created court list (201). Branch creation and all courts commit together or roll back together. Each request supports 1–1,000 courts; a branch has no fixed court-count limit. Names use `<branch name> · Sân 01`, and global court codes are allocated automatically.
+
 ## Native development
 
 Requires JDK 17+, Maven and an upgraded PostgreSQL schema. Configure the datasource first:

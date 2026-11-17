@@ -5,6 +5,7 @@ import com.bcm.entity.*;
 import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 public record CourtRequest(
         @NotNull @Min(1) Integer courtNumber,
@@ -13,7 +14,12 @@ public record CourtRequest(
         @NotNull CourtStatus status,
         @NotNull @DecimalMin("0.01") @Digits(integer = 8, fraction = 2) BigDecimal basePrice,
         @Size(max = 150) @Pattern(regexp = "[^\\p{Cntrl}]*") String district,
-        @Size(max = 500) @Pattern(regexp = "[^\\p{Cntrl}]*") String address) {
+        @Size(max = 500) @Pattern(regexp = "[^\\p{Cntrl}]*") String address,
+        UUID branchId) {
+    public CourtRequest(Integer courtNumber, String name, CourtType type, CourtStatus status,
+                        BigDecimal basePrice, String district, String address) {
+        this(courtNumber, name, type, status, basePrice, district, address, null);
+    }
     // Preserve source compatibility for existing callers that omit the optional address.
     public CourtRequest(Integer courtNumber, String name, CourtType type, CourtStatus status,
                         BigDecimal basePrice, String district) {
