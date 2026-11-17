@@ -75,6 +75,7 @@ public class StatisticsService {
         var data=new java.util.LinkedHashMap<String,List<BigDecimal>>();var labels=new java.util.HashMap<String,String>();
         if(type.equals("TIME"))for(String k:List.of("Tổng thu","Chi phí nhập","Chênh lệch")){data.put(k,new ArrayList<>(java.util.Collections.nCopies(cols.size(),BigDecimal.ZERO)));labels.put(k,k);}
         String code=search==null?"":search.strip();
+        if(type.equals("STAFF"))code=resolveStaffCode(code);
         for(int i=0;i<starts.size();i++){
             LocalDate lo=starts.get(i),hi=ends.get(i);if(from!=null&&from.isAfter(lo))lo=from;if(to!=null&&to.plusDays(1).isBefore(hi))hi=to.plusDays(1);if(!lo.isBefore(hi))continue;
             if(type.equals("TIME")){
@@ -105,6 +106,14 @@ public class StatisticsService {
         for(var e:data.entrySet()){BigDecimal total=e.getValue().stream().reduce(BigDecimal.ZERO,BigDecimal::add);rows.add(new MatrixRow(e.getKey(),labels.get(e.getKey()),e.getValue(),total));if(!type.equals("TIME")||e.getKey().equals("Tổng thu"))for(int i=0;i<totals.size();i++)totals.set(i,totals.get(i).add(e.getValue().get(i)));}
         rows.sort(java.util.Comparator.comparing(MatrixRow::label).thenComparing(MatrixRow::id));
         return new Matrix(type,cols,rows,totals,totals.stream().reduce(BigDecimal.ZERO,BigDecimal::add),type.equals("COURT")?"Tiền sân sau phân bổ giảm giá, không gồm sản phẩm":type.equals("PRODUCT")?"Giá trị sản phẩm sau phân bổ giảm giá, không gồm tiền sân":"Chỉ hóa đơn PAID chưa xóa và phiếu nhập RECEIVED");
+    }
+
+    private String resolveStaffCode(String code) {
+        code=code.toLowerCase(Locale.ROOT);
+        if(!code.matches("[0-9a-f]{8}"))return code;
+        var matches=jdbc.queryForList("SELECT id::text FROM staffs WHERE id::text LIKE ? ORDER BY id LIMIT 2",String.class,code+"%");
+        if(matches.size()>1)throw new BadRequestException("Mã rút gọn trùng nhiều nhân viên; hãy dùng mã UUID đầy đủ.");
+        return matches.isEmpty()?code:matches.get(0);
     }
 
     private void validateDailyRange(LocalDate from,LocalDate to) {
