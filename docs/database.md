@@ -554,3 +554,22 @@ CHECK (status != 'PENDING' OR expires_at IS NOT NULL);
 ---
 
 *Thiết kế database hoàn chỉnh cho hệ thống Quản lý Sân Cầu Lông - 18 bảng với promotion system nâng cao.* 
+
+
+### Voucher reservations in POS
+
+POS counts voucher reservations from bookings even when no booking ID is supplied.
+A new POS discount is a separate use, including when attached to a booking that
+already used the same voucher. Campaign row locking serializes limit checks and
+usage insertion in the sale transaction.
+
+Each voucher-bearing DRAFT immediately creates its own `customer_voucher_usage`
+row. Active DRAFT and PAID invoices count toward global and per-customer limits.
+Cancelling a standalone draft releases its reservation. Checkout keeps each usage
+on the original draft; a CANCELLED draft whose parent invoice is PAID still counts.
+Thus two permitted discounted drafts remain two uses after merging, and replaying
+sale or checkout does not add another use. No schema or request/response change.
+
+Legacy discounted drafts without usage reservations are rejected at checkout;
+cancel and recreate those drafts to revalidate current limits. Previously settled
+historical discounts are preserved; this fix does not reconstruct missing history.

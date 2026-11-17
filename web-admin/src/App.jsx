@@ -88,7 +88,7 @@ export default function App(){
  async function api(path,method='GET',body,token=session?.accessToken){
   const res=await fetch('/api'+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{})});
   let json;try{json=await res.json()}catch{throw new Error('Không thể đọc phản hồi máy chủ. Kiểm tra backend.');}
-  if(!res.ok||!json.success){if(res.status===401){logout();}const e=new Error(json.message||'Không thực hiện được thao tác');e.fields=json.data;throw e;}return json.data;
+  if(!res.ok||!json.success){if(res.status===401){logout();}const e=new Error(json.message||'Không thực hiện được thao tác');e.fields=json.data;e.status=res.status;throw e;}return json.data;
  }
 
  async function load(){
@@ -171,12 +171,13 @@ useEffect(()=>{
  setPosQuote(null);setPosBookingPreview(null);setPosQuoteBusy(true);setPosQuoteError('');
  const timer=setTimeout(async()=>{try{
   const bookingId=posMode==='booking'?posBookingId.trim():null;
+  if(posMode==='walk-in'&&(!validPosPhone(posPhone)||posBuyerBusy||posBuyerError||(posBuyers.length>1&&!posBuyerId)))throw new Error('Tra cứu và chọn khách hàng trước khi tính ưu đãi.');
   if(posMode==='booking'&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bookingId))throw new Error('Vui lòng nhập mã đơn đặt sân (UUID) hợp lệ.');
-  const [quote,preview]=await Promise.all([api('/pos/quote','POST',{bookingId,promotionCode:posPromotionCode.trim()||null,paymentMethod:posMode==='booking'?null:posPaymentMethod,items:posCart.map(i=>({productId:i.id,quantity:i.quantity}))}),bookingId?api('/checkout/'+bookingId):Promise.resolve(null)]);
+  const [quote,preview]=await Promise.all([api('/pos/quote','POST',{bookingId,customerId:bookingId?null:posBuyerId||null,customerPhone:bookingId?null:posPhone.trim(),promotionCode:posPromotionCode.trim()||null,paymentMethod:posMode==='booking'?null:posPaymentMethod,items:posCart.map(i=>({productId:i.id,quantity:i.quantity}))}),bookingId?api('/checkout/'+bookingId):Promise.resolve(null)]);
   if(active){setPosQuote(quote);setPosBookingPreview(preview);}
  }catch(e){if(active)setPosQuoteError(e.message)}finally{if(active)setPosQuoteBusy(false)}},150);
  return ()=>{active=false;clearTimeout(timer)};
-},[session,tab,posCart,posMode,posBookingId,posPromotionCode,posPaymentMethod,posQuoteVersion]);
+},[session,tab,posCart,posMode,posBookingId,posPromotionCode,posPaymentMethod,posQuoteVersion,posPhone,posBuyerId,posBuyerBusy,posBuyerError,posBuyers]);
  useEffect(()=>{
   let active=true;setPosBuyers([]);setPosBuyerId('');setPosBuyerError('');
   if(!session||tab!=='pos'||posMode!=='walk-in'||!validPosPhone(posPhone)){setPosBuyerBusy(false);return;}
@@ -234,7 +235,7 @@ useEffect(()=>{
 
  // Checkout handlers
  async function createCheckoutSlip(id=checkoutBookingId){
-  setCheckoutBookingId(id);setCheckoutOpen(true);setCheckoutSlip(null);setCheckoutPaymentMethod('CASH');setError('');setSaving(true);
+  setCheckoutBookingId(id);setCheckoutOpen(true);setCheckoutSlip(null);setCheckoutConfirmed(false);setCheckoutPaymentMethod('CASH');setError('');setSaving(true);
   try{const v=await api('/checkout/'+id);setCheckoutSlip({...v,id:'Xem trước',bookingId:v.bookingId||id,courtFee:v.court_fee,productFee:v.product_fee,totalAmount:v.total_amount,status:'DRAFT'});}
   catch(e){setError(e.message)}finally{setSaving(false)}
  }
@@ -249,7 +250,18 @@ useEffect(()=>{
    setActiveBookings(rows=>rows.filter(b=>b.bookingId!==checkoutSlip.bookingId));
    setNotice('Kết toán thành công! Hóa đơn '+res.invoiceId+' gồm tiền sân và hàng tại quầy đã ghi nhận vào Doanh thu.');
    if(session.user?.roles?.includes('ADMIN')){setInvoiceCustomer(null);setOpenedInvoice(res.invoiceId);setTab('invoices');}
-  }catch(e){setError(e.message);}finally{setSaving(false);}
+  }catch(e){
+   setError(e.message);
+   if(e.status===409){
+    const bookingId=checkoutSlip.bookingId;
+    setCheckoutConfirmed(false);setCheckoutSlip(null);
+    try{
+     const v=await api('/checkout/'+bookingId);
+     setCheckoutSlip({...v,id:'Xem trước',bookingId:v.bookingId||bookingId,courtFee:v.court_fee,productFee:v.product_fee,totalAmount:v.total_amount,status:'DRAFT'});
+     setError('Bill đã thay đổi. Đã tải lại số tiền mới; vui lòng kiểm tra và xác nhận lại trước khi thu tiền.');
+    }catch(refreshError){setError('Không tải lại được bill. '+refreshError.message);}
+   }
+  }finally{setSaving(false);}
  }
 
  // Inventory handlers
@@ -368,8 +380,8 @@ useEffect(()=>{
       </div>}
      </fieldset>
      <label className="field">Mã voucher<input aria-label="Mã voucher" placeholder="Nhập mã voucher (ví dụ: NEWMEMBER)" maxLength={50} value={posPromotionCode} disabled={saving} onChange={e=>{setPosPromotionCode(e.target.value.toUpperCase());setPosQuote(null);}}/></label>
-     {posPromotionCode.trim()&&posQuote&&!posQuoteBusy&&!posQuoteError&&<p className="promotion-applied" role="status">Đã áp dụng mã voucher {posPromotionCode.trim()}{posQuote.promotionName?` (${posQuote.promotionName})`:''}.</p>}
-     {!posPromotionCode.trim()&&posQuote?.promotionName&&!posQuoteBusy&&!posQuoteError&&<p className="promotion-applied" role="status">Đã tự động áp dụng ưu đãi theo hóa đơn: {posQuote.promotionName}.</p>}
+     {posPromotionCode.trim()&&posQuote?.promotionCode===posPromotionCode.trim()&&!posQuoteBusy&&!posQuoteError&&<p className="promotion-applied" role="status">Đã áp dụng mã voucher {posPromotionCode.trim()}{posQuote.promotionName?` (${posQuote.promotionName})`:''}.</p>}
+     {posQuote?.promotionName&&posQuote.promotionCode!==posPromotionCode.trim()&&!posQuoteBusy&&!posQuoteError&&<p className="promotion-applied" role="status">Đã áp dụng ưu đãi theo hóa đơn: {posQuote.promotionName}.{posPromotionCode.trim()?' Ưu đãi này có lợi hơn voucher đã nhập.':''}</p>}
      {posMode==='booking'&&posBookingPreview&&posQuote&&<div className="pos-combined-bill" aria-live="polite">
       <div className="pos-summary-line"><span>Tiền sân sau giảm:</span><strong>{money(Number(posBookingPreview.court_fee)-Number(posBookingPreview.courtDiscount||0))}</strong></div>
       <div className="pos-summary-line"><span>Tiền hàng:</span><strong>{money(Number(posBookingPreview.product_fee)+Number(posQuote.productFee))}</strong></div>
@@ -442,6 +454,7 @@ useEffect(()=>{
   <div className="dialog-head"><h2 id="checkout-dialog-title">Chi tiết thanh toán trả sân</h2><button aria-label="Đóng bill" disabled={saving} onClick={()=>{setCheckoutOpen(false);setError('');}}>✕</button></div>
   {error&&<div className="alert error" role="alert">{error}</div>}
   {saving&&!checkoutSlip&&<p role="status">Đang tải bill…</p>}
+  {checkoutSlip?.status==='DRAFT'&&<button className="secondary" disabled={saving} onClick={()=>createCheckoutSlip()}>↻ Cập nhật bill</button>}
   {!checkoutSlip&&!saving&&<button className="secondary" onClick={()=>createCheckoutSlip()}>Tải lại bill</button>}
   <div className="checkout-layout">
    <div className="invoice-paper">
