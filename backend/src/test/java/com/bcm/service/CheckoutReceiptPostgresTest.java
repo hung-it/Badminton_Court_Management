@@ -90,10 +90,10 @@ class CheckoutReceiptPostgresTest {
     }
     PosSaleRequest sale(boolean attached,String method) {
         var r=new PosSaleRequest(customer,attached?booking:null,UUID.randomUUID(),method,BigDecimal.ZERO,BigDecimal.ZERO,List.of(new PosSaleItemRequest(product,1)));
-        r.setCustomerPhone(jdbc.queryForObject("select phone from customers where id=?",String.class,customer));r.setIdempotencyKey(UUID.randomUUID());r.setPaymentConfirmed(true);r.setExpectedTotal(new BigDecimal("10000"));r.setReference("manual-ref");return r;
+        r.setCustomerPhone(jdbc.queryForObject("select phone from customers where id=?",String.class,customer));r.setIdempotencyKey(UUID.randomUUID());r.setPaymentConfirmed(true);r.setExpectedTotal(new BigDecimal("10000"));return r;
     }
     CheckoutRequest receipt(String method,String amount) {
-        var r=new CheckoutRequest(method);r.setPaymentConfirmed(true);r.setExpectedAmountDue(new BigDecimal(amount));r.setReference("checkout-ref");return r;
+        var r=new CheckoutRequest(method);r.setPaymentConfirmed(true);r.setExpectedAmountDue(new BigDecimal(amount));return r;
     }
     int stock() {return jdbc.queryForObject("SELECT stock_quantity FROM products WHERE id=?",Integer.class,product);}
     @Test void manualCashAndVnpayRequireConfirmationAndUseAuthenticatedStaff() {
@@ -104,7 +104,7 @@ class CheckoutReceiptPostgresTest {
             var row=jdbc.queryForMap("SELECT * FROM payment_transactions WHERE invoice_id=?",inv.getId());
             assertThat(row.get("source")).isEqualTo("MANUAL");assertThat(row.get("confirmed_by")).isEqualTo(staff);
             assertThat(row.get("confirmed_by_user")).isEqualTo(user);assertThat(row.get("transaction_date")).isNotNull();
-            assertThat(row.get("reference")).isEqualTo("manual-ref");assertThat(inv.getCreatedBy()).isEqualTo(staff).isNotEqualTo(r.getStaffId());
+            assertThat(inv.getCreatedBy()).isEqualTo(staff).isNotEqualTo(r.getStaffId());
         }
     }
     @Test void adminWithoutStaffHasRealUserAndNoInventedStaff() {
@@ -217,7 +217,7 @@ class CheckoutReceiptPostgresTest {
         assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,booking)).isEqualTo("PENDING");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?",Integer.class,booking)).isZero();
         for(int repeat=0;repeat<2;repeat++) mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(route).contextPath("/api").with(auth)
-            .contentType("application/json").content(mapper.writeValueAsBytes(Map.of("paymentMethod",method,"paymentConfirmed",true,"reference","counter-test","expectedAmount",200000))))
+            .contentType("application/json").content(mapper.writeValueAsBytes(Map.of("paymentMethod",method,"paymentConfirmed",true,"expectedAmount",200000))))
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
         assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,booking)).isEqualTo("PAID");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?",Integer.class,booking)).isEqualTo(1);
@@ -228,10 +228,10 @@ class CheckoutReceiptPostgresTest {
         jdbc.update("DELETE FROM payment_transactions WHERE booking_id=?",booking);
         jdbc.update("UPDATE bookings SET status='PENDING',expires_at=? WHERE id=?",java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).plusHours(1),booking);
         jdbc.update("INSERT INTO payment_transactions(booking_id,payment_method,status,amount) VALUES (?,'VNPAY','PENDING',200000)",booking);
-        assertThatThrownBy(()->promotions.staffReceive(booking,"CASH",true,null,new BigDecimal("200000"))).hasMessageContaining("đã có giao dịch");
+        assertThatThrownBy(()->promotions.staffReceive(booking,"CASH",true,null)).hasMessageContaining("đã có giao dịch");
         jdbc.update("DELETE FROM payment_transactions WHERE booking_id=?",booking);
         jdbc.update("UPDATE bookings SET expires_at=? WHERE id=?",java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).minusSeconds(1),booking);
-        assertThatThrownBy(()->promotions.staffReceive(booking,"CASH",true,null,new BigDecimal("200000"))).hasMessageContaining("BOOKING_EXPIRED");
+        assertThatThrownBy(()->promotions.staffReceive(booking,"CASH",true,null)).hasMessageContaining("BOOKING_EXPIRED");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?",Integer.class,booking)).isZero();
     }
     @Test void cancelDraftRestoresStockExactlyOnceAndRetainsSnapshots() {
@@ -257,7 +257,7 @@ class CheckoutReceiptPostgresTest {
     @Test void concurrentPosRetryAndIndependentOversellUseDatabaseLocks() throws Exception {
         var r=sale(false,"CASH");var results=concurrent(()->pos.sell(r).getId());
         assertThat(results.get(0)).isEqualTo(results.get(1));assertThat(stock()).isEqualTo(9);
-        var changed=sale(false,"CASH");changed.setIdempotencyKey(r.getIdempotencyKey());changed.setReference("different");
+        var changed=sale(false,"CASH");changed.setIdempotencyKey(r.getIdempotencyKey());changed.setExpectedTotal(new BigDecimal("20000"));
         assertThatThrownBy(()->pos.sell(changed)).hasMessageContaining("different sale");
         jdbc.update("UPDATE products SET stock_quantity=1 WHERE id=?",product);
         var outcomes=concurrent(()->{try {pos.sell(sale(false,"CASH"));return true;}catch(com.bcm.exception.BadRequestException e){return false;}});
@@ -272,16 +272,21 @@ class CheckoutReceiptPostgresTest {
     }
     @Test void concurrentCancelRestoresOnceAndReceiptFailureRollsBackAllWrites() throws Exception {
         var draft=pos.sell(sale(true,null));concurrent(()->pos.cancelDraft(draft.getId()).getId());assertThat(stock()).isEqualTo(10);
-        var broken=sale(false,"CASH");broken.setReference("x".repeat(300));
-        assertThatThrownBy(()->pos.sell(broken)).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
-        assertThat(stock()).isEqualTo(10);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM invoices WHERE pos_request_key=?",Integer.class,broken.getIdempotencyKey())).isZero();
+        try {
+            jdbc.execute("ALTER TABLE payment_transactions ADD CONSTRAINT test_receipt_fail CHECK (amount < 5000)");
+            var broken=sale(false,"CASH");
+            assertThatThrownBy(()->pos.sell(broken)).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+            assertThat(stock()).isEqualTo(10);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM invoices WHERE pos_request_key=?",Integer.class,broken.getIdempotencyKey())).isZero();
+        } finally {
+            jdbc.execute("ALTER TABLE payment_transactions DROP CONSTRAINT IF EXISTS test_receipt_fail");
+        }
     }
     @Test void addInvoiceAndReceiptActorsRemainDistinctAndStaffRevenueReconciles() {
         jdbc.update("DELETE FROM payment_transactions WHERE booking_id=?",booking);
         jdbc.update("UPDATE bookings SET status='PENDING',expires_at=CURRENT_TIMESTAMP+interval '1 hour' WHERE id=?",booking);
         assertThatThrownBy(()->promotions.staffReceive(booking,"VNPAY",false,null)).hasMessageContaining("confirm");
-        promotions.staffReceive(booking,"VNPAY",true,"counter-court");promotions.staffReceive(booking,"VNPAY",true,"counter-court");
+        promotions.staffReceive(booking,"VNPAY",true,null);promotions.staffReceive(booking,"VNPAY",true,null);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?",Integer.class,booking)).isEqualTo(1);
         var draft=pos.sell(sale(true,null));
         UUID secondStaff=UUID.randomUUID();
@@ -331,14 +336,19 @@ class CheckoutReceiptPostgresTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE payment_method NOT IN ('CASH','VNPAY')",Integer.class)).isZero();
     }
     @Test void checkoutReceiptFailureRollsBackMainSubBookingAndInventoryState() {
-        var draft=pos.sell(sale(true,null));var request=receipt("CASH","10000");request.setReference("x".repeat(300));
-        assertThatThrownBy(()->checkout.checkout(booking,request)).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
-        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,booking)).isEqualTo("PAID");
-        assertThat(jdbc.queryForObject("SELECT status FROM invoices WHERE id=?",String.class,draft.getId())).isEqualTo("DRAFT");
-        assertThat(jdbc.queryForObject("SELECT parent_invoice_id FROM invoices WHERE id=?",UUID.class,draft.getId())).isNull();
-        assertThat(jdbc.queryForObject("SELECT invoice_id FROM invoice_details WHERE product_id=?",UUID.class,product)).isEqualTo(draft.getId());
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM invoices WHERE booking_id=? AND status='PAID'",Integer.class,booking)).isZero();
-        assertThat(stock()).isEqualTo(9);
+        var draft=pos.sell(sale(true,null));var request=receipt("CASH","10000");
+        try {
+            jdbc.execute("ALTER TABLE payment_transactions ADD CONSTRAINT test_checkout_receipt_fail CHECK (amount < 5000)");
+            assertThatThrownBy(()->checkout.checkout(booking,request)).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+            assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,booking)).isEqualTo("PAID");
+            assertThat(jdbc.queryForObject("SELECT status FROM invoices WHERE id=?",String.class,draft.getId())).isEqualTo("DRAFT");
+            assertThat(jdbc.queryForObject("SELECT parent_invoice_id FROM invoices WHERE id=?",UUID.class,draft.getId())).isNull();
+            assertThat(jdbc.queryForObject("SELECT invoice_id FROM invoice_details WHERE product_id=?",UUID.class,product)).isEqualTo(draft.getId());
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM invoices WHERE booking_id=? AND status='PAID'",Integer.class,booking)).isZero();
+            assertThat(stock()).isEqualTo(9);
+        } finally {
+            jdbc.execute("ALTER TABLE payment_transactions DROP CONSTRAINT IF EXISTS test_checkout_receipt_fail");
+        }
     }
     @Test void draftWithOwnPaymentIsNotSilentlyMergedAndLost() {
         var draft=pos.sell(sale(true,null));

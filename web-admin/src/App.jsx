@@ -51,9 +51,9 @@ export default function App(){
  const [draftRefresh,setDraftRefresh]=useState(0);
  const [posMode,setPosMode]=useState('booking');
  const [posPaymentMethod,setPosPaymentMethod]=useState('CASH');
- const [posConfirmed,setPosConfirmed]=useState(false),[posReference,setPosReference]=useState('');
+ const [posConfirmed,setPosConfirmed]=useState(false);
  const posAttempt=useRef(null);
- const [checkoutConfirmed,setCheckoutConfirmed]=useState(false),[checkoutReference,setCheckoutReference]=useState('');
+ const [checkoutConfirmed,setCheckoutConfirmed]=useState(false);
  const [posPromotionCode,setPosPromotionCode]=useState('');
  const [posBookingPreview,setPosBookingPreview]=useState(null);
 
@@ -70,8 +70,8 @@ export default function App(){
   const [activeBusy,setActiveBusy]=useState(false);
   const [activeError,setActiveError]=useState('');
 
- useEffect(()=>{setPosConfirmed(false);posAttempt.current=null;},[posCart,posMode,posBookingId,posPromotionCode,posPaymentMethod,posReference,posQuote?.totalAmount,posPhone,posBuyerId]);
- useEffect(()=>{setCheckoutConfirmed(false);setCheckoutReference('');},[checkoutSlip?.bookingId,checkoutSlip?.amountDue,checkoutPaymentMethod]);
+ useEffect(()=>{setPosConfirmed(false);posAttempt.current=null;},[posCart,posMode,posBookingId,posPromotionCode,posPaymentMethod,posQuote?.totalAmount,posPhone,posBuyerId]);
+ useEffect(()=>{setCheckoutConfirmed(false);},[checkoutSlip?.bookingId,checkoutSlip?.amountDue,checkoutPaymentMethod]);
 
  // Inventory state
  const [importOrders,setImportOrders]=useState([]);
@@ -197,14 +197,14 @@ useEffect(()=>{
    };
    if(!bookingId&&(posBuyerBusy||posBuyerError||(posBuyers.length>1&&!posBuyerId)))throw new Error('Tra cứu và chọn khách hàng trước khi thanh toán.');
    if(!bookingId&&!posConfirmed)throw new Error('Vui lòng xác nhận đã nhận tiền.');
-   if(!posAttempt.current)posAttempt.current={...payload,idempotencyKey:crypto.randomUUID(),paymentConfirmed:posConfirmed,expectedTotal:posQuote.totalAmount,reference:posReference.trim()||null};
+   if(!posAttempt.current)posAttempt.current={...payload,idempotencyKey:crypto.randomUUID(),paymentConfirmed:posConfirmed,expectedTotal:posQuote.totalAmount};
    const inv=await api('/pos/sales','POST',posAttempt.current);
    if(!bookingId&&session.user?.roles?.includes('ADMIN')){setInvoiceCustomer(null);setOpenedInvoice(inv.id);setTab('invoices');}
    const totalAmt=inv.total_amount??inv.totalAmount;
    const discountAmt=inv.discountAmount??inv.discount_amount??0;
    setPosHistory(h=>[{id:inv.id||`#HD-${Date.now().toString().slice(-4)}`,time:new Date().toLocaleTimeString('vi-VN'),total:totalAmt,discount:discountAmt,status:inv.status,items:[...posCart]},...h]);
    setDraftRefresh(v=>v+1);
-   setPosCart([]);posAttempt.current=null;setPosConfirmed(false);setPosReference('');if(!bookingId)setPosPhone('');
+   setPosCart([]);posAttempt.current=null;setPosConfirmed(false);if(!bookingId)setPosPhone('');
    setPosPromotionCode('');
    setNotice(bookingId?'Đã thêm hàng vào đơn đặt sân. Xem bill gộp và xác nhận phần tiền còn phải thu.':'Bán hàng thành công! Hóa đơn chỉ gồm hàng hóa, không kèm tiền sân.');
    if(bookingId){setCheckoutBookingId(bookingId);setCheckoutOpen(true);setCheckoutPaymentMethod('CASH');setCheckoutSlip(null);setTab('checkout');try{const v=await api('/checkout/'+bookingId);setCheckoutSlip({...v,id:'Xem trước',bookingId,courtFee:v.court_fee,productFee:v.product_fee,totalAmount:v.total_amount,status:'DRAFT'});}catch(e){setError('Đã lưu hàng vào đơn. Không tải được bill; hãy lập phiếu để tải lại. '+e.message);}}
@@ -222,7 +222,7 @@ useEffect(()=>{
   if(!checkoutSlip||checkoutSlip.status==='PAID')return;
   setSaving(true);setError('');
   try{
-   const res=await api('/checkout/'+checkoutSlip.bookingId,'POST',{paymentMethod:checkoutDue>0?checkoutPaymentMethod:null,paymentConfirmed:checkoutConfirmed,reference:checkoutReference.trim()||null,expectedAmountDue:checkoutDue});
+   const res=await api('/checkout/'+checkoutSlip.bookingId,'POST',{paymentMethod:checkoutDue>0?checkoutPaymentMethod:null,paymentConfirmed:checkoutConfirmed,expectedAmountDue:checkoutDue});
    const paidSlip={...checkoutSlip,...res,status:'PAID',paymentMethod:res.paymentMethod,invoiceId:res.invoiceId,totalAmount:res.total_amount??res.totalAmount??checkoutSlip.totalAmount};
    setCheckoutSlip(paidSlip);
    setCheckoutOpen(false);
@@ -345,8 +345,9 @@ useEffect(()=>{
        </select></label>:<p>Chưa có hồ sơ. Hồ sơ vãng lai sẽ được tạo khi lưu đơn thành công.</p>}
       </div>}
      </fieldset>
-     <label className="field">Mã giảm giá<input aria-label="Mã giảm giá" placeholder="Mã khuyến mãi Theo sản phẩm" maxLength={50} value={posPromotionCode} disabled={saving} onChange={e=>{setPosPromotionCode(e.target.value.toUpperCase());setPosQuote(null);}}/></label>
-     {posPromotionCode.trim()&&posQuote&&!posQuoteBusy&&!posQuoteError&&<p className="promotion-applied" role="status">Mã hợp lệ. Đã tính ưu đãi tốt nhất cho sản phẩm trong tổng tiền.</p>}
+     <label className="field">Mã voucher<input aria-label="Mã voucher" placeholder="Nhập mã voucher (ví dụ: NEWMEMBER)" maxLength={50} value={posPromotionCode} disabled={saving} onChange={e=>{setPosPromotionCode(e.target.value.toUpperCase());setPosQuote(null);}}/></label>
+     {posPromotionCode.trim()&&posQuote&&!posQuoteBusy&&!posQuoteError&&<p className="promotion-applied" role="status">Đã áp dụng mã voucher {posPromotionCode.trim()}{posQuote.promotionName?` (${posQuote.promotionName})`:''}.</p>}
+     {!posPromotionCode.trim()&&posQuote?.promotionName&&!posQuoteBusy&&!posQuoteError&&<p className="promotion-applied" role="status">Đã tự động áp dụng ưu đãi theo hóa đơn: {posQuote.promotionName}.</p>}
      {posMode==='booking'&&posBookingPreview&&posQuote&&<div className="pos-combined-bill" aria-live="polite">
       <div className="pos-summary-line"><span>Tiền sân sau giảm:</span><strong>{money(Number(posBookingPreview.court_fee)-Number(posBookingPreview.courtDiscount||0))}</strong></div>
       <div className="pos-summary-line"><span>Tiền hàng:</span><strong>{money(Number(posBookingPreview.product_fee)+Number(posQuote.productFee))}</strong></div>
@@ -354,7 +355,7 @@ useEffect(()=>{
       <div className="pos-summary-total"><span>Còn phải thu:</span><span>{money(Number(posBookingPreview.amountDue)+Number(posQuote.totalAmount))}</span></div>
      </div>}
      {posMode==='walk-in'&&<label className="field">Phương thức thanh toán<select aria-label="Phương thức POS" value={posPaymentMethod} disabled={saving} onChange={e=>setPosPaymentMethod(e.target.value)}><option value="CASH">Tiền mặt (CASH)</option><option value="VNPAY">VNPay · xác nhận thủ công (VNPAY)</option></select></label>}
-     {posMode==='walk-in'&&<><label className="field">Mã tham chiếu (nếu có)<input maxLength={255} value={posReference} disabled={saving} onChange={e=>setPosReference(e.target.value)}/></label><label className="pos-receipt-confirm"><input type="checkbox" checked={posConfirmed} disabled={saving||posQuoteBusy||!posQuote} onChange={e=>setPosConfirmed(e.target.checked)}/> Tôi xác nhận đã nhận {money(posQuote?.totalAmount)} từ khách</label></>}
+     {posMode==='walk-in'&&<label className="pos-receipt-confirm"><input type="checkbox" checked={posConfirmed} disabled={saving||posQuoteBusy||!posQuote} onChange={e=>setPosConfirmed(e.target.checked)}/> Tôi xác nhận đã nhận {money(posQuote?.totalAmount)} từ khách</label>}
      <button className="primary wide" style={{marginTop:'14px'}} disabled={(posMode==='walk-in'&&(!posConfirmed||!validPosPhone(posPhone)||posBuyerBusy||!!posBuyerError||(posBuyers.length>1&&!posBuyerId)))||!posCart.length||saving||posQuoteBusy||!posQuote||!!posQuoteError||(posMode==='booking'&&!posBookingPreview)} onClick={handlePosSale}>{saving?'Đang xử lý…':posMode==='booking'?'Thêm hàng & xem bill gộp':`✓ Thu tiền hàng (${posPaymentMethod})`}</button>
     </div>
    </div>
@@ -399,9 +400,9 @@ useEffect(()=>{
               {filteredBookings.map((b,i) => (
                 <tr key={b.bookingId ?? i}>
                   <td><code title={b.bookingId}>{(b.bookingId ?? b.shortId)?.slice(0,8) ?? '—'}</code>{b.bookingId&&<button className="secondary" style={{marginLeft:8,padding:'4px 8px'}} aria-label="Sao chép UUID đầy đủ" title="Sao chép UUID đầy đủ để mua hàng hoặc kết toán" onClick={async()=>{try{await navigator.clipboard.writeText(b.bookingId);setNotice('Đã sao chép UUID đầy đủ.');}catch{setError('Không thể sao chép UUID.');}}}>Sao chép</button>}</td>
-                  <td>{b.courtSchedules?.length?[...new Map(b.courtSchedules.map(r=>[r.courtId,r])).values()].map(r=><div key={r.courtId}>{r.courtName} · Sân {r.courtNumber??'—'}</div>):'—'}</td>
+                  <td>{b.courtSchedules?.length?[...new Map(b.courtSchedules.map(r=>[r.courtId,r])).values()].map(r=><div key={r.courtId}>{r.courtName}</div>):'—'}</td>
                   <td>{b.customerName||'—'} ({b.customerPhone||'—'})</td>
-                  <td>{b.courtSchedules?.length?b.courtSchedules.map((r,i)=><div key={i}>{r.bookingDate.split('-').reverse().join('/')} · Sân {r.courtNumber??'—'} · {r.startTime.slice(0,5)}–{r.endTime.slice(0,5)}</div>):'Chưa có lịch chơi'}</td>
+                  <td>{b.courtSchedules?.length?b.courtSchedules.map((r,i)=><div key={i}>{r.bookingDate.split('-').reverse().join('/')} · {r.startTime.slice(0,5)}–{r.endTime.slice(0,5)}</div>):'Chưa có lịch chơi'}</td>
                   <td>{b.finalAmount==null?'—':money(b.finalAmount)}</td>
                   <td>{b.status==='PENDING'?<button className="primary" disabled={saving} onClick={()=>setReceiptBooking(b)}>Thu tiền tại quầy</button>:<button className="primary" disabled={saving} onClick={()=>createCheckoutSlip(b.bookingId)}>Kết toán</button>}</td>
                 </tr>
@@ -459,7 +460,6 @@ useEffect(()=>{
      </button>
     </div>}
     {checkoutDue>0&&<div className="checkout-inputs-group">
-     <label className="field"><span>Mã giao dịch</span><input maxLength={255} placeholder="Nhập mã giao dịch" disabled={saving||checkoutSlip?.status==='PAID'} value={checkoutReference} onChange={e=>setCheckoutReference(e.target.value)}/></label>
      <label className="checkout-confirm-check"><input type="checkbox" disabled={saving||checkoutSlip?.status==='PAID'} checked={checkoutConfirmed} onChange={e=>setCheckoutConfirmed(e.target.checked)}/><span>Tôi xác nhận đã nhận <strong>{money(checkoutDue)}</strong> còn lại</span></label>
     </div>}
     <button className="primary wide checkout-submit-btn" disabled={checkoutSlip?.checkoutEligible===false||(checkoutDue>0&&!checkoutConfirmed)||!checkoutSlip||checkoutSlip.status==='PAID'||saving} onClick={confirmCheckout}>{saving?'Đang xử lý…':checkoutSlip&&checkoutDue===0?'✓ Hoàn tất trả sân':'✓ Xác nhận & thu tiền'}</button>

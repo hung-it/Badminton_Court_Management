@@ -111,8 +111,8 @@ class BookingPromotionPostgresTest {
                 new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(actor,null,actor.getAuthorities()));
         try {
             promotions.staffApply(b,null);
-            assertThat(promotions.staffReceive(b,"CASH",true,null,new BigDecimal("450000"))).isEqualByComparingTo("450000");
-            assertThat(promotions.staffReceive(b,"CASH",true,null,new BigDecimal("450000"))).isEqualByComparingTo("450000");
+            assertThat(promotions.staffReceive(b,"CASH",true,new BigDecimal("450000"))).isEqualByComparingTo("450000");
+            assertThat(promotions.staffReceive(b,"CASH",true,new BigDecimal("450000"))).isEqualByComparingTo("450000");
             assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE booking_id=?",Long.class,b)).isEqualTo(1);
             jdbc.update("INSERT INTO categories(id,category_name) VALUES (?,?)",cat,"Bill test "+cat);
             jdbc.update("INSERT INTO products(id,category_id,name,type,unit,price,stock_quantity,version) VALUES (?,?,?,'GOODS','quả',10000,100,0)",prod,cat,"Bill test "+prod);

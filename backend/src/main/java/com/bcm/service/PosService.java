@@ -21,9 +21,14 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -39,11 +44,111 @@ public class PosService {
     private final CustomerRepository customerRepository;
     private final ProductPromotionService productPromotions;
     private final ProductPriceService productPrices;
+    private final CourtPromotionService courtPromotions;
     private final com.bcm.repository.BookingRepository bookings;
     private final com.bcm.security.CurrentStaffService currentStaff;
 
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
     private final com.bcm.repository.PaymentTransactionRepository payments;
+
+    public record PosInvoiceDiscountResult(UUID promotionId, UUID ruleId, String code, String name, BigDecimal discountAmount, boolean isVoucher) {}
+
+    private PosInvoiceDiscountResult evaluateInvoiceDiscount(String rawCode, UUID customerId, UUID bookingId, BigDecimal eligibleAmount) {
+        if (eligibleAmount == null || eligibleAmount.signum() <= 0) return null;
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+
+        // 1. Evaluate automatic invoice-level discount (Theo hóa đơn)
+        Map<String, Object> autoRule = courtPromotions.bestAutomaticRule(eligibleAmount, today);
+        BigDecimal autoDiscount = autoRule != null ? courtPromotions.amount(autoRule, eligibleAmount) : BigDecimal.ZERO;
+
+        // 2. If a voucher code was entered, evaluate the voucher
+        if (rawCode != null && !rawCode.isBlank()) {
+            String code = rawCode.trim().toUpperCase(Locale.ROOT);
+            var rule = courtPromotions.voucher(code, today);
+            if (rule == null) {
+                throw new BadRequestException("Mã voucher không tồn tại hoặc không còn hiệu lực");
+            }
+            UUID ruleId = (UUID) rule.get("id");
+            UUID promotionId = (UUID) rule.get("promotion_id");
+            String promoName = (String) rule.get("promotion_name");
+
+            if (customerId != null) {
+                if ("NEWMEMBER".equals(code)) {
+                    long used = jdbc.queryForObject("SELECT count(*) FROM bookings b WHERE b.customer_id=? AND b.status IN ('PAID','COMPLETED') AND EXISTS (SELECT 1 FROM payment_transactions p WHERE p.booking_id=b.id AND p.status='SUCCESS')", Long.class, customerId);
+                    long posUsage = jdbc.queryForObject("SELECT count(*) FROM customer_voucher_usage u JOIN discount_rules d ON d.id=u.discount_rule_id JOIN invoices i ON i.id=u.invoice_id WHERE u.customer_id=? AND d.voucher_code='NEWMEMBER' AND i.status='PAID'", Long.class, customerId);
+                    if (used > 0 || posUsage > 0) {
+                        throw new BadRequestException("Bạn không còn đủ điều kiện NEWMEMBER vì đã đặt sân thành công hoặc đã dùng ưu đãi người mới.");
+                    }
+                } else if ("KMKH10".equals(code)) {
+                    long count = jdbc.queryForObject("SELECT count(*) FROM bookings b WHERE b.customer_id=? AND b.status='COMPLETED' AND EXISTS (SELECT 1 FROM payment_transactions p WHERE p.booking_id=b.id AND p.status='SUCCESS')", Long.class, customerId);
+                    if (count < 15) {
+                        throw new BadRequestException("Bạn chưa đủ điều kiện sử dụng mã KMKH10");
+                    }
+                }
+                String limitsMsg = courtPromotions.limits(rule, customerId, bookingId, code, LocalDateTime.now());
+                if (limitsMsg != null) {
+                    throw new BadRequestException(limitsMsg);
+                }
+            } else {
+                Number maxTotal = (Number) rule.get("max_total_usage");
+                if (maxTotal != null) {
+                    String where = " FROM bookings b WHERE b.promotion_code=? AND ((b.status='PENDING' AND " + CourtPromotionService.PENDING_RESERVATION + ") OR (b.status IN ('PAID','COMPLETED') AND EXISTS (SELECT 1 FROM payment_transactions t WHERE t.booking_id=b.id AND t.status IN ('SUCCESS','PENDING'))))";
+                    long all = jdbc.queryForObject("SELECT count(*)" + where, Long.class, code, LocalDateTime.now());
+                    long pos = jdbc.queryForObject("SELECT count(*) FROM customer_voucher_usage u JOIN invoices i ON i.id=u.invoice_id WHERE u.discount_rule_id=? AND i.status='PAID'", Long.class, ruleId);
+                    if (all + pos >= maxTotal.longValue()) {
+                        throw new BadRequestException("Voucher đã hết lượt sử dụng");
+                    }
+                }
+            }
+
+            BigDecimal minInvoice = (BigDecimal) rule.get("min_invoice_amount");
+            if (minInvoice != null && eligibleAmount.compareTo(minInvoice) < 0) {
+                throw new BadRequestException("Đơn hàng chưa đạt giá trị tối thiểu của voucher");
+            }
+
+            BigDecimal val = (BigDecimal) rule.get("discount_value");
+            BigDecimal voucherDiscount;
+            if ("PERCENT".equals(rule.get("discount_type"))) {
+                voucherDiscount = eligibleAmount.multiply(val).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+            } else {
+                voucherDiscount = val;
+            }
+            BigDecimal maxDiscount = (BigDecimal) rule.get("max_discount_amount");
+            if (maxDiscount != null) {
+                voucherDiscount = voucherDiscount.min(maxDiscount);
+            }
+            voucherDiscount = voucherDiscount.max(BigDecimal.ZERO).min(eligibleAmount);
+
+            // Business rule: between Theo hóa đơn and Voucher, choose the better discount
+            if (voucherDiscount.compareTo(autoDiscount) >= 0) {
+                return new PosInvoiceDiscountResult(promotionId, ruleId, code, promoName != null ? promoName : code, voucherDiscount, true);
+            } else {
+                return new PosInvoiceDiscountResult((UUID) autoRule.get("promotion_id"), (UUID) autoRule.get("id"),
+                        (String) autoRule.get("promotion_code"), (String) autoRule.get("promotion_name"), autoDiscount, false);
+            }
+        }
+
+        // 3. No voucher code was entered: automatically use best INVOICE_TOTAL if applicable
+        if (autoDiscount.signum() > 0) {
+            return new PosInvoiceDiscountResult((UUID) autoRule.get("promotion_id"), (UUID) autoRule.get("id"),
+                    (String) autoRule.get("promotion_code"), (String) autoRule.get("promotion_name"), autoDiscount, false);
+        }
+
+        return null;
+    }
+
+    private UUID resolveQuoteCustomerId(PosSaleRequest request) {
+        if (request.getBookingId() != null) return request.getCustomerId();
+        if (request.getCustomerId() != null) return request.getCustomerId();
+        if (request.getCustomerPhone() != null && !request.getCustomerPhone().isBlank()) {
+            String phone = request.getCustomerPhone().replaceAll("[^0-9]", "");
+            if (phone.matches("[0-9]{8,15}") && !phone.matches("0+")) {
+                var matches = buyerMatches(phone);
+                if (!matches.isEmpty()) return matches.get(0);
+            }
+        }
+        return null;
+    }
 
     @Transactional
     public Invoice sell(PosSaleRequest request) {
@@ -62,7 +167,6 @@ public class PosService {
             throw new BadRequestException("Confirm receipt of payment before creating a paid sale");
         UUID customerId = resolveCustomerId(request);
         Map<UUID, Integer> quantitiesByProduct = aggregateQuantities(request.getItems());
-        var enteredCode=productPromotions.validatePosCode(request.getPromotionCode(),quantitiesByProduct);
         List<InvoiceDetail> invoiceDetails = new ArrayList<>();
         BigDecimal productFee = BigDecimal.ZERO;
         BigDecimal automaticDiscount = BigDecimal.ZERO;
@@ -87,7 +191,7 @@ public class PosService {
 
                 BigDecimal lineAmount = product.getPrice().multiply(BigDecimal.valueOf(quantity));
                 productFee = productFee.add(lineAmount);
-                var discount = productPromotions.best(product, quantity, candidates,enteredCode);
+                var discount = productPromotions.best(product, quantity, candidates);
                 automaticDiscount = automaticDiscount.add(discount.amount());
                 invoiceDetails.add(InvoiceDetail.builder()
                         .productId(product.getId()).productName(product.getName()).productType(product.getType())
@@ -106,20 +210,23 @@ public class PosService {
         BigDecimal courtFee = request.getCourtFee() == null
                 ? BigDecimal.ZERO
                 : request.getCourtFee();
-        BigDecimal discountAmount = request.getDiscountAmount() == null
-                ? BigDecimal.ZERO
-                : request.getDiscountAmount();
-        if (discountAmount.signum() < 0) {
+        if (courtFee.signum() < 0) throw new BadRequestException("Tiền sân không được âm");
+
+        BigDecimal eligibleAmount = productFee.subtract(automaticDiscount).max(BigDecimal.ZERO);
+        var discountResult = evaluateInvoiceDiscount(request.getPromotionCode(), customerId, request.getBookingId(), eligibleAmount);
+        BigDecimal invoiceDiscount = discountResult != null ? discountResult.discountAmount() : BigDecimal.ZERO;
+        BigDecimal totalDiscount = automaticDiscount.add(invoiceDiscount);
+
+        BigDecimal manualDiscount = request.getDiscountAmount() == null ? BigDecimal.ZERO : request.getDiscountAmount();
+        if (manualDiscount.signum() < 0) {
             throw new BadRequestException("Discount amount cannot be negative");
         }
-        if (courtFee.signum() < 0) throw new BadRequestException("Tiền sân không được âm");
-        if (discountAmount.signum() > 0 && automaticDiscount.signum() > 0)
-            throw new BadRequestException("Không cộng dồn giảm giá khác với khuyến mãi sản phẩm");
-        discountAmount = discountAmount.add(automaticDiscount);
-        if (discountAmount.compareTo(courtFee.add(productFee)) > 0)
+        totalDiscount = totalDiscount.add(manualDiscount);
+        if (totalDiscount.compareTo(courtFee.add(productFee)) > 0)
             throw new BadRequestException("Giảm giá không được vượt giá trị hóa đơn");
+
         String paymentMethod = request.getBookingId()==null ? manualMethod(request.getPaymentMethod()) : null;
-        BigDecimal actual=courtFee.add(productFee).subtract(discountAmount);
+        BigDecimal actual = courtFee.add(productFee).subtract(totalDiscount).max(BigDecimal.ZERO);
         if(request.getExpectedTotal()==null || request.getExpectedTotal().compareTo(actual)!=0)
             throw new com.bcm.exception.DuplicateResourceException("Báo giá đã thay đổi; tải lại báo giá và xác nhận lại số tiền.");
 
@@ -133,8 +240,9 @@ public class PosService {
                 .status(request.getBookingId() == null ? "PAID" : "DRAFT")
                 .courtFee(courtFee)
                 .productFee(productFee)
-                .discountAmount(discountAmount)
-                .totalAmount(courtFee.add(productFee).subtract(discountAmount))
+                .discountAmount(totalDiscount)
+                .totalAmount(actual)
+                .promotionId(discountResult != null ? discountResult.promotionId() : null)
                 .createdBy(cashierId)
                 .updatedBy(cashierId)
                 .build();
@@ -142,7 +250,13 @@ public class PosService {
 
         invoiceDetails.forEach(detail -> detail.setInvoiceId(savedInvoice.getId()));
         invoiceDetailRepository.saveAll(invoiceDetails);
-        if(request.getBookingId()==null) recordReceipt(savedInvoice,null,savedInvoice.getTotalAmount(),paymentMethod,request.getReference());
+        if(request.getBookingId()==null) {
+            recordReceipt(savedInvoice,null,savedInvoice.getTotalAmount(),paymentMethod);
+            if(discountResult != null && discountResult.isVoucher()) {
+                jdbc.update("INSERT INTO customer_voucher_usage (id, customer_id, discount_rule_id, invoice_id, used_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
+                    UUID.randomUUID(), customerId, discountResult.ruleId(), savedInvoice.getId());
+            }
+        }
         return savedInvoice;
     }
 
@@ -159,11 +273,10 @@ public class PosService {
     @org.springframework.transaction.annotation.Transactional
     public PosQuoteResponse quote(PosSaleRequest request) {
         validateBooking(request);
-        var enteredCode=productPromotions.validatePosCode(request.getPromotionCode(),aggregateQuantities(request.getItems()));
         List<ProductPromotionRule> candidates = productPromotions.applicable();
         List<PosQuoteResponse.Line> lines = new ArrayList<>();
         BigDecimal gross = BigDecimal.ZERO;
-        BigDecimal discounts = BigDecimal.ZERO;
+        BigDecimal automaticDiscount = BigDecimal.ZERO;
         for (var entry : aggregateQuantities(request.getItems()).entrySet()) {
             Product product = productRepository.findByIdAndDeletedAtIsNull(entry.getKey())
                     .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy sản phẩm"));
@@ -172,20 +285,26 @@ public class PosService {
             if (product.getType() == ProductType.GOODS && product.getStockQuantity() < quantity)
                 throw new BadRequestException(INSUFFICIENT_STOCK_MESSAGE);
             BigDecimal amount = product.getPrice().multiply(BigDecimal.valueOf(quantity));
-            var discount = productPromotions.best(product, quantity, candidates,enteredCode);
+            var discount = productPromotions.best(product, quantity, candidates);
             gross = gross.add(amount);
-            discounts = discounts.add(discount.amount());
+            automaticDiscount = automaticDiscount.add(discount.amount());
             lines.add(new PosQuoteResponse.Line(product.getId(), product.getName(), quantity, product.getPrice(),
                     amount, discount.amount(), amount.subtract(discount.amount()), discount.promotionId(), discount.name(), discount.percent()));
         }
+        BigDecimal eligibleAmount = gross.subtract(automaticDiscount).max(BigDecimal.ZERO);
+        UUID quoteCustId = resolveQuoteCustomerId(request);
+        var discountResult = evaluateInvoiceDiscount(request.getPromotionCode(), quoteCustId, request.getBookingId(), eligibleAmount);
+        BigDecimal invoiceDiscount = discountResult != null ? discountResult.discountAmount() : BigDecimal.ZERO;
+        BigDecimal totalDiscount = automaticDiscount.add(invoiceDiscount);
+
         BigDecimal court = request.getCourtFee() == null ? BigDecimal.ZERO : request.getCourtFee();
         BigDecimal manual = request.getDiscountAmount() == null ? BigDecimal.ZERO : request.getDiscountAmount();
         if (court.signum() < 0 || manual.signum() < 0) throw new BadRequestException("Số tiền không được âm");
-        if (manual.signum() > 0 && discounts.signum() > 0)
-            throw new BadRequestException("Không cộng dồn giảm giá khác với khuyến mãi sản phẩm");
-        discounts = discounts.add(manual);
-        if (discounts.compareTo(court.add(gross)) > 0) throw new BadRequestException("Giảm giá vượt giá trị hóa đơn");
-        return new PosQuoteResponse(gross, court, discounts, court.add(gross).subtract(discounts), lines);
+        totalDiscount = totalDiscount.add(manual);
+        if (totalDiscount.compareTo(court.add(gross)) > 0) throw new BadRequestException("Giảm giá vượt giá trị hóa đơn");
+        String promoName = discountResult != null ? discountResult.name() : null;
+        String promoCode = discountResult != null ? discountResult.code() : null;
+        return new PosQuoteResponse(gross, court, totalDiscount, court.add(gross).subtract(totalDiscount).max(BigDecimal.ZERO), lines, promoName, promoCode);
     }
 
     private void validateBooking(PosSaleRequest request) {
@@ -244,7 +363,7 @@ public class PosService {
 
     // Caller holds the booking or POS idempotency lock and owns the transaction.
     @Transactional(Transactional.TxType.MANDATORY)
-    public void recordReceipt(Invoice invoice, com.bcm.entity.Booking booking, BigDecimal amount, String method, String reference) {
+    public void recordReceipt(Invoice invoice, com.bcm.entity.Booking booking, BigDecimal amount, String method) {
         if(amount.signum()==0) return; // A free/fully prepaid invoice needs no artificial receipt.
         if(amount.signum()<0) throw new BadRequestException("Negative receipt");
         UUID actor=currentStaff.requireUserId();
@@ -255,7 +374,6 @@ public class PosService {
         receipt.setAmount(amount); receipt.setConfirmedBy(currentStaff.currentStaffId().orElse(null));
         receipt.setConfirmedByUser(actor); receipt.setTransactionDate(java.time.LocalDateTime.now());
         receipt.setTransactionId("COUNTER-"+UUID.randomUUID());
-        receipt.setReference(reference==null||reference.isBlank()?null:reference.trim());
         receipt.setNote("STAFF_RECEIVED; manual confirmation");
         payments.saveAndFlush(receipt);
     }
@@ -287,7 +405,7 @@ public class PosService {
     }
 
     private String fingerprint(PosSaleRequest r,UUID actor) {
-        String value=actor+"|"+r.getCustomerPhone()+"|"+r.getCustomerId()+"|"+r.getBookingId()+"|"+r.getPaymentMethod()+"|"+r.getCourtFee()+"|"+r.getDiscountAmount()+"|"+r.getPromotionCode()+"|"+r.isPaymentConfirmed()+"|"+r.getReference()+"|"+r.getExpectedTotal()+"|"+new java.util.TreeMap<>(aggregateQuantities(r.getItems()));
+        String value=actor+"|"+r.getCustomerPhone()+"|"+r.getCustomerId()+"|"+r.getBookingId()+"|"+r.getPaymentMethod()+"|"+r.getCourtFee()+"|"+r.getDiscountAmount()+"|"+r.getPromotionCode()+"|"+r.isPaymentConfirmed()+"|"+r.getExpectedTotal()+"|"+new java.util.TreeMap<>(aggregateQuantities(r.getItems()));
         try { return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8))); }
         catch(java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
     }

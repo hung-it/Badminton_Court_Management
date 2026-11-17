@@ -86,7 +86,7 @@ export default function RevenueInvoices({api,params="",openId,customer,onClearCu
       })()}</dd></div>
      </div>
     </dl>
-    <h3>Các khoản thanh toán</h3>{detail.receipts?.length?<div className="table-scroll invoice-table-card"><table className="invoice-receipt-table"><thead><tr><th>Nguồn</th><th>Phương thức</th><th>Trạng thái giao dịch</th><th className="invoice-detail-money">Số tiền</th><th>Người xác nhận</th><th>Thời điểm</th><th>Tham chiếu</th></tr></thead><tbody>{detail.receipts.map(p=>{
+    <h3>Các khoản thanh toán</h3>{detail.receipts?.length?<div className="table-scroll invoice-table-card"><table className="invoice-receipt-table"><thead><tr><th>Nguồn</th><th>Phương thức</th><th>Trạng thái giao dịch</th><th className="invoice-detail-money">Số tiền</th><th>Người xác nhận</th><th>Thời điểm</th></tr></thead><tbody>{detail.receipts.map(p=>{
      const tSt = txnStatuses[p.status] || { label: p.status, badge: 'neutral' };
      return <tr key={p.id}>
       <td>{formatReceiptSource(p.target)}</td>
@@ -95,7 +95,6 @@ export default function RevenueInvoices({api,params="",openId,customer,onClearCu
       <td className="invoice-detail-money">{money(p.amount)}</td>
       <td><strong>{p.actorName}</strong>{p.confirmedBy?<small title={`Mã NV đầy đủ: ${p.confirmedBy}`}>Mã NV: <code>{p.confirmedBy.slice(0,8)}</code></small>:null}</td>
       <td>{p.confirmedAt?new Date(p.confirmedAt).toLocaleString('vi-VN'):'—'}</td>
-      <td>{p.reference||'—'}</td>
      </tr>;
     })}</tbody></table></div>:<p className="muted">Không có khoản thu (hóa đơn giá trị 0) hoặc chưa phát sinh thanh toán.</p>}
     <h3>Tiền sân</h3>{detail.courts.length?<div className="table-scroll invoice-table-card"><table className="invoice-court-table"><thead><tr><th>Sân</th><th>Ngày</th><th>Khung giờ</th><th className="invoice-detail-money">Giá đã lưu</th></tr></thead><tbody>{detail.courts.map((c,i)=><tr key={i}><td>{c.name}</td><td>{c.date}</td><td>{c.startTime.slice(0,5)}–{c.endTime.slice(0,5)}</td><td className="invoice-detail-money">{money(c.price)}</td></tr>)}</tbody></table></div>:<p className="muted">{invoice.bookingId?'Không có chi tiết khung giờ được lưu.':'Không thuê sân.'}</p>}

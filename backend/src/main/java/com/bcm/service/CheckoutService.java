@@ -43,6 +43,7 @@ public class CheckoutService {
     private final com.bcm.security.CurrentStaffService currentStaff;
     private final PosService pos;
     private final java.time.Clock clock;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     public UUID resolveBookingId(String input) {
         if (input == null || input.isBlank()) {
@@ -217,8 +218,15 @@ public class CheckoutService {
         for(var draft:drafts) {
             for(var line:invoiceDetailRepository.findByInvoiceId(draft.getId())) line.setInvoiceId(invoice.getId());
             draft.setParentInvoiceId(invoice.getId()); draft.setStatus("CANCELLED");
+            if (draft.getPromotionId() != null) {
+                var ruleIds = jdbc.queryForList("SELECT id FROM discount_rules WHERE promotion_id=? AND rule_type='VOUCHER'", UUID.class, draft.getPromotionId());
+                if (!ruleIds.isEmpty()) {
+                    jdbc.update("INSERT INTO customer_voucher_usage (id, customer_id, discount_rule_id, invoice_id, used_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING",
+                        UUID.randomUUID(), booking.getCustomer().getId(), ruleIds.get(0), invoice.getId());
+                }
+            }
         }
-        pos.recordReceipt(invoice,null,due,method,request.getReference());
+        pos.recordReceipt(invoice,null,due,method);
         booking.setStatus(BookingStatus.COMPLETED);
         return ApiResponse.success("Checkout successful",response(booking,invoice,paidCourt));
     }

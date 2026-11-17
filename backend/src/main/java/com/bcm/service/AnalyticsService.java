@@ -97,7 +97,7 @@ public class AnalyticsService {
             }
             return new InvoiceReportResponse.Receipt(p.getId(),p.getInvoice()==null?"COURT_PREPAYMENT":"CHECKOUT_OR_POS",
                 p.getPaymentMethod().name(),p.getSource(),p.getStatus().name(),p.getAmount(),p.getConfirmedBy(),p.getConfirmedByUser(),
-                actorName,p.getTransactionDate(),p.getReference()==null?p.getTransactionId():p.getReference());
+                actorName,p.getTransactionDate());
         }).toList();
 
         String creatorName=null;
