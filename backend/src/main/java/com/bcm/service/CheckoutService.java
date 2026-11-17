@@ -190,6 +190,10 @@ public class CheckoutService {
         for(var draft:drafts) {
             if(draft.getParentInvoiceId()!=null || bookingPayments.existsByInvoiceId(draft.getId()))
                 throw new BadRequestException("Draft already linked or has payment transactions; reconciliation required");
+            if (draft.getPromotionId()!=null && Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM discount_rules d WHERE d.promotion_id=? AND d.rule_type='VOUCHER' AND NOT EXISTS (SELECT 1 FROM customer_voucher_usage u WHERE u.invoice_id=? AND u.discount_rule_id=d.id AND u.customer_id=?))",
+                Boolean.class,draft.getPromotionId(),draft.getId(),draft.getCustomerId())))
+                throw new BadRequestException("Legacy draft voucher has no usage reservation; cancel and recreate draft before checkout");
         }
         BigDecimal productFee=drafts.stream().map(Invoice::getProductFee).reduce(BigDecimal.ZERO,BigDecimal::add);
         BigDecimal productDiscount=drafts.stream().map(Invoice::getDiscountAmount).reduce(BigDecimal.ZERO,BigDecimal::add);
@@ -218,13 +222,7 @@ public class CheckoutService {
         for(var draft:drafts) {
             for(var line:invoiceDetailRepository.findByInvoiceId(draft.getId())) line.setInvoiceId(invoice.getId());
             draft.setParentInvoiceId(invoice.getId()); draft.setStatus("CANCELLED");
-            if (draft.getPromotionId() != null) {
-                var ruleIds = jdbc.queryForList("SELECT id FROM discount_rules WHERE promotion_id=? AND rule_type='VOUCHER'", UUID.class, draft.getPromotionId());
-                if (!ruleIds.isEmpty()) {
-                    jdbc.update("INSERT INTO customer_voucher_usage (id, customer_id, discount_rule_id, invoice_id, used_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING",
-                        UUID.randomUUID(), booking.getCustomer().getId(), ruleIds.get(0), invoice.getId());
-                }
-            }
+            // Keep usage linked to each original draft, preserving the number of discounts.
         }
         pos.recordReceipt(invoice,null,due,method);
         booking.setStatus(BookingStatus.COMPLETED);

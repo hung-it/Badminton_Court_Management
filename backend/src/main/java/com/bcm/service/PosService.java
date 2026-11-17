@@ -72,10 +72,12 @@ public class PosService {
             UUID promotionId = (UUID) rule.get("promotion_id");
             String promoName = (String) rule.get("promotion_name");
 
+            if (customerId == null && "KMKH10".equals(code))
+                throw new BadRequestException("Bạn chưa đủ điều kiện sử dụng mã KMKH10");
             if (customerId != null) {
                 if ("NEWMEMBER".equals(code)) {
                     long used = jdbc.queryForObject("SELECT count(*) FROM bookings b WHERE b.customer_id=? AND b.status IN ('PAID','COMPLETED') AND EXISTS (SELECT 1 FROM payment_transactions p WHERE p.booking_id=b.id AND p.status='SUCCESS')", Long.class, customerId);
-                    long posUsage = jdbc.queryForObject("SELECT count(*) FROM customer_voucher_usage u JOIN discount_rules d ON d.id=u.discount_rule_id JOIN invoices i ON i.id=u.invoice_id WHERE u.customer_id=? AND d.voucher_code='NEWMEMBER' AND i.status='PAID'", Long.class, customerId);
+                    long posUsage = jdbc.queryForObject("SELECT count(*) FROM customer_voucher_usage u JOIN discount_rules d ON d.id=u.discount_rule_id JOIN invoices i ON i.id=u.invoice_id WHERE u.customer_id=? AND d.voucher_code='NEWMEMBER' AND " + CourtPromotionService.POS_USAGE_RESERVATION, Long.class, customerId);
                     if (used > 0 || posUsage > 0) {
                         throw new BadRequestException("Bạn không còn đủ điều kiện NEWMEMBER vì đã đặt sân thành công hoặc đã dùng ưu đãi người mới.");
                     }
@@ -85,7 +87,7 @@ public class PosService {
                         throw new BadRequestException("Bạn chưa đủ điều kiện sử dụng mã KMKH10");
                     }
                 }
-                String limitsMsg = courtPromotions.limits(rule, customerId, bookingId, code, LocalDateTime.now());
+                String limitsMsg = courtPromotions.limits(rule, customerId, null, code, LocalDateTime.now());
                 if (limitsMsg != null) {
                     throw new BadRequestException(limitsMsg);
                 }
@@ -94,7 +96,7 @@ public class PosService {
                 if (maxTotal != null) {
                     String where = " FROM bookings b WHERE b.promotion_code=? AND ((b.status='PENDING' AND " + CourtPromotionService.PENDING_RESERVATION + ") OR (b.status IN ('PAID','COMPLETED') AND EXISTS (SELECT 1 FROM payment_transactions t WHERE t.booking_id=b.id AND t.status IN ('SUCCESS','PENDING'))))";
                     long all = jdbc.queryForObject("SELECT count(*)" + where, Long.class, code, LocalDateTime.now());
-                    long pos = jdbc.queryForObject("SELECT count(*) FROM customer_voucher_usage u JOIN invoices i ON i.id=u.invoice_id WHERE u.discount_rule_id=? AND i.status='PAID'", Long.class, ruleId);
+                    long pos = jdbc.queryForObject("SELECT count(*) FROM customer_voucher_usage u JOIN invoices i ON i.id=u.invoice_id WHERE u.discount_rule_id=? AND " + CourtPromotionService.POS_USAGE_RESERVATION, Long.class, ruleId);
                     if (all + pos >= maxTotal.longValue()) {
                         throw new BadRequestException("Voucher đã hết lượt sử dụng");
                     }
@@ -165,6 +167,11 @@ public class PosService {
         validateBooking(request);
         if(request.getBookingId()==null && !request.isPaymentConfirmed())
             throw new BadRequestException("Confirm receipt of payment before creating a paid sale");
+        // Booking -> campaign -> buyer -> products: match booking voucher lock order.
+        // Acquire before buyer locks so a competing sale cannot deadlock on invoice FKs.
+        if(request.getPromotionCode()!=null && !request.getPromotionCode().isBlank())
+            courtPromotions.voucher(request.getPromotionCode().trim().toUpperCase(Locale.ROOT),
+                LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh")));
         UUID customerId = resolveCustomerId(request);
         Map<UUID, Integer> quantitiesByProduct = aggregateQuantities(request.getItems());
         List<InvoiceDetail> invoiceDetails = new ArrayList<>();
@@ -252,10 +259,11 @@ public class PosService {
         invoiceDetailRepository.saveAll(invoiceDetails);
         if(request.getBookingId()==null) {
             recordReceipt(savedInvoice,null,savedInvoice.getTotalAmount(),paymentMethod);
-            if(discountResult != null && discountResult.isVoucher()) {
-                jdbc.update("INSERT INTO customer_voucher_usage (id, customer_id, discount_rule_id, invoice_id, used_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
-                    UUID.randomUUID(), customerId, discountResult.ruleId(), savedInvoice.getId());
-            }
+        }
+        // Reserve on DRAFT too; cancellation releases the reservation through invoice status.
+        if(discountResult != null && discountResult.isVoucher()) {
+            jdbc.update("INSERT INTO customer_voucher_usage (id, customer_id, discount_rule_id, invoice_id, used_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
+                UUID.randomUUID(), customerId, discountResult.ruleId(), savedInvoice.getId());
         }
         return savedInvoice;
     }

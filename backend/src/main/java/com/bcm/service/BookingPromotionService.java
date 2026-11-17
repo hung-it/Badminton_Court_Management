@@ -163,7 +163,7 @@ public class BookingPromotionService {
                 + "AND b.status IN ('PAID','COMPLETED') "
                 + "AND EXISTS (SELECT 1 FROM payment_transactions p WHERE p.booking_id=b.id AND " + VERIFIED_RECEIPT + ")",Long.class,owner,booking.getId());
         long posUsage=jdbc.queryForObject("SELECT count(*) FROM customer_voucher_usage u JOIN discount_rules d ON d.id=u.discount_rule_id "
-                + "JOIN invoices i ON i.id=u.invoice_id WHERE u.customer_id=? AND d.voucher_code='NEWMEMBER' AND i.status='PAID'",Long.class,owner);
+                + "JOIN invoices i ON i.id=u.invoice_id WHERE u.customer_id=? AND d.voucher_code='NEWMEMBER' AND "+CourtPromotionService.POS_USAGE_RESERVATION,Long.class,owner);
         if (used>0 || posUsage>0) return "Bạn không còn đủ điều kiện NEWMEMBER vì đã đặt sân thành công hoặc đã dùng ưu đãi người mới.";
         long held=jdbc.queryForObject("SELECT count(*) FROM bookings b WHERE b.customer_id=? AND b.id<>? AND ((b.status='PENDING' "
                 + "AND " + CourtPromotionService.PENDING_RESERVATION
