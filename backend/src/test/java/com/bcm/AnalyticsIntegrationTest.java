@@ -170,7 +170,7 @@ class AnalyticsIntegrationTest {
         UUID sample=dashboardInvoice(0,777,"2046-01-03T14:00:00");
         dashboardLine(sample,UUID.randomUUID(),777,false,"Test fixture");
         UUID sampleReceipt=dashboardInvoice(0,888,"2046-01-03T15:00:00");
-        dashboardReceipt(sampleReceipt,"VNPAY",888,"BCM-VNPAY-FIXTURE");
+        dashboardReceipt(sampleReceipt,"VNPAY",888);
         invoice("PAID",0,999,"2046-01-04T00:00:00",false);
         mvc.perform(get("/analytics/revenue-dashboard").param("from","2046-01-02").param("to","2046-01-03"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalRevenue").value(1965))
@@ -185,7 +185,7 @@ class AnalyticsIntegrationTest {
         UUID id=dashboardInvoice(0,100,"2047-01-01T12:00:00");
         dashboardLine(id,UUID.randomUUID(),60,true,null);
         dashboardLine(id,UUID.randomUUID(),40,false,null);
-        dashboardReceipt(id,"CASH",40,null);dashboardReceipt(id,"VNPAY",60,null);
+        dashboardReceipt(id,"CASH",40);dashboardReceipt(id,"VNPAY",60);
         jdbc.update("insert into payment_transactions(id,invoice_id,payment_method,status,amount,source,created_at) values (?, ?, 'CASH', 'FAILED', 999, 'MANUAL', CURRENT_TIMESTAMP)",UUID.randomUUID(),id);
         var d=breakdown.dashboard(java.time.LocalDate.of(2047,1,1),java.time.LocalDate.of(2047,1,1));
         org.assertj.core.api.Assertions.assertThat(d.totalRevenue()).isEqualByComparingTo("100");
@@ -198,7 +198,7 @@ class AnalyticsIntegrationTest {
         org.assertj.core.api.Assertions.assertThat(d.composition().get(3).amount()).isEqualByComparingTo("40");
         org.assertj.core.api.Assertions.assertThat(d.warnings()).isNotEmpty();
         UUID missing=dashboardInvoice(0,50,"2047-01-01T13:00:00");
-        dashboardReceipt(missing,"CASH",40,null);
+        dashboardReceipt(missing,"CASH",40);
         var incomplete=breakdown.dashboard(d.from(),d.to());
         org.assertj.core.api.Assertions.assertThat(incomplete.totalRevenue()).isEqualByComparingTo("150");
         org.assertj.core.api.Assertions.assertThat(incomplete.paymentUnallocated()).isEqualByComparingTo("50");
@@ -219,7 +219,7 @@ class AnalyticsIntegrationTest {
         jdbc.update("update invoices set parent_invoice_id=? where id=?",main,child);
         dashboardLine(main,UUID.randomUUID(),20,true,null);dashboardLine(child,UUID.randomUUID(),10,true,null);
         jdbc.update("insert into payment_transactions(id,booking_id,payment_method,status,amount,source,created_at) values (?,?,'VNPAY','SUCCESS',80,'GATEWAY','2048-01-01')",UUID.randomUUID(),booking);
-        dashboardReceipt(main,"CASH",20,null);dashboardReceipt(child,"CASH",10,null);
+        dashboardReceipt(main,"CASH",20);dashboardReceipt(child,"CASH",10);
         jdbc.update("update courts set base_price=999999 where id=?",court);
         var d=breakdown.dashboard(java.time.LocalDate.of(2048,1,1),java.time.LocalDate.of(2048,1,1));
         org.assertj.core.api.Assertions.assertThat(d.totalRevenue()).isEqualByComparingTo("110");
@@ -287,8 +287,8 @@ class AnalyticsIntegrationTest {
     private void dashboardLine(UUID invoice,UUID product,int amount,boolean deducted,String note) {
         jdbc.update("insert into invoice_details(id,invoice_id,product_id,quantity,unit_price,discount_amount,discount_percent,stock_deducted,note,created_at) values (?,?,?,1,?,0,0,?,?,CURRENT_TIMESTAMP)",UUID.randomUUID(),invoice,product,amount,deducted,note);
     }
-    private void dashboardReceipt(UUID invoice,String method,int amount,String reference) {
-        jdbc.update("insert into payment_transactions(id,invoice_id,payment_method,status,amount,source,created_at,reference) values (?,?,?,'SUCCESS',?,'MANUAL',CURRENT_TIMESTAMP,?)",UUID.randomUUID(),invoice,method,amount,reference);
+    private void dashboardReceipt(UUID invoice,String method,int amount) {
+        jdbc.update("insert into payment_transactions(id,invoice_id,payment_method,status,amount,source,created_at) values (?,?,?,'SUCCESS',?,'MANUAL',CURRENT_TIMESTAMP)",UUID.randomUUID(),invoice,method,amount);
     }
 
     private void invoice(String status, int court, int product, String created, boolean deleted) {

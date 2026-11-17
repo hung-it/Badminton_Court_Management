@@ -15,7 +15,7 @@ public record InvoiceReportResponse(Summary invoice, List<Item> items, List<Cour
         this(invoice, items, courts, List.of(), null, null, null);
     }
     public record Receipt(UUID id,String target,String method,String source,String status,BigDecimal amount,
-        UUID confirmedBy,UUID confirmedByUser,String actorName,LocalDateTime confirmedAt,String reference) {}
+        UUID confirmedBy,UUID confirmedByUser,String actorName,LocalDateTime confirmedAt) {}
     public record Summary(UUID id, UUID bookingId, String customerName, LocalDateTime createdAt,
             String paymentMethod, BigDecimal courtFee, BigDecimal productFee,
             BigDecimal discountAmount, BigDecimal totalAmount, String invoiceStatus, String bookingStatus, List<String> paymentMethods,

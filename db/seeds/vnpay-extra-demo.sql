@@ -23,7 +23,7 @@ BEGIN
      AND p.id=uuid_generate_v5(ns,'vnpay-extra-receipt-'||i) AND v.status='PAID' AND v.payment_method='VNPAY'
      AND d.product_type='SERVICE' AND d.stock_deducted=FALSE AND d.quantity*d.unit_price=v.total_amount
      AND p.amount=v.total_amount AND p.status='SUCCESS' AND p.source='GATEWAY'
-     AND p.reference='BCM-DEMO-VNPAY-EXTRA-'||i) THEN
+     AND p.transaction_id='BCM-DEMO-VNPAY-EXTRA-'||i) THEN
     RAISE EXCEPTION 'Existing VNPay demo changed; preserve and review, do not overwrite';
    END IF;
   END LOOP;
@@ -48,9 +48,7 @@ BEGIN
   INSERT INTO invoice_details(id,invoice_id,product_id,product_name,product_type,quantity,unit_price,discount_amount,
    added_by,added_by_user,stock_deducted,note,created_at)
   VALUES(line,inv,product,product_name,'SERVICE',1,price,0,staff,actor,FALSE,'DEMO VNPay: simulated payment, not a real gateway transaction',stamp);
-  INSERT INTO payment_transactions(id,invoice_id,payment_method,transaction_id,status,amount,transaction_date,created_at,source,note,reference)
-  VALUES(receipt,inv,'VNPAY','BCM-DEMO-VNPAY-EXTRA-'||i,'SUCCESS',price,stamp,stamp,'GATEWAY',
-   'DEMO ONLY: simulated VNPay success; no external payment','BCM-DEMO-VNPAY-EXTRA-'||i);
+  INSERT INTO payment_transactions(id,invoice_id,payment_method,transaction_id,status,amount,transaction_date,created_at,source,note)`n  VALUES(receipt,inv,'VNPAY','BCM-DEMO-VNPAY-EXTRA-'||i,'SUCCESS',price,stamp,stamp,'GATEWAY',`n   'DEMO ONLY: simulated VNPay success; no external payment');
  END LOOP;
  RAISE NOTICE 'Created 3 VNPay demo invoices, each % VND; no real payment or stock change',price;
 END $seed$;

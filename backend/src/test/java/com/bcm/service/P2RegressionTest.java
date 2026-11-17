@@ -33,7 +33,7 @@ class P2RegressionTest {
         b.setContactFullName("Booking contact");b.setContactPhone("0987654321");
         when(bookings.findByStatusInOrderByCreatedAtDesc(any())).thenReturn(List.of(b));
         when(details.findHistoryDetails(b.getId())).thenReturn(List.of());
-        var service=new CheckoutService(bookings,details,null,null,null,null,null,Clock.systemUTC());
+        var service=new CheckoutService(bookings,details,null,null,null,null,null,Clock.systemUTC(),null);
         var result=service.getActiveBookings().get(0);
         assertThat(result.customerName()).isEqualTo("Booking contact");
         assertThat(result.customerPhone()).isEqualTo("0987654321");

@@ -152,9 +152,9 @@ BEGIN
             FROM customers c WHERE c.id=cid;
             INSERT INTO booking_details(id,booking_id,court_id,time_slot_id,booking_date,price,created_at)
             VALUES(pg_temp.seed_id('slot-'||i),bid,court,slot,played,fee,played+time '09:00');
-            INSERT INTO payment_transactions(id,booking_id,payment_method,transaction_id,status,amount,transaction_date,created_at,note,source,confirmed_by,confirmed_by_user,reference)
+            INSERT INTO payment_transactions(id,booking_id,payment_method,transaction_id,status,amount,transaction_date,created_at,note,source,confirmed_by,confirmed_by_user)
             VALUES(pg_temp.seed_id('court-receipt-'||i),bid,'CASH','BCM-V1-COURT-'||i,'SUCCESS',fee,played+time '09:05',played+time '09:05',
-                'Phiếu thu giả lập đồ án; không phải giao dịch gateway','MANUAL',actor,actor_user,'BCM-V1-COURT-'||i);
+                'Phiếu thu giả lập đồ án; không phải giao dịch gateway','MANUAL',actor,actor_user);
         END IF;
         iid:=pg_temp.seed_id('invoice-'||i);
         pid:=goods[1+((i-1)%array_length(goods,1))]; q:=1+(i%3);
@@ -174,9 +174,9 @@ BEGIN
             SELECT pg_temp.seed_id('service-line-'||i),iid,id,name,1,service_price,'Dịch vụ',actor,actor_user,false,at_time,'SERVICE'
             FROM products WHERE id=services[1+(i%2)];
         END IF;
-        INSERT INTO payment_transactions(id,invoice_id,payment_method,transaction_id,status,amount,transaction_date,created_at,note,source,confirmed_by,confirmed_by_user,reference)
+        INSERT INTO payment_transactions(id,invoice_id,payment_method,transaction_id,status,amount,transaction_date,created_at,note,source,confirmed_by,confirmed_by_user)
         VALUES(pg_temp.seed_id('sale-receipt-'||i),iid,'CASH','BCM-V1-SALE-'||i,'SUCCESS',product_total,at_time,at_time,
-            'Phiếu thu giả lập đồ án; không phải giao dịch gateway','MANUAL',actor,actor_user,'BCM-V1-SALE-'||i);
+            'Phiếu thu giả lập đồ án; không phải giao dịch gateway','MANUAL',actor,actor_user);
     END LOOP;
 
     FOR i IN 1..3 LOOP
@@ -261,10 +261,10 @@ BEGIN
         VALUES(pg_temp.seed_id('live-slot-'||current_date||'-'||i),booking_id,court_id,slot_id,play_date,court_price,stamp);
         IF i<>3 THEN
             INSERT INTO payment_transactions(id,booking_id,payment_method,transaction_id,status,amount,
-                transaction_date,created_at,note,source,confirmed_by,confirmed_by_user,reference)
+                transaction_date,created_at,note,source,confirmed_by,confirmed_by_user)
             VALUES(pg_temp.seed_id('live-receipt-'||current_date||'-'||i),booking_id,'CASH',
                 'BCM-LIVE-'||current_date||'-'||i,'SUCCESS',court_price,stamp,stamp,
-                'Trả sân - đã thu tiền sân giả lập','MANUAL',actor,actor_user,'BCM-LIVE-'||current_date||'-'||i);
+                'Trả sân - đã thu tiền sân giả lập','MANUAL',actor,actor_user);
         END IF;
         IF i=2 THEN
             SELECT id,price INTO STRICT water_id,water_price FROM products
@@ -300,8 +300,8 @@ BEGIN
   VALUES(inv,cust,'PAID','VNPAY',0,price,0,price,staff,stamp,stamp);
   INSERT INTO invoice_details(id,invoice_id,product_id,product_name,quantity,unit_price,discount_amount,note,stock_deducted,created_at,product_type)
   VALUES(pg_temp.seed_id('vnpay-line-'||i),inv,prod,'Thuê vợt theo lượt',1,price,0,'Thuê vợt theo lượt',false,stamp,'SERVICE');
-  INSERT INTO payment_transactions(id,invoice_id,payment_method,transaction_id,status,amount,transaction_date,created_at,source,note,reference)
-  VALUES(pg_temp.seed_id('vnpay-receipt-'||i),inv,'VNPAY','BCM-VNPAY-'||i,'SUCCESS',price,stamp,stamp,'GATEWAY','Mô phỏng VNPay; không phải giao dịch thật','BCM-VNPAY-'||i);
+  INSERT INTO payment_transactions(id,invoice_id,payment_method,transaction_id,status,amount,transaction_date,created_at,source,note)
+  VALUES(pg_temp.seed_id('vnpay-receipt-'||i),inv,'VNPAY','BCM-VNPAY-'||i,'SUCCESS',price,stamp,stamp,'GATEWAY','Mô phỏng VNPay; không phải giao dịch thật');
  END LOOP;
 END $vnpay_dataset$;
 -- Product promotions seed: safe rerun, never creates duplicates or changes existing rules
@@ -396,8 +396,8 @@ BEGIN
         FROM customers c WHERE c.id = cust_failed;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM payment_transactions WHERE id = failed_txn) THEN
-        INSERT INTO payment_transactions(id, booking_id, invoice_id, payment_method, transaction_id, status, amount, transaction_date, created_at, source, note, reference)
-        VALUES (failed_txn, failed_booking, NULL, 'VNPAY', 'BCM-DEMO-VNPAY-FAILED-1', 'FAILED', 180000, stamp_base + interval '2 hours 5 minutes', stamp_base + interval '2 hours 5 minutes', 'GATEWAY', 'MẪU FAILED: Giao dịch VNPay bị từ chối/hủy bởi người dùng (vnp_ResponseCode=24)', 'BCM-DEMO-VNPAY-FAILED-1');
+        INSERT INTO payment_transactions(id, booking_id, invoice_id, payment_method, transaction_id, status, amount, transaction_date, created_at, source, note)
+        VALUES (failed_txn, failed_booking, NULL, 'VNPAY', 'BCM-DEMO-VNPAY-FAILED-1', 'FAILED', 180000, stamp_base + interval '2 hours 5 minutes', stamp_base + interval '2 hours 5 minutes', 'GATEWAY', 'MẪU FAILED: Giao dịch VNPay bị từ chối/hủy bởi người dùng (vnp_ResponseCode=24)');
     END IF;
 
     -- 4. Giao dịch VNPay PENDING chưa có kết quả xác nhận
@@ -409,8 +409,8 @@ BEGIN
         FROM customers c WHERE c.id = cust_pending;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM payment_transactions WHERE id = pending_txn) THEN
-        INSERT INTO payment_transactions(id, booking_id, invoice_id, payment_method, transaction_id, status, amount, transaction_date, created_at, source, note, reference)
-        VALUES (pending_txn, pending_booking, NULL, 'VNPAY', 'BCM-DEMO-VNPAY-PENDING-1', 'PENDING', 200000, current_timestamp - interval '2 minutes', current_timestamp - interval '2 minutes', 'GATEWAY', 'MẪU PENDING: Giao dịch VNPay đang chờ khách hàng quét mã/xác thực OTP', 'BCM-DEMO-VNPAY-PENDING-1');
+        INSERT INTO payment_transactions(id, booking_id, invoice_id, payment_method, transaction_id, status, amount, transaction_date, created_at, source, note)
+        VALUES (pending_txn, pending_booking, NULL, 'VNPAY', 'BCM-DEMO-VNPAY-PENDING-1', 'PENDING', 200000, current_timestamp - interval '2 minutes', current_timestamp - interval '2 minutes', 'GATEWAY', 'MẪU PENDING: Giao dịch VNPay đang chờ khách hàng quét mã/xác thực OTP');
     END IF;
 END $sample_invoices_and_payments$;
 COMMIT;

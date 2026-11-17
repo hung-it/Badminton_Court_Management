@@ -89,11 +89,7 @@ public class ProductPromotionService {
     }
 
     public Discount best(Product product,int quantity,List<ProductPromotionRule> candidates,ProductPromotionRule enteredCode) {
-        var automatic=best(product,quantity,candidates);
-        if(enteredCode==null)return automatic;
-        BigDecimal gross=product.getPrice().multiply(BigDecimal.valueOf(quantity));
-        BigDecimal amount=gross.multiply(enteredCode.getDiscountPercent()).divide(new BigDecimal("100"),2,RoundingMode.HALF_UP);
-        return amount.compareTo(automatic.amount())>0?new Discount(enteredCode.getPromotion().getId(),enteredCode.getPromotion().getName(),enteredCode.getDiscountPercent(),amount):automatic;
+        return best(product,quantity,candidates);
     }
 
     public Discount best(Product product, int quantity, List<ProductPromotionRule> candidates) {

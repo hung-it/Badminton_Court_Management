@@ -49,6 +49,21 @@ public class CourtPromotionService {
   for(var rule:jdbc.queryForList("SELECT d.* FROM discount_rules d JOIN promotions p ON p.id=d.promotion_id WHERE d.rule_type='INVOICE_TOTAL' AND p.is_active AND p.deleted_at IS NULL AND p.valid_from<=? AND (p.valid_to IS NULL OR p.valid_to>=?) ORDER BY p.code",date,date)) best=best.max(amount(rule,subtotal));
   return best;
  }
+ public Map<String,Object> bestAutomaticRule(BigDecimal subtotal, LocalDate date) {
+  if (subtotal == null || subtotal.signum() <= 0) return null;
+  Map<String,Object> bestRule = null;
+  BigDecimal best = BigDecimal.ZERO.setScale(2);
+  for(var rule:jdbc.queryForList("SELECT d.*, p.name as promotion_name, p.code as promotion_code FROM discount_rules d JOIN promotions p ON p.id=d.promotion_id WHERE d.rule_type='INVOICE_TOTAL' AND p.is_active AND p.deleted_at IS NULL AND p.valid_from<=? AND (p.valid_to IS NULL OR p.valid_to>=?) ORDER BY p.code",date,date)) {
+      BigDecimal min = (BigDecimal) rule.get("min_invoice_amount");
+      if (min != null && subtotal.compareTo(min) < 0) continue;
+      BigDecimal amt = amount(rule, subtotal);
+      if (amt.compareTo(best) > 0) {
+          best = amt;
+          bestRule = rule;
+      }
+  }
+  return bestRule;
+ }
  public BigDecimal amount(Map<String,Object> r,BigDecimal subtotal) {
   BigDecimal min=(BigDecimal)r.get("min_invoice_amount"); if(min!=null && subtotal.compareTo(min)<0) return BigDecimal.ZERO.setScale(2);
   BigDecimal value=(BigDecimal)r.get("discount_value");
@@ -60,7 +75,7 @@ public class CourtPromotionService {
  }
  // Lock the campaign row before counting reservations, including reservations in other transactions.
  public Map<String,Object> voucher(String code,LocalDate date) {
-  var rows=jdbc.queryForList("SELECT d.* FROM promotions p JOIN discount_rules d ON d.promotion_id=p.id WHERE p.code=? AND d.voucher_code=? AND d.rule_type='VOUCHER' AND p.is_active AND p.deleted_at IS NULL AND p.valid_from<=? AND (p.valid_to IS NULL OR p.valid_to>=?) FOR UPDATE OF p",code,code,date,date);
+  var rows=jdbc.queryForList("SELECT d.*, p.name as promotion_name, p.code as promotion_code FROM promotions p JOIN discount_rules d ON d.promotion_id=p.id WHERE p.code=? AND d.voucher_code=? AND d.rule_type='VOUCHER' AND p.is_active AND p.deleted_at IS NULL AND p.valid_from<=? AND (p.valid_to IS NULL OR p.valid_to>=?) FOR UPDATE OF p",code,code,date,date);
   return rows.size()==1?rows.get(0):null;
  }
  public String limits(Map<String,Object> rule,UUID owner,UUID booking,String code,LocalDateTime now) {

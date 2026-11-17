@@ -61,6 +61,4 @@ public class PaymentTransaction {
     private String source = "GATEWAY";
     private UUID confirmedBy;
     private UUID confirmedByUser;
-    @Column(length = 255)
-    private String reference;
 }

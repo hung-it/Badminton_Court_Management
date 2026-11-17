@@ -65,7 +65,7 @@ class P2BusinessPostgresTest {
     }
     RegisterRequest registration(String email) {return RegisterRequest.builder().email(email).password("Password123").fullName("P2 customer").phone("0912345678").build();}
     UUID book() {return bookings.createBooking(new CreateBookingRequest(owner,List.of(new CreateBookingRequest.Detail(date,court,slot)))).getBookingId();}
-    UUID paid() {UUID id=book();promotions.staffReceive(id,"CASH",true,null,new BigDecimal("100000"));return id;}
+    UUID paid() {UUID id=book();promotions.staffReceive(id,"CASH",true,new BigDecimal("100000"));return id;}
     PosSaleRequest sale(UUID booking) {
         var r=new PosSaleRequest(owner,booking,null,"CASH",BigDecimal.ZERO,BigDecimal.ZERO,List.of(new PosSaleItemRequest(product,1)));
         r.setCustomerPhone(jdbc.queryForObject("select phone from customers where id=?",String.class,owner));r.setIdempotencyKey(UUID.randomUUID());r.setPaymentConfirmed(true);r.setExpectedTotal(new BigDecimal("10000"));return r;

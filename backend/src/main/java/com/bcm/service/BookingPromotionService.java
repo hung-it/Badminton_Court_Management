@@ -83,12 +83,12 @@ public class BookingPromotionService {
     }
 
     @Transactional
-    public BigDecimal staffReceive(UUID id,String method,boolean confirmed,String reference) {
-        return staffReceive(id,method,confirmed,reference,null);
+    public BigDecimal staffReceive(UUID id,String method,boolean confirmed) {
+        return staffReceive(id,method,confirmed,null);
     }
 
     @Transactional
-    public BigDecimal staffReceive(UUID id,String method,boolean confirmed,String reference,BigDecimal expectedAmount) {
+    public BigDecimal staffReceive(UUID id,String method,boolean confirmed,BigDecimal expectedAmount) {
         staff.requireUserId();
         pos.manualMethod(method);
         if(!confirmed) throw new com.bcm.exception.BadRequestException("Staff must confirm receipt");
@@ -103,7 +103,7 @@ public class BookingPromotionService {
         requireEditable(booking);
         if(payments.existsByBookingId(id)) throw new DuplicateResourceException("Booking đã có giao dịch; cần xử lý theo luồng thanh toán hiện có");
         validatePayment(booking);
-        pos.recordReceipt(null,booking,booking.getFinalAmount(),method,reference);
+        pos.recordReceipt(null,booking,booking.getFinalAmount(),method);
         booking.setStatus(BookingStatus.PAID);
         return booking.getFinalAmount();
     }

@@ -203,7 +203,7 @@ END $$;
 ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'GATEWAY';
 ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS confirmed_by UUID REFERENCES staffs(id);
 ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS confirmed_by_user UUID REFERENCES users(id);
-ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS reference VARCHAR(255);
+-- ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS reference VARCHAR(255);
 -- Convert only a reconciled multi-method summary, never its underlying receipts.
 DO $$ DECLARE blocked text; BEGIN
  SELECT string_agg(i.id::text,', ') INTO blocked FROM invoices i WHERE i.payment_method='MIXED' AND
