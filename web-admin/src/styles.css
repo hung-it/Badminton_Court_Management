@@ -418,7 +418,8 @@ code.clickable-code:hover{background:#dbe8d8;color:#0e3527}
 .import-detail-panel .dialog-foot{border-top:0!important;margin-top:14px;padding-top:0;display:flex;justify-content:flex-end}
 
 /* Sub Chương trình khuyến mãi actions styling */
-.promotion-program-panel .promotion-program-actions{display:flex;align-items:center;justify-content:space-between;gap:6px;border-top:0!important;margin-top:16px;padding-top:0!important;flex-wrap:nowrap}
+.promotion-program-panel .promotion-add-rule{display:flex;align-items:center;gap:8px;padding:10px 0 14px;border-bottom:1px solid #edf0e8!important;margin-bottom:0}
+.promotion-program-panel .promotion-program-actions{display:flex;align-items:center;justify-content:space-between;gap:6px;border-top:0!important;margin-top:14px;padding-top:0!important;flex-wrap:nowrap}
 .promotion-program-panel .promotion-program-actions button{padding:8px 10px;font-size:12px;white-space:nowrap}
 .promotion-program-panel .promotion-program-actions .primary{margin-left:auto}
 @media(max-width:480px){.promotion-program-panel .promotion-program-actions{flex-wrap:wrap}.promotion-program-panel .promotion-program-actions button{width:100%}.promotion-program-panel .promotion-program-actions .primary{margin-left:0}}
