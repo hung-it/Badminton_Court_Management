@@ -45,7 +45,8 @@ export default function Accounts({api,currentUserId,onViewInvoices}){
     <p className="account-detail-row"><strong>Trạng thái:</strong> {detail.deletedAt?'Đã khóa':'Hoạt động'}</p>
     <p className="account-detail-row"><strong>Ngày tạo:</strong> {new Date(detail.createdAt).toLocaleString('vi-VN')}</p>
     {detail.staffId&&<p className="account-detail-row"><strong>Chức vụ:</strong> {detail.position}</p>}
-    {detail.customerId&&<p className="account-detail-row"><strong>Lượt đặt:</strong> {detail.bookingCount} · <strong>Chi tiêu:</strong> {Number(detail.totalSpent).toLocaleString('vi-VN')} VND</p>}
+    {detail.customerId&&<p className="account-detail-row"><strong>Lượt đặt:</strong> {detail.bookingCount}</p>}
+    {detail.customerId&&<p className="account-detail-row"><strong>Chi tiêu:</strong> {Number(detail.totalSpent).toLocaleString('vi-VN')} VND</p>}
     {detail.customerId&&onViewInvoices&&<div className="dialog-foot"><button className="secondary" onClick={()=>{setDetail(null);onViewInvoices({id:detail.customerId,name:detail.fullName})}}>Xem hóa đơn đã thanh toán</button></div>}
    </section></InlinePanel>}
   </MainSubArea>
