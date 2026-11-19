@@ -401,16 +401,19 @@ code.clickable-code:hover{background:#dbe8d8;color:#0e3527}
 .promotions-page .page-heading{gap:12px;flex-wrap:wrap}.promotions-page h1{font-size:24px}.promotions-page .toolbar{gap:12px}.promotions-page .promotion-program-table{min-width:620px;table-layout:auto}.promotions-page .promotion-program-table td:first-child{min-width:180px;white-space:normal;overflow-wrap:anywhere}.promotion-program-panel .form-grid{gap:12px}.promotion-program-panel textarea{padding:9px 10px;border:1px solid #d9e1d2;border-radius:8px;resize:vertical;width:100%}.promotion-program-panel fieldset{border:0;min-width:0;padding:0}.promotion-rules{display:grid;gap:10px}.promotion-rule{border:1px solid #dce5d9;border-radius:8px;overflow:hidden;min-width:0}.promotion-rule-heading{width:100%;display:flex;justify-content:space-between;gap:8px;padding:10px;background:#f3f7ef;border:0;text-align:left;font:inherit;color:#174d3a;cursor:pointer}.promotion-rule-fields{padding:12px}.promotion-rule-actions,.promotion-add-rule,.promotion-program-actions{display:flex;flex-wrap:wrap;gap:8px;padding:10px 0}.promotion-rule-actions{padding:0 12px 12px}.promotion-add-rule select{min-width:0;flex:1;border:1px solid #d9e1d2;border-radius:8px;padding:8px;font:inherit}/* Chi tiết phiếu nhập styling */
 .import-detail-panel{font-family:inherit;font-size:13px;line-height:1.5}
 .import-detail-panel h3{font-size:14px;font-weight:600;margin:16px 0 10px;color:#174d3a}
-.import-detail-panel .invoice-table-card{border:1px solid #e2e8dc;border-radius:8px;background:#fff;overflow:hidden;margin-bottom:12px}
-.import-detail-panel .invoice-table-card table{border-collapse:separate;border-spacing:0;width:100%}
-.import-detail-panel .invoice-table-card th{background:#f8faf6;padding:9px 12px;font-size:12px;font-weight:600;color:#526758;border-bottom:1px solid #e2e8dc}
-.import-detail-panel .invoice-table-card td{padding:9px 12px;font-size:13px;line-height:1.45;color:#243b32;border-top:1px solid #edf0e8;vertical-align:middle}
+.import-detail-panel .invoice-table-card{border:1px solid #e2e8dc;border-radius:8px;background:#fff;overflow-x:auto;overflow-y:hidden;margin-bottom:12px}
+.import-detail-panel .invoice-table-card table{border-collapse:separate;border-spacing:0;width:100%;min-width:320px;table-layout:auto}
+.import-detail-panel .invoice-table-card th{background:#f8faf6;padding:8px 6px;font-size:12px;font-weight:600;color:#526758;border-bottom:1px solid #e2e8dc}
+.import-detail-panel .invoice-table-card td{padding:8px 6px;font-size:12px;line-height:1.4;color:#243b32;border-top:1px solid #edf0e8;vertical-align:middle}
+.import-detail-panel .invoice-table-card th:first-child,.import-detail-panel .invoice-table-card td:first-child{padding-left:10px;white-space:normal;overflow-wrap:break-word;max-width:130px}
+.import-detail-panel .invoice-table-card th:last-child,.import-detail-panel .invoice-table-card td:last-child{padding-right:10px;white-space:nowrap;text-align:right}
+.import-detail-panel .invoice-table-card th:not(:first-child),.import-detail-panel .invoice-table-card td:not(:first-child){text-align:right;white-space:nowrap}
 .import-detail-panel .invoice-table-card tbody tr:first-child td{border-top:none}
 .import-detail-panel .invoice-table-card th:first-child{border-top-left-radius:7px}
 .import-detail-panel .invoice-table-card th:last-child{border-top-right-radius:7px}
 .import-detail-panel .invoice-table-card tbody tr:last-child td:first-child{border-bottom-left-radius:7px}
 .import-detail-panel .invoice-table-card tbody tr:last-child td:last-child{border-bottom-right-radius:7px}
-.import-detail-panel .import-total-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0 4px;border-bottom:0!important;font-size:14px}
+.import-detail-panel .import-total-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0 14px;border-bottom:1px solid #edf0e8!important;font-size:14px;margin-bottom:2px}
 .import-detail-panel .import-total-row strong{font-size:16px;font-weight:700;color:#174d3a}
 .import-detail-panel .dialog-foot{border-top:0!important;margin-top:14px;padding-top:0;display:flex;justify-content:flex-end}
 
