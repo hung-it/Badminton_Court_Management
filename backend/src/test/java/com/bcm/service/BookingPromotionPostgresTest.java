@@ -162,7 +162,8 @@ class BookingPromotionPostgresTest {
         var row=courtRules.list().stream().filter(x->code.equals(x.get("code"))).findFirst().orElseThrow();
         courtRules.remove((UUID)row.get("id"));
         assertThat(courtRules.list()).noneMatch(x->code.equals(x.get("code")));
-        assertThat(jdbc.queryForObject("SELECT deleted_at IS NOT NULL AND NOT is_active FROM promotions WHERE code=?",Boolean.class,code)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT deleted_at IS NOT NULL AND NOT is_active FROM discount_rules WHERE id=?",Boolean.class,row.get("id"))).isTrue();
+        assertThat(jdbc.queryForObject("SELECT deleted_at IS NULL AND is_active FROM promotions WHERE code=?",Boolean.class,code)).isTrue();
         assertThat(promotions.quote(booking("1200000"),code,true).voucherValid()).isFalse();
         assertThat(jdbc.queryForObject("SELECT discount_amount FROM bookings WHERE id=?",BigDecimal.class,b)).isEqualByComparingTo(quote.discountAmount());
         assertThat(jdbc.queryForObject("SELECT promotion_code FROM bookings WHERE id=?",String.class,b)).isEqualTo(code);

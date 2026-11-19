@@ -130,6 +130,8 @@ class FeatureAcceptanceTest {
  @Test void foreignBookingCannotPay()throws Exception{UUID b=book();db.update("update bookings set customer_id=(select id from customers where id<>? limit 1) where id=?",cid,b);try{pay(b,"VNPAY",403);}finally{db.update("update bookings set customer_id=? where id=?",cid,b);}assertThat(payments(b)).isZero();}
  Map<String,Object> sale(UUID b,int quantity,String method){var m=new HashMap<String,Object>();m.put("customerId",cid);m.put("customerPhone",db.queryForObject("select phone from customers where id=?",String.class,cid));if(b!=null)m.put("bookingId",b);m.put("paymentMethod",method);m.put("items",List.of(Map.of("productId",product,"quantity",quantity)));m.put("idempotencyKey",UUID.randomUUID());m.put("paymentConfirmed",true);m.put("expectedTotal",10000L*quantity);return m;}
  @ParameterizedTest @ValueSource(strings={"CASH","VNPAY"}) void posCheckoutInvoiceAndRevenue(String method)throws Exception{
+  String today=LocalDate.now().toString();
+  var revenueBefore=call(get("/analytics/revenue").param("from",today).param("to",today),"ADMIN",200).path("total_amount").decimalValue();
   UUID retail=UUID.fromString(call(json(post("/pos/sales"),sale(null,2,method)),"STAFF",201).path("id").asText());
   assertThat(db.queryForObject("select stock_quantity from products where id=?",Integer.class,product)).isEqualTo(8);
   call(json(post("/pos/sales"),sale(null,99,method)),"STAFF",400);
@@ -151,7 +153,7 @@ class FeatureAcceptanceTest {
   var page=call(get("/analytics/invoices").param("from","2000-01-01").param("to","2099-12-31").param("search","Acceptance").param("method",method),"ADMIN",200);assertThat(page.path("totalElements").asInt()).isEqualTo(2);
   assertThat(call(get("/analytics/invoices").param("from","2000-01-01").param("to","2099-12-31").param("search","Acceptance").param("page","1"),"ADMIN",200).path("invoices").size()).isZero();
   assertThat(call(get("/analytics/revenue").param("from","2045-01-01").param("to","2045-01-02"),"ADMIN",200).path("total_amount").decimalValue()).isEqualByComparingTo("0");
-  var revenue=call(get("/analytics/revenue").param("from",LocalDate.now().toString()).param("to",LocalDate.now().toString()),"ADMIN",200);assertThat(revenue.path("total_amount").decimalValue()).isEqualByComparingTo("130000");
+  var revenue=call(get("/analytics/revenue").param("from",today).param("to",today),"ADMIN",200);assertThat(revenue.path("total_amount").decimalValue().subtract(revenueBefore)).isEqualByComparingTo("130000");
  }
  @Test void removedMethodCannotMutatePosOrCheckout()throws Exception{
   UUID b=book();db.update("update bookings set status='PAID' where id=?",b);

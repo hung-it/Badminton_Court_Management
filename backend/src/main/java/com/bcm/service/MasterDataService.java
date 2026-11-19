@@ -72,9 +72,6 @@ public class MasterDataService {
     }
 
     public Court saveCourt(UUID id, CourtRequest r) {
-        if (r.status() == CourtStatus.CLOSED) {
-            throw new BadRequestException("Sân con chỉ có trạng thái Hoạt động (AVAILABLE) hoặc Bảo trì (MAINTENANCE)");
-        }
         if (r.basePrice().signum() <= 0) throw new BadRequestException("Giá sân phải lớn hơn 0");
         // Serialize branch-aware allocation, including the globally unique business code.
         if (r.branchId() != null) jdbc.execute("SELECT pg_advisory_xact_lock(20261117, 1)");
@@ -83,6 +80,9 @@ public class MasterDataService {
         if(id!=null && r.status()!=CourtStatus.AVAILABLE && c.getStatus()!=r.status()) {
             boolean affected=Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM booking_details d JOIN bookings b ON b.id=d.booking_id JOIN time_slots t ON t.id=d.time_slot_id WHERE d.court_id=? AND b.status IN ('PENDING','PAID') AND d.booking_date+t.end_time>=?)",Boolean.class,id,LocalDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"))));
             if(affected) throw new BadRequestException("Sân còn lịch PENDING/PAID hiện tại hoặc tương lai, không thể bảo trì/đóng cửa.");
+        }
+        if (r.status() == CourtStatus.CLOSED) {
+            throw new BadRequestException("Sân con chỉ có trạng thái Hoạt động (AVAILABLE) hoặc Bảo trì (MAINTENANCE)");
         }
         if (r.branchId() != null || c.getBranchId() != null) {
             UUID branchId = r.branchId() != null ? r.branchId() : c.getBranchId();

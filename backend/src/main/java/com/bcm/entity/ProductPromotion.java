@@ -14,6 +14,8 @@ public class ProductPromotion extends BaseEntity {
     private String code;
     @Column(nullable = false, length = 255)
     private String name;
+    @Column(length=2000)
+    private String description;
     @Column(name = "valid_from", nullable = false)
     private LocalDate validFrom;
     @Column(name = "valid_to", nullable = false)

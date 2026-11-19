@@ -14,6 +14,8 @@ import lombok.Setter;
 public class ProductPromotionRule {
     @Id @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+    @Column(name="is_active",nullable=false) private boolean active=true;
+    @Column(name="deleted_at") private LocalDateTime deletedAt;
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "promotion_id", nullable = false)
     private ProductPromotion promotion;

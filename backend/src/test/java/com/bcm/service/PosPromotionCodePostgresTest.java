@@ -63,12 +63,12 @@ class PosPromotionCodePostgresTest {
         jdbc.update("DELETE FROM customers WHERE id=?",customer);
         jdbc.update("DELETE FROM users WHERE id=?",user);
     }
-    @Test void codeValidatesWithoutDoubleDiscountAndPersistsSnapshot() {
-        var quote=pos.quote(request(" "+code.toLowerCase(Locale.ROOT)+" ",2));
+    @Test void automaticDiscountPersistsSnapshotAndProductCodeIsNotAVoucher() {
+        assertThatThrownBy(() -> pos.quote(request(code,2))).isInstanceOf(BadRequestException.class);
+        var quote=pos.quote(request(null,2));
         assertThat(quote.discountAmount()).isEqualByComparingTo("2000");
         assertThat(quote.totalAmount()).isEqualByComparingTo("18000");
-        assertThat(pos.quote(request(null,2)).totalAmount()).isEqualByComparingTo(quote.totalAmount());
-        var sale=sell(request(code,2));
+        var sale=sell(request(null,2));
         assertThat(sale.getTotalAmount()).isEqualByComparingTo(quote.totalAmount());
         assertThat(jdbc.queryForObject("SELECT discount_amount FROM invoice_details WHERE invoice_id=?",BigDecimal.class,sale.getId())).isEqualByComparingTo("2000");
         assertThat(jdbc.queryForObject("SELECT promotion_name FROM invoice_details WHERE invoice_id=?",String.class,sale.getId())).isEqualTo("POS code test");
@@ -77,41 +77,38 @@ class PosPromotionCodePostgresTest {
     }
     @Test void invalidExpiredAndMissingProductsDoNotChangeStock() {
         assertThatThrownBy(()->pos.quote(request("MISSING-CODE",2))).isInstanceOf(BadRequestException.class);
-        assertThatThrownBy(()->sell(request(code,1))).hasMessageContaining("ít nhất");
-        var wrong=request(code,2);wrong.setItems(List.of(new PosSaleItemRequest(UUID.randomUUID(),2)));
+        assertThat(pos.quote(request(null,1)).discountAmount()).isZero();
+        var wrong=request(null,2);wrong.setItems(List.of(new PosSaleItemRequest(UUID.randomUUID(),2)));
         assertThatThrownBy(()->pos.quote(wrong)).isInstanceOf(com.bcm.exception.ResourceNotFoundException.class);
         promotions.save(promotion.id(),config(false));
-        assertThatThrownBy(()->sell(request(code,2))).hasMessageContaining("hiệu lực");
+        assertThat(pos.quote(request(null,2)).discountAmount()).isZero();
         promotions.save(promotion.id(),new ProductPromotionRequest("Expired",product,2,BigDecimal.TEN,LocalDate.now().minusDays(3),LocalDate.now().minusDays(1),true,code));
-        assertThatThrownBy(()->pos.quote(request(code,2))).hasMessageContaining("hiệu lực");
+        assertThat(pos.quote(request(null,2)).discountAmount()).isZero();
         assertThat(jdbc.queryForObject("SELECT stock_quantity FROM products WHERE id=?",Integer.class,product)).isEqualTo(10);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM invoices WHERE customer_id=?",Integer.class,customer)).isZero();
     }
-    @Test void enteredCodeUsesTotalQuantityAndDoesNotRequireTargetProductInCart() {
+    @Test void automaticRuleOnlyCountsTheTargetProduct() {
         UUID other=UUID.randomUUID();
         jdbc.update("INSERT INTO products(id,category_id,name,type,price,stock_quantity) VALUES (?,?,'Other item','GOODS',20000,10)",other,category);
-        var request=request(code,2);request.setItems(List.of(new PosSaleItemRequest(other,1),new PosSaleItemRequest(other,1)));
-        var quote=pos.quote(request);
-        assertThat(quote.productFee()).isEqualByComparingTo("40000");
-        assertThat(quote.discountAmount()).isEqualByComparingTo("4000");
-        assertThat(quote.totalAmount()).isEqualByComparingTo("36000");
-        var sale=sell(request);
-        assertThat(sale.getTotalAmount()).isEqualByComparingTo("36000");
-        assertThat(jdbc.queryForObject("SELECT promotion_name FROM invoice_details WHERE invoice_id=?",String.class,sale.getId())).isEqualTo("POS code test");
-        var mixed=request(code,1);mixed.setItems(List.of(new PosSaleItemRequest(product,1),new PosSaleItemRequest(other,1)));
-        assertThat(pos.quote(mixed).totalAmount()).isEqualByComparingTo("27000");
-        mixed.setPromotionCode(null);
-        assertThat(pos.quote(mixed).totalAmount()).isEqualByComparingTo("30000");
+        var input=request(null,2);
+        input.setItems(List.of(new PosSaleItemRequest(other,1),new PosSaleItemRequest(other,1)));
+        assertThat(pos.quote(input).totalAmount()).isEqualByComparingTo("40000");
+        input.setItems(List.of(new PosSaleItemRequest(product,1),new PosSaleItemRequest(other,1)));
+        assertThat(pos.quote(input).totalAmount()).isEqualByComparingTo("30000");
+        input.setItems(List.of(new PosSaleItemRequest(product,1),new PosSaleItemRequest(product,1),new PosSaleItemRequest(other,1)));
+        assertThat(pos.quote(input).totalAmount()).isEqualByComparingTo("38000");
     }
-    @Test void quoteDoesNotBypassRevalidationAtSaleAndDuplicateCodesAreRejected() {
-        pos.quote(request(code,2));promotions.save(promotion.id(),config(false));
-        assertThatThrownBy(()->sell(request(code,2))).isInstanceOf(BadRequestException.class);
+    @Test void saleRejectsAnOutdatedQuoteAndDuplicateCodes() {
+        var input=request(null,2);
+        input.setExpectedTotal(pos.quote(input).totalAmount());
+        promotions.save(promotion.id(),config(false));
+        assertThatThrownBy(()->pos.sell(input)).isInstanceOf(com.bcm.exception.DuplicateResourceException.class);
         assertThatThrownBy(()->promotions.save(null,config(true))).isInstanceOf(com.bcm.exception.DuplicateResourceException.class);
     }
     @Test void concurrentSalesCannotConsumeTheSameStock() throws Exception {
         jdbc.update("UPDATE products SET stock_quantity=2 WHERE id=?",product);
         var ready=new CountDownLatch(2);var start=new CountDownLatch(1);var pool=Executors.newFixedThreadPool(2);
-        Callable<Boolean> task=()->{actor();ready.countDown();start.await();try{sell(request(code,2));return true;}catch(BadRequestException e){return false;}};
+        Callable<Boolean> task=()->{actor();ready.countDown();start.await();try{sell(request(null,2));return true;}catch(BadRequestException e){return false;}};
         try{
             var first=pool.submit(task);var second=pool.submit(task);assertThat(ready.await(10,TimeUnit.SECONDS)).isTrue();start.countDown();
             assertThat(List.of(first.get(20,TimeUnit.SECONDS),second.get(20,TimeUnit.SECONDS))).containsExactlyInAnyOrder(true,false);

@@ -159,6 +159,7 @@ CREATE TABLE products (
 
 -- Promotions table
 CREATE TABLE promotions (
+    description VARCHAR(2000),
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     code VARCHAR(50) NOT NULL UNIQUE,
     name VARCHAR(255) NOT NULL,
@@ -173,6 +174,8 @@ CREATE TABLE promotions (
 
 -- Discount Rules table (3-tier system)
 CREATE TABLE discount_rules (
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    deleted_at TIMESTAMP,
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     promotion_id UUID NOT NULL REFERENCES promotions(id) ON DELETE CASCADE,
     rule_type VARCHAR(20) NOT NULL CHECK (rule_type IN ('PRODUCT', 'INVOICE_TOTAL', 'VOUCHER')),
@@ -189,6 +192,7 @@ CREATE TABLE discount_rules (
 
 -- Invoices table (MOVED UP - before payment_transactions and customer_voucher_usage)
 CREATE TABLE invoices (
+    applied_discount_rule_id UUID REFERENCES discount_rules(id) ON DELETE RESTRICT,
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     buyer_phone VARCHAR(20),
     booking_id UUID REFERENCES bookings(id) ON DELETE RESTRICT,
@@ -369,3 +373,5 @@ ON CONFLICT (court_number) DO NOTHING;
 -- =====================================================
 -- END OF MIGRATION SCRIPT
 -- =====================================================
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_discount_rules_voucher_code ON discount_rules(upper(voucher_code)) WHERE rule_type='VOUCHER';

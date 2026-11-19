@@ -53,10 +53,10 @@ public class ProductPromotionService {
 
     @Transactional
     public void remove(UUID id) {
-        ProductPromotion promotion = managed(id).getPromotion();
-        promotion.setActive(false);
-        promotion.softDelete();
-        promotions.saveAndFlush(promotion);
+        ProductPromotionRule rule = managed(id);
+        rule.setActive(false);
+        rule.setDeletedAt(LocalDateTime.now());
+        rules.saveAndFlush(rule);
     }
 
     private ProductPromotionRule managed(UUID id) {
@@ -67,7 +67,7 @@ public class ProductPromotionService {
         ProductPromotion p = rule.getPromotion();
         String name = products.findById(rule.getProductId()).map(Product::getName).orElse("Sản phẩm đã xóa");
         return new ProductPromotionResponse(rule.getId(), p.getName(), rule.getProductId(), name,
-                rule.getMinQuantity(), rule.getDiscountPercent(), p.getValidFrom(), p.getValidTo(), p.isActive(),p.getCode());
+                rule.getMinQuantity(), rule.getDiscountPercent(), p.getValidFrom(), p.getValidTo(), p.isActive() && rule.isActive(),p.getCode());
     }
 
     public List<ProductPromotionRule> applicable() {

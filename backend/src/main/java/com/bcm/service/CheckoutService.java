@@ -191,8 +191,8 @@ public class CheckoutService {
             if(draft.getParentInvoiceId()!=null || bookingPayments.existsByInvoiceId(draft.getId()))
                 throw new BadRequestException("Draft already linked or has payment transactions; reconciliation required");
             if (draft.getPromotionId()!=null && Boolean.TRUE.equals(jdbc.queryForObject(
-                "SELECT EXISTS (SELECT 1 FROM discount_rules d WHERE d.promotion_id=? AND d.rule_type='VOUCHER' AND NOT EXISTS (SELECT 1 FROM customer_voucher_usage u WHERE u.invoice_id=? AND u.discount_rule_id=d.id AND u.customer_id=?))",
-                Boolean.class,draft.getPromotionId(),draft.getId(),draft.getCustomerId())))
+                "SELECT EXISTS (SELECT 1 FROM discount_rules d WHERE d.promotion_id=? AND (CAST(? AS UUID) IS NULL OR d.id=?) AND d.rule_type='VOUCHER' AND NOT EXISTS (SELECT 1 FROM customer_voucher_usage u WHERE u.invoice_id=? AND u.discount_rule_id=d.id AND u.customer_id=?))",
+                Boolean.class,draft.getPromotionId(),draft.getAppliedDiscountRuleId(),draft.getAppliedDiscountRuleId(),draft.getId(),draft.getCustomerId())))
                 throw new BadRequestException("Legacy draft voucher has no usage reservation; cancel and recreate draft before checkout");
         }
         BigDecimal productFee=drafts.stream().map(Invoice::getProductFee).reduce(BigDecimal.ZERO,BigDecimal::add);

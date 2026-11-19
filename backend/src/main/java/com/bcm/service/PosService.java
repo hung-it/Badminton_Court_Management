@@ -250,6 +250,7 @@ public class PosService {
                 .discountAmount(totalDiscount)
                 .totalAmount(actual)
                 .promotionId(discountResult != null ? discountResult.promotionId() : null)
+                .appliedDiscountRuleId(discountResult != null ? discountResult.ruleId() : null)
                 .createdBy(cashierId)
                 .updatedBy(cashierId)
                 .build();

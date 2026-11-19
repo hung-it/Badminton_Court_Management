@@ -31,6 +31,9 @@ public class Invoice extends BaseEntity {
     @Column(name = "promotion_id")
     private UUID promotionId;
 
+    @Column(name="applied_discount_rule_id")
+    private UUID appliedDiscountRuleId;
+
     // Optional single-method summary. Multiple methods are derived from receipts.
     @Column(name = "payment_method", length = 50)
     private String paymentMethod;

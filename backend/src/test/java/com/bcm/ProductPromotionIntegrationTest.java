@@ -158,4 +158,39 @@ class ProductPromotionIntegrationTest {
         var request=cart(10);request.put("items",List.of(Map.of("productId",product,"quantity",10),Map.of("productId",second,"quantity",2)));
         assertThat(quote(request).get("totalAmount").decimalValue()).isEqualByComparingTo("110000");
     }
+    @Test void programCrudKeepsRealRuleLinksAndDeactivatesOnlyTheSelectedRule() throws Exception {
+        String endpoint = "/admin/court-promotions/programs";
+        String code = "TEST-" + UUID.randomUUID();
+        var productRule = new LinkedHashMap<String,Object>(Map.of("ruleType","PRODUCT","productId",product,
+                "minQuantity",2,"discountType","PERCENT","discountValue",20,"active",true));
+        var voucher = new LinkedHashMap<String,Object>(Map.of("ruleType","VOUCHER","voucherCode",code,
+                "discountType","PERCENT","discountValue",10,"minInvoiceAmount",0,"active",true));
+        var body = new LinkedHashMap<String,Object>(Map.of("name","Mixed program","description","Original",
+                "validFrom",today.toString(),"validTo",today.plusDays(1).toString(),"active",true,"rules",List.of(productRule,voucher)));
+        var created = mvc.perform(post(endpoint).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(body))).andExpect(status().isOk()).andReturn();
+        UUID program = UUID.fromString(mapper.readTree(created.getResponse().getContentAsString()).path("data").asText());
+        var list = mvc.perform(get(endpoint)).andExpect(status().isOk()).andReturn();
+        var rows = mapper.readTree(list.getResponse().getContentAsString()).path("data");
+        var matching = new ArrayList<JsonNode>();
+        rows.forEach(row -> { if (row.path("id").asText().equals(program.toString())) matching.add(row); });
+        assertThat(matching).hasSize(1);
+        assertThat(matching.get(0).path("rules")).hasSize(2);
+        UUID productRuleId = jdbc.queryForObject("select id from discount_rules where promotion_id=? and rule_type='PRODUCT'",UUID.class,program);
+        UUID voucherRuleId = jdbc.queryForObject("select id from discount_rules where promotion_id=? and rule_type='VOUCHER'",UUID.class,program);
+        productRule.put("id",productRuleId);
+        productRule.put("active",false);
+        voucher.put("id",voucherRuleId);
+        body.put("description","Edited");
+        mvc.perform(put(endpoint+"/"+program).contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(body)))
+                .andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("select description from promotions where id=?",String.class,program)).isEqualTo("Edited");
+        assertThat(jdbc.queryForObject("select is_active from discount_rules where id=?",Boolean.class,productRuleId)).isFalse();
+        mvc.perform(delete(endpoint+"/"+program+"/rules/"+voucherRuleId)).andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("select count(*) from discount_rules where promotion_id=?",Integer.class,program)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("select deleted_at is not null from discount_rules where id=?",Boolean.class,voucherRuleId)).isTrue();
+        assertThat(jdbc.queryForObject("select is_active from promotions where id=?",Boolean.class,program)).isTrue();
+        mvc.perform(delete(endpoint+"/"+program)).andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("select deleted_at is not null from promotions where id=?",Boolean.class,program)).isTrue();
+    }
 }
