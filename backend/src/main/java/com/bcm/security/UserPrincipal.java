@@ -34,6 +34,10 @@ public class UserPrincipal implements UserDetails {
      * Create UserPrincipal from User entity
      */
     public static UserPrincipal create(User user) {
+        return create(user, user.getDeletedAt() == null);
+    }
+
+    public static UserPrincipal create(User user, boolean enabled) {
         Collection<GrantedAuthority> authorities = user.getRoles().stream()
                 .map(role -> new SimpleGrantedAuthority("ROLE_" + role.getRoleName()))
                 .collect(Collectors.toList());
@@ -43,7 +47,7 @@ public class UserPrincipal implements UserDetails {
                 user.getEmail(),
                 user.getPasswordHash(),
                 authorities,
-                user.getDeletedAt() == null,
+                enabled,
                 user.getTokenVersion()
         );
     }
@@ -70,7 +74,7 @@ public class UserPrincipal implements UserDetails {
 
     @Override
     public boolean isAccountNonLocked() {
-        return true;
+        return enabled;
     }
 
     @Override

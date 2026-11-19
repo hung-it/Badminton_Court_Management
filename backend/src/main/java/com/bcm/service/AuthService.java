@@ -115,7 +115,14 @@ public class AuthService {
 
         // Get user from database
         User user = userRepository.findByEmailAndDeletedAtIsNull(request.getEmail())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                .orElseGet(() -> {
+                    userRepository.findByEmail(request.getEmail()).ifPresent(u -> {
+                        if (u.getDeletedAt() != null) {
+                            throw new org.springframework.security.authentication.LockedException("User account is locked");
+                        }
+                    });
+                    throw new ResourceNotFoundException("User not found");
+                });
 
         // Generate tokens
         UserPrincipal principal = authentication.getPrincipal() instanceof UserPrincipal p

@@ -171,7 +171,14 @@ export function toErrorMessage(error) {
     }
     return 'Dữ liệu đã tồn tại. Vui lòng thử lại.';
   }
-  if (status === 401 && error.config?.url === '/auth/login') return 'Email hoặc mật khẩu không đúng.';
+  if (typeof serverMessage === 'string' && /khóa|locked/i.test(serverMessage)) {
+    return serverMessage;
+  }
+  if (status === 401 && (error.config?.url === '/auth/login' || error.config?.url?.endsWith('/auth/login'))) {
+    return serverMessage && !/authentication failed/i.test(serverMessage)
+      ? serverMessage
+      : 'Email hoặc mật khẩu không đúng.';
+  }
   if (status === 401) return 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
   if (status === 403) return 'Bạn không có quyền thực hiện thao tác này.';
   if (status === 404) return 'Không tìm thấy dữ liệu yêu cầu.';
