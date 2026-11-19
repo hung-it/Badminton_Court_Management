@@ -132,7 +132,7 @@ export default function App(){
    .then(entries=>{if(active)setSlotPrices(Object.fromEntries(entries))}).catch(e=>{if(active)setPriceError(e.message)});
   return()=>{active=false};
  },[tab,quoteCourt,data]);
- async function login(e){e.preventDefault();setSaving(true);setError('');try{const s=await api('/auth/login','POST',credentials,null);if(!s.user?.roles?.some(r=>['ADMIN','STAFF'].includes(r)))throw new Error('Tài khoản cần quyền ADMIN hoặc STAFF.');setTab(s.user.roles.includes('ADMIN')?'accounts':'pos');sessionStorage.setItem('bcm-session',JSON.stringify(s));setSession(s);setCredentials({email:'',password:''})}catch(e){setError(e.message)}finally{setSaving(false)}}
+ async function login(e){e.preventDefault();setSaving(true);setError('');try{const s=await api('/auth/login','POST',credentials,null);if(!s.user?.roles?.some(r=>['ADMIN','STAFF'].includes(r)))throw new Error('Tài khoản cần quyền ADMIN hoặc STAFF.');setTab(s.user.roles.includes('ADMIN')?'accounts':'pos');sessionStorage.setItem('bcm-session',JSON.stringify(s));setSession(s);setCredentials({email:'',password:''})}catch(e){const msg=e.message;if(!msg||/authentication failed/i.test(msg)){setError('Email hoặc mật khẩu không đúng.');}else{setError(msg);}}finally{setSaving(false)}}
  function open(item=null){setModal({id:item?.id||null});setForm(item?{...item,...(tab==='courts'?{courtNumber:item.branchCourtNumber??'',branchId:item.branchId??''}:{})}:{...initial[tab],...(tab==='products'?{categoryId:data.categories[0]?.id||''}:{})});setFieldErrors({});setError('');}
  function change(key,value){setForm(old=>{
   const next={...old,[key]:value};

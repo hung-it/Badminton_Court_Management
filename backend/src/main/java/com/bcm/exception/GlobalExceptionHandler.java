@@ -8,6 +8,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -123,13 +125,22 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(message));
     }
 
+    /** Handle Account Locked / Disabled Status: 401 UNAUTHORIZED */
+    @ExceptionHandler({LockedException.class, DisabledException.class})
+    public ResponseEntity<ApiResponse<Void>> handleAccountLockedException(
+            Exception ex, WebRequest request) {
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error("Tài khoản đã bị khóa."));
+    }
+
     /** Handle Authentication errors Status: 401 UNAUTHORIZED */
     @ExceptionHandler({AuthenticationException.class, BadCredentialsException.class})
     public ResponseEntity<ApiResponse<Void>> handleAuthenticationException(
             Exception ex, WebRequest request) {
 
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(ApiResponse.error("Authentication failed"));
+                .body(ApiResponse.error("Email hoặc mật khẩu không đúng."));
     }
 
     /** Handle Authorization errors (Access Denied) Status: 403 FORBIDDEN */
