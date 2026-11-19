@@ -306,6 +306,12 @@ BEGIN
 END $vnpay_dataset$;
 -- Product promotions seed: safe rerun, never creates duplicates or changes existing rules
 DO $product_promotions$
+DECLARE
+    ns uuid := 'bcd00000-0000-4000-8000-000000000001'::uuid;
+    pid uuid;
+    prod_id uuid;
+    staff_id uuid;
+    rec record;
 BEGIN
     INSERT INTO promotions(code, name, valid_from, valid_to, is_active)
     SELECT v.code, v.name, v.valid_from::date, v.valid_to::date, true
@@ -334,7 +340,86 @@ BEGIN
     JOIN promotions p ON upper(p.code) = upper(v.code)
     JOIN products prod ON lower(btrim(prod.name)) = lower(btrim(v.prod_name)) AND prod.deleted_at IS NULL
     WHERE NOT EXISTS (
-        SELECT 1 FROM discount_rules d WHERE d.promotion_id = p.id
+        SELECT 1 FROM discount_rules d WHERE d.promotion_id = p.id AND d.rule_type = 'PRODUCT'
+    );
+
+    SELECT s.id INTO staff_id FROM staffs s WHERE s.deleted_at IS NULL LIMIT 1;
+
+    -- Diverse Vietnamese promotion programs with full 3-tier rules (PRODUCT, INVOICE_TOTAL, VOUCHER)
+    -- Covers statuses: ACTIVE, FUTURE, EXPIRED, OFF
+    FOR rec IN SELECT * FROM (VALUES
+        ('KM-TIEPSUC', 'Tiếp sức vận động viên BCM', 'Chương trình tiếp sức giải đấu: Giảm giá nước điện giải theo số lượng, ưu đãi hóa đơn tổng và tặng voucher hội viên.', (CURRENT_DATE - INTERVAL '30 days')::date, (CURRENT_DATE + INTERVAL '180 days')::date, true, 'promo-tiepsuc', 'Nước điện giải 500ml', 2, 'PERCENT'::varchar, 15.00::numeric, 200000.00::numeric, 'AMOUNT'::varchar, 20000.00::numeric, 20000.00::numeric, 'TIEPSUC10', 'PERCENT'::varchar, 10.00::numeric, 2, 100),
+        ('KM-GIAIDAU', 'Giải đấu Câu lạc bộ Cầu lông BCM', 'Đồng hành cùng mùa giải CLB: Ưu đãi ống cầu lông, giảm tiền hóa đơn lớn và voucher mùa thi đấu.', (CURRENT_DATE - INTERVAL '15 days')::date, (CURRENT_DATE + INTERVAL '90 days')::date, true, 'promo-giaidau', 'Ống cầu lông 12 quả', 2, 'AMOUNT'::varchar, 25000.00::numeric, 500000.00::numeric, 'PERCENT'::varchar, 8.00::numeric, 50000.00::numeric, 'GIAIDAU50K', 'AMOUNT'::varchar, 50000.00::numeric, 1, 50),
+        ('KM-HE2028', 'Sôi động mùa hè BCM Open', 'Chương trình hè sắp diễn ra: Giảm giá khăn thể thao, quà tặng hóa đơn hè và voucher mở màn.', '2028-06-01'::date, '2028-08-31'::date, true, 'promo-he2028', 'Khăn thể thao', 2, 'PERCENT'::varchar, 20.00::numeric, 350000.00::numeric, 'AMOUNT'::varchar, 30000.00::numeric, 30000.00::numeric, 'HE2028', 'PERCENT'::varchar, 15.00::numeric, 1, 200),
+        ('KM-XUAN2023', 'Khai xuân Quý Mão thể thao', 'Chương trình ưu đãi dịp đầu năm đã kết thúc: Giảm quấn cán vợt, hóa đơn đầu năm và voucher mừng tuổi.', '2023-01-01'::date, '2023-02-28'::date, true, 'promo-xuan2023', 'Quấn cán vợt', 3, 'PERCENT'::varchar, 20.00::numeric, 250000.00::numeric, 'AMOUNT'::varchar, 25000.00::numeric, 25000.00::numeric, 'XUAN2023', 'AMOUNT'::varchar, 20000.00::numeric, 1, 100),
+        ('KM-TRIAN-OFF', 'Tri ân hội viên thân thiết (Tạm ngừng)', 'Chương trình tạm dừng để nâng cấp chính sách: Giảm dịch vụ căng cước, hóa đơn sinh nhật và voucher đặc biệt.', '2024-01-01'::date, '2026-12-31'::date, false, 'promo-trianoff', 'Căng cước vợt', 1, 'PERCENT'::varchar, 10.00::numeric, 400000.00::numeric, 'AMOUNT'::varchar, 40000.00::numeric, 40000.00::numeric, 'TRIANOFF', 'PERCENT'::varchar, 12.00::numeric, 1, 50)
+    ) AS v(code, name, description, valid_from, valid_to, is_active, slug, prod_name, p_qty, p_dtype, p_dval, inv_min, inv_dtype, inv_dval, inv_max, vc_code, vc_dtype, vc_dval, vc_per_cust, vc_max_total) LOOP
+        pid := uuid_generate_v5(ns, rec.slug);
+        IF NOT EXISTS (SELECT 1 FROM promotions WHERE upper(code) = upper(rec.code)) THEN
+            INSERT INTO promotions(id, code, name, description, valid_from, valid_to, is_active, created_by)
+            VALUES (pid, rec.code, rec.name, rec.description, rec.valid_from, rec.valid_to, rec.is_active, staff_id);
+        ELSE
+            SELECT id INTO pid FROM promotions WHERE upper(code) = upper(rec.code);
+            UPDATE promotions SET name = rec.name, description = rec.description, valid_from = rec.valid_from, valid_to = rec.valid_to, is_active = rec.is_active WHERE id = pid;
+        END IF;
+
+        -- Rule 1: PRODUCT
+        SELECT id INTO prod_id FROM products WHERE lower(btrim(name)) = lower(btrim(rec.prod_name)) AND deleted_at IS NULL LIMIT 1;
+        IF prod_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM discount_rules WHERE promotion_id = pid AND rule_type = 'PRODUCT') THEN
+            INSERT INTO discount_rules(id, promotion_id, rule_type, target_product_id, min_quantity, discount_type, discount_value)
+            VALUES (uuid_generate_v5(ns, 'rule-prod-' || rec.code), pid, 'PRODUCT', prod_id, rec.p_qty, rec.p_dtype, rec.p_dval);
+        END IF;
+
+        -- Rule 2: INVOICE_TOTAL
+        IF NOT EXISTS (SELECT 1 FROM discount_rules WHERE promotion_id = pid AND rule_type = 'INVOICE_TOTAL') THEN
+            INSERT INTO discount_rules(id, promotion_id, rule_type, min_invoice_amount, discount_type, discount_value, max_discount_amount)
+            VALUES (uuid_generate_v5(ns, 'rule-inv-' || rec.code), pid, 'INVOICE_TOTAL', rec.inv_min, rec.inv_dtype, rec.inv_dval, rec.inv_max);
+        END IF;
+
+        -- Rule 3: VOUCHER
+        IF NOT EXISTS (SELECT 1 FROM discount_rules WHERE promotion_id = pid AND rule_type = 'VOUCHER') THEN
+            INSERT INTO discount_rules(id, promotion_id, rule_type, voucher_code, max_usage_per_customer, discount_type, discount_value, max_total_usage)
+            VALUES (uuid_generate_v5(ns, 'rule-vc-' || rec.code), pid, 'VOUCHER', rec.vc_code, rec.vc_per_cust, rec.vc_dtype, rec.vc_dval, rec.vc_max_total);
+        END IF;
+    END LOOP;
+
+    -- Ensure every promotion has all 3 rule types (PRODUCT, INVOICE_TOTAL, VOUCHER)
+    -- Newly backfilled placeholder rules for older single-rule promotions are created disabled (is_active = false)
+    -- so that existing programs do not accidentally trigger unintended discounts.
+    SELECT id INTO prod_id FROM products WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1;
+    INSERT INTO discount_rules(id, promotion_id, rule_type, target_product_id, min_quantity, discount_type, discount_value, is_active)
+    SELECT uuid_generate_v5(ns, 'pad-prod-' || p.code), p.id, 'PRODUCT', prod_id, 2, 'PERCENT', 10.00, false
+    FROM promotions p
+    WHERE p.deleted_at IS NULL
+      AND NOT EXISTS (SELECT 1 FROM discount_rules d WHERE d.promotion_id = p.id AND d.rule_type = 'PRODUCT');
+
+    INSERT INTO discount_rules(id, promotion_id, rule_type, min_invoice_amount, discount_type, discount_value, max_discount_amount, is_active)
+    SELECT uuid_generate_v5(ns, 'pad-inv-' || p.code), p.id, 'INVOICE_TOTAL', 200000.00, 'AMOUNT', 20000.00, 20000.00, false
+    FROM promotions p
+    WHERE p.deleted_at IS NULL
+      AND NOT EXISTS (SELECT 1 FROM discount_rules d WHERE d.promotion_id = p.id AND d.rule_type = 'INVOICE_TOTAL');
+
+    FOR rec IN
+        SELECT p.id, p.code, 'VC-' || upper(replace(p.code, '-', '')) AS vc_code
+        FROM promotions p
+        WHERE p.deleted_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM discount_rules d WHERE d.promotion_id = p.id AND d.rule_type = 'VOUCHER')
+    LOOP
+        IF NOT EXISTS (SELECT 1 FROM discount_rules WHERE upper(voucher_code) = upper(rec.vc_code)) THEN
+            INSERT INTO discount_rules(id, promotion_id, rule_type, voucher_code, max_usage_per_customer, discount_type, discount_value, max_total_usage, is_active)
+            VALUES (uuid_generate_v5(ns, 'pad-vc-' || rec.code), rec.id, 'VOUCHER', rec.vc_code, 1, 'PERCENT', 10.00, 100, false);
+        END IF;
+    END LOOP;
+
+    -- Guarantee backfilled padding rules on older promotions remain disabled (is_active = false)
+    UPDATE discount_rules
+    SET is_active = false
+    WHERE id IN (
+        SELECT uuid_generate_v5(ns, 'pad-prod-' || p.code) FROM promotions p
+        UNION ALL
+        SELECT uuid_generate_v5(ns, 'pad-inv-' || p.code) FROM promotions p
+        UNION ALL
+        SELECT uuid_generate_v5(ns, 'pad-vc-' || p.code) FROM promotions p
     );
 END $product_promotions$;
 

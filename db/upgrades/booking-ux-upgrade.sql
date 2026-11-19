@@ -23,10 +23,26 @@ BEGIN
        AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='courts'::regclass AND conname='courts_court_code_key') THEN
         ALTER TABLE courts RENAME CONSTRAINT courts_court_number_key TO courts_court_code_key;
     END IF;
+    IF EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='courts'::regclass AND attname='branch_id' AND NOT attisdropped) THEN
+        IF (SELECT count(*) FROM courts)=210 THEN
+            IF (SELECT count(DISTINCT branch_id) FROM courts)<>35 OR EXISTS (
+                SELECT branch_id FROM courts GROUP BY branch_id
+                HAVING branch_id IS NULL OR array_agg(court_number ORDER BY court_number)<>ARRAY[1,2,3,4,5,6]) THEN
+                RAISE EXCEPTION 'BLOCKED: expected the verified 210-court mapping, six local numbers per branch';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='courts'::regclass AND conname='chk_court_number_range') THEN
+                ALTER TABLE courts ADD CONSTRAINT chk_court_number_range CHECK (court_number BETWEEN 1 AND 6);
+            END IF;
+        END IF;
+    END IF;
 END $court_numbers$;
 COMMENT ON COLUMN courts.court_code IS 'Stable globally unique business code; never use as the local court label.';
-ALTER TABLE courts DROP CONSTRAINT IF EXISTS chk_court_number_range;
-ALTER TABLE courts ADD CONSTRAINT chk_court_number_range CHECK (court_number > 0);
+DO $$ BEGIN
+    IF (SELECT count(*) FROM courts) <> 210 THEN
+        ALTER TABLE courts DROP CONSTRAINT IF EXISTS chk_court_number_range;
+        ALTER TABLE courts ADD CONSTRAINT chk_court_number_range CHECK (court_number > 0);
+    END IF;
+END $$;
 COMMENT ON COLUMN courts.court_number IS 'Positive court number within its branch; no fixed branch capacity.';
 COMMIT;
 -- END SECTION: court-numbers
@@ -309,3 +325,13 @@ WHERE d.product_type IS NULL
  AND d.invoice_id=uuid_generate_v5('bcd00000-0000-4000-8000-000000000001'::uuid,'vnpay-invoice-'||seed.n)
  AND d.product_name='Thuê vợt theo lượt';
 COMMIT;
+
+-- BEGIN SECTION: promotion-program-management
+BEGIN;
+ALTER TABLE promotions ADD COLUMN IF NOT EXISTS description VARCHAR(2000);
+ALTER TABLE discount_rules ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE discount_rules ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS applied_discount_rule_id UUID REFERENCES discount_rules(id) ON DELETE RESTRICT;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_discount_rules_voucher_code ON discount_rules(upper(voucher_code)) WHERE rule_type='VOUCHER';
+COMMIT;
+-- END SECTION: promotion-program-management

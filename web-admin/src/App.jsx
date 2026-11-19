@@ -1,3 +1,4 @@
+import {MainSub,MainSubArea,InlinePanel,rowProps} from './MainSub.jsx';
 import React,{useState,useEffect,useRef} from 'react';
 import ProductPromotions from './Promotions.jsx';
 import CourtBrowser from './CourtBrowser.jsx';
@@ -58,6 +59,7 @@ export default function App(){
  const [checkoutPaymentMethod,setCheckoutPaymentMethod]=useState('CASH');
  const [checkoutSlip,setCheckoutSlip]=useState(null);
  const [checkoutOpen,setCheckoutOpen]=useState(false);
+ const [pendingBooking,setPendingBooking]=useState(null);
  const [receiptBooking,setReceiptBooking]=useState(null);
   const [activeBookings,setActiveBookings]=useState([]);
   const [activeBusy,setActiveBusy]=useState(false);
@@ -294,6 +296,7 @@ useEffect(()=>{
   }catch(e){setError(e.message);}finally{setSaving(false);}
  }
 
+ useEffect(()=>{setModal(null);setSelectedImport(null);setImportModalOpen(false);setCheckoutOpen(false);setPendingBooking(null);setPriceApprovalTarget(null)},[tab]);
  const rows=data[tab]?data[tab].filter(x=>{const text=[x.name,x.categoryName,x.courtNumber,x.startTime,x.endTime,labels[x.type],labels[x.status]].join(' ').toLocaleLowerCase('vi');if(tab==='time-slots')return true;return text.includes(query.toLocaleLowerCase('vi'))&&(!filter||(tab==='products'?x.categoryId===filter:x.status===filter))}):[];
  const title=allTabs.find(([k])=>k===tab)?.[1]||'';
  const checkoutPaidCourt=Number(checkoutSlip?.paidCourtAmount||0);
@@ -308,7 +311,7 @@ useEffect(()=>{
 
 <button className="primary wide" disabled={saving}>{saving?'Đang đăng nhập…':'Đăng nhập →'}</button></form></section></div>;
 
- return <div className="app-shell"><aside className="sidebar"><div className="brand">BCM<span>COURT MANAGEMENT</span></div><span className="nav-caption">QUẢN LÝ DỮ LIỆU</span><nav>{dataNavTabs.map(([key,label])=><button key={key} className={tab===key?'nav active':'nav'} disabled={!canOpenTab(key)} title={!canOpenTab(key)?'Chức năng chỉ dành cho Quản lý':undefined} style={!canOpenTab(key)?{color:'#9ca3af',opacity:0.65,cursor:'not-allowed'}:undefined} onClick={()=>{if(canOpenTab(key))setTab(key)}}>{label}</button>)}</nav><span className="tab-section-label">VẬN HÀNH & POS</span><nav>{opTabs.map(([key,label])=><button key={key} className={tab===key?'nav active':'nav'} disabled={!canOpenTab(key)} title={!canOpenTab(key)?'Chức năng chỉ dành cho Quản lý':undefined} style={!canOpenTab(key)?{color:'#9ca3af',opacity:0.65,cursor:'not-allowed'}:undefined} onClick={()=>{if(canOpenTab(key))setTab(key)}}>{label}</button>)}</nav><div className="sidebar-bottom"><div className="avatar">A</div><div><strong>{session.user?.fullName||'Quản trị viên'}</strong><small>{session.user?.roles?.includes('ADMIN')?'Quản lý':'Thu ngân'}</small></div><button aria-label="Đăng xuất" title="Đăng xuất" onClick={logout}>↗</button></div></aside><main><header className="topbar"><span>{tab==='accounts'?'Quản lý dữ liệu':'Vận hành'} / <strong>{title}</strong></span><span className="live"><i/> Web Admin</span><button className="mobile-logout secondary" onClick={logout}>Đăng xuất</button></header><div className="workspace">
+ return <MainSub navigationKey={tab}><div className="app-shell"><aside className="sidebar"><div className="brand">BCM<span>COURT MANAGEMENT</span></div><span className="nav-caption">QUẢN LÝ DỮ LIỆU</span><nav>{dataNavTabs.map(([key,label])=><button key={key} className={tab===key?'nav active':'nav'} disabled={!canOpenTab(key)} title={!canOpenTab(key)?'Chức năng chỉ dành cho Quản lý':undefined} style={!canOpenTab(key)?{color:'#9ca3af',opacity:0.65,cursor:'not-allowed'}:undefined} onClick={()=>{if(canOpenTab(key))setTab(key)}}>{label}</button>)}</nav><span className="tab-section-label">VẬN HÀNH & POS</span><nav>{opTabs.map(([key,label])=><button key={key} className={tab===key?'nav active':'nav'} disabled={!canOpenTab(key)} title={!canOpenTab(key)?'Chức năng chỉ dành cho Quản lý':undefined} style={!canOpenTab(key)?{color:'#9ca3af',opacity:0.65,cursor:'not-allowed'}:undefined} onClick={()=>{if(canOpenTab(key))setTab(key)}}>{label}</button>)}</nav><div className="sidebar-bottom"><div className="avatar">A</div><div><strong>{session.user?.fullName||'Quản trị viên'}</strong><small>{session.user?.roles?.includes('ADMIN')?'Quản lý':'Thu ngân'}</small></div><button aria-label="Đăng xuất" title="Đăng xuất" onClick={logout}>↗</button></div></aside><main><header className="topbar"><span>{tab==='accounts'?'Quản lý dữ liệu':'Vận hành'} / <strong>{title}</strong></span><span className="live"><i/> Web Admin</span><button className="mobile-logout secondary" onClick={logout}>Đăng xuất</button></header><div className="workspace">
 
  {error&&!modal&&!deleteTarget&&<div role="alert" className="alert error">{error} <button onClick={load}>Thử lại</button></div>}
 
@@ -321,12 +324,15 @@ useEffect(()=>{
  {['courts','time-slots','categories','products'].includes(tab)&&<>
  <div className="page-heading"><div><span className="eyebrow">MASTER DATA</span><h1>{title}</h1></div><button className="primary" onClick={()=>open()} disabled={busy||(tab==='products'&&!data.categories.length)}>＋ {tab==='courts'?'Thêm sân':tab==='time-slots'?'Thêm khung giờ':tab==='categories'?'Thêm danh mục':'Thêm sản phẩm'}</button></div>
  <div className={'stats'+(tab==='time-slots'?' three-stats':'')}><div><span>Tổng số sân</span><strong>{data.courts.length.toString().padStart(2,'0')}</strong><small>Trong hệ thống</small></div><div><span>Sân hoạt động</span><strong>{data.courts.filter(c=>c.status==='AVAILABLE').length.toString().padStart(2,'0')}</strong><small className="green">Sẵn sàng phục vụ</small></div><div><span>Khung giờ</span><strong>{data['time-slots'].length.toString().padStart(2,'0')}</strong><small>Cấu hình trong ngày</small></div>{!['courts','time-slots'].includes(tab)&&<div><span>Hàng hóa & dịch vụ</span><strong>{data.products.length.toString().padStart(2,'0')}</strong><small>{data.categories.length} danh mục</small></div>}{tab==='courts'&&<div><span>Chi nhánh</span><strong>{branchCount.toString().padStart(2,'0')}</strong><small>Trong hệ thống</small></div>}</div>
- {tab==='courts'?<CourtBrowser courts={data.courts} api={api} onEdit={open} onDelete={item=>{setError('');setDeleteTarget(item)}} busy={busy} onRefresh={load}/>:<section className="content-panel"><div className="toolbar">{tab!=='time-slots'&&<label className="search"><span>⌕</span><input aria-label="Tìm kiếm" placeholder="Tìm kiếm…" value={query} onChange={e=>setQuery(e.target.value)}/></label>}{tab==='courts'&&<select aria-label="Lọc trạng thái" value={filter} onChange={e=>setFilter(e.target.value)}><option value="">Tất cả trạng thái</option>{['AVAILABLE','MAINTENANCE'].map(v=><option key={v} value={v}>{labels[v]}</option>)}</select>}{tab==='time-slots'&&<TimeSlotFilters courts={data.courts} branches={priceBranches} courtId={quoteCourt} onCourtChange={id=>{setQuoteCourt(id);setSlotPrices({});setPriceError('')}}/>}{tab==='products'&&<select aria-label="Lọc danh mục" value={filter} onChange={e=>setFilter(e.target.value)}><option value="">Tất cả danh mục</option>{data.categories.map(c=><option key={c.id} value={c.id}>{c.categoryName}</option>)}</select>}<span className="count">{rows.length} kết quả</span><button className="secondary" onClick={load} disabled={busy}>↻ Làm mới</button></div>
- {busy?<div className="empty" role="status">Đang tải dữ liệu…</div>:rows.length===0?<div className="empty"><span>◇</span><h3>{query||filter?'Không tìm thấy kết quả':'Chưa có dữ liệu'}</h3><p>{tab==='products'&&!data.categories.length?'Tạo danh mục trước khi thêm sản phẩm.':'Thêm dữ liệu mới hoặc thay đổi bộ lọc để tiếp tục.'}</p></div>:<div className="table-scroll"><table><thead><tr>{(tab==='courts'?['Số sân','Tên sân','Loại sân','Trạng thái','Giá gốc / khung giờ']:tab==='time-slots'?['Khung giờ','Hệ số giá','Phân loại','Giá tiền']:tab==='categories'?['Tên danh mục','Số sản phẩm']:['Tên sản phẩm','Danh mục','Loại','Đơn vị','Giá niêm yết','Tồn kho','Duyệt giá']).map(h=><th key={h}>{h}</th>)}<th>Thao tác</th></tr></thead><tbody>{rows.map(x=><tr key={x.id}>{tab==='courts'?<><td>#{String(x.courtNumber).padStart(2,'0')}</td><td><strong>{x.name}</strong><p className='court-location'>{x.district||'Chưa cập nhật quận / huyện'}</p><p className='court-address'>Địa chỉ: {x.address||'Chưa cập nhật địa chỉ'}</p></td><td>{labels[x.type]||'Chưa xác minh'}</td><td><span className={'badge '+x.status}>{labels[x.status]}</span></td><td>{money(x.basePrice)}</td></>:tab==='time-slots'?<><td><strong>{x.startTime.slice(0,5)} — {x.endTime.slice(0,5)}</strong></td><td><span className={'badge '+(x.priceMultiplier>1?'MAINTENANCE':'AVAILABLE')}>×{Number(x.priceMultiplier).toFixed(2)}</span></td><td>{x.priceMultiplier>1?'Giá cao điểm':'Giá thông thường'}</td><td>{!quoteCourt?'Chọn sân để xem giá':slotPrices[x.id]?money(slotPrices[x.id].price):priceError?'Không tải được giá':'Đang tải…'}</td></>:tab==='categories'?<><td><strong>{x.categoryName}</strong></td><td>{data.products.filter(p=>p.categoryId===x.id).length}</td></>:<><td><strong>{x.name}</strong></td><td>{data.categories.find(c=>c.id===x.categoryId)?.categoryName||'—'}</td><td><span className="badge neutral">{labels[x.type]}</span></td><td>{x.unit}</td><td>{money(x.price)}</td><td>{x.type==='SERVICE'?'—':x.stockQuantity}</td><td>{isImportProduct(x)?<span className={'badge '+(Number(x.price)>0?'AVAILABLE':'MAINTENANCE')}>{Number(x.price)>0?'Đã duyệt':'Chờ duyệt giá'}</span>:'—'}</td></>}<td><div className="actions">{tab==='products'&&isImportProduct(x)&&<button onClick={()=>{setPriceApprovalTarget(x);setApprovalPrice(Number(x.price)>0?String(x.price):'');setError('');}}>Duyệt giá niêm yết</button>}<button onClick={()=>open(x)}>Sửa</button><button className="danger" onClick={()=>{setError('');setDeleteTarget(x)}}>Xóa</button></div></td></tr>)}</tbody></table></div>}
+ {tab==='courts'?<CourtBrowser onEditingHidden={()=>setModal(null)} editingId={modal?.id} courts={data.courts} api={api} onEdit={open} onDelete={item=>{setError('');setDeleteTarget(item)}} busy={busy} onRefresh={load}/>:<>
+  <div className="toolbar">{tab!=='time-slots'&&<label className="search"><span>⌕</span><input aria-label="Tìm kiếm" placeholder="Tìm kiếm…" value={query} onChange={e=>setQuery(e.target.value)}/></label>}{tab==='courts'&&<select aria-label="Lọc trạng thái" value={filter} onChange={e=>setFilter(e.target.value)}><option value="">Tất cả trạng thái</option>{['AVAILABLE','MAINTENANCE'].map(v=><option key={v} value={v}>{labels[v]}</option>)}</select>}{tab==='time-slots'&&<TimeSlotFilters courts={data.courts} branches={priceBranches} courtId={quoteCourt} onCourtChange={id=>{setQuoteCourt(id);setSlotPrices({});setPriceError('')}}/>}{tab==='products'&&<select aria-label="Lọc danh mục" value={filter} onChange={e=>setFilter(e.target.value)}><option value="">Tất cả danh mục</option>{data.categories.map(c=><option key={c.id} value={c.id}>{c.categoryName}</option>)}</select>}<span className="count">{rows.length} kết quả</span><button className="secondary" onClick={load} disabled={busy}>↻ Làm mới</button></div>
+  <MainSubArea>
+   <section className="content-panel">
+ {busy?<div className="empty" role="status">Đang tải dữ liệu…</div>:rows.length===0?<div className="empty"><span>◇</span><h3>{query||filter?'Không tìm thấy kết quả':'Chưa có dữ liệu'}</h3><p>{tab==='products'&&!data.categories.length?'Tạo danh mục trước khi thêm sản phẩm.':'Thêm dữ liệu mới hoặc thay đổi bộ lọc để tiếp tục.'}</p></div>:<div className="table-scroll"><table><thead><tr>{(tab==='courts'?['Số sân','Tên sân','Loại sân','Trạng thái','Giá gốc / khung giờ']:tab==='time-slots'?['Khung giờ','Hệ số giá','Phân loại','Giá tiền']:tab==='categories'?['Tên danh mục','Số sản phẩm']:['Tên sản phẩm','Danh mục','Loại','Đơn vị','Giá niêm yết','Tồn kho','Duyệt giá']).map(h=><th key={h}>{h}</th>)}<th>Thao tác</th></tr></thead><tbody>{rows.map(x=><tr key={x.id} {...rowProps(modal?.id===x.id||priceApprovalTarget?.id===x.id,()=>open(x))}>{tab==='courts'?<><td>#{String(x.courtNumber).padStart(2,'0')}</td><td><strong>{x.name}</strong><p className='court-location'>{x.district||'Chưa cập nhật quận / huyện'}</p><p className='court-address'>Địa chỉ: {x.address||'Chưa cập nhật địa chỉ'}</p></td><td>{labels[x.type]||'Chưa xác minh'}</td><td><span className={'badge '+x.status}>{labels[x.status]}</span></td><td>{money(x.basePrice)}</td></>:tab==='time-slots'?<><td><strong>{x.startTime.slice(0,5)} — {x.endTime.slice(0,5)}</strong></td><td><span className={'badge '+(x.priceMultiplier>1?'MAINTENANCE':'AVAILABLE')}>×{Number(x.priceMultiplier).toFixed(2)}</span></td><td>{x.priceMultiplier>1?'Giá cao điểm':'Giá thông thường'}</td><td>{!quoteCourt?'Chọn sân để xem giá':slotPrices[x.id]?money(slotPrices[x.id].price):priceError?'Không tải được giá':'Đang tải…'}</td></>:tab==='categories'?<><td><strong>{x.categoryName}</strong></td><td>{data.products.filter(p=>p.categoryId===x.id).length}</td></>:<><td><strong>{x.name}</strong></td><td>{data.categories.find(c=>c.id===x.categoryId)?.categoryName||'—'}</td><td><span className="badge neutral">{labels[x.type]}</span></td><td>{x.unit}</td><td>{money(x.price)}</td><td>{x.type==='SERVICE'?'—':x.stockQuantity}</td><td>{isImportProduct(x)?<span className={'badge '+(Number(x.price)>0?'AVAILABLE':'MAINTENANCE')}>{Number(x.price)>0?'Đã duyệt':'Chờ duyệt giá'}</span>:'—'}</td></>}<td><div className="actions">{tab==='products'&&isImportProduct(x)&&<button onClick={()=>{setPriceApprovalTarget(x);setApprovalPrice(Number(x.price)>0?String(x.price):'');setError('');}}>Duyệt giá niêm yết</button>}<button onClick={()=>open(x)}>Sửa</button><button className="danger" onClick={()=>{setError('');setDeleteTarget(x)}}>Xóa</button></div></td></tr>)}</tbody></table></div>}
 
 
  {tab==='time-slots'&&priceError&&<p role="alert" className="alert error">{priceError}</p>}
- </section>}
+ </section></MainSubArea></>}
 
  </>}
 
@@ -412,14 +418,15 @@ useEffect(()=>{
         <p className="muted">Danh sách đơn đặt sân. Chọn Kết toán để xem bill và thu tiền.</p>
       </div>
     </div>
-    <section className="content-panel">
-      <div className="toolbar">
-        <label className="search"><span>⌕</span>
-          <input aria-label="Tìm kiếm" placeholder="Tìm kiếm…" value={query} onChange={e=>setQuery(e.target.value)} />
-        </label>
-        <span className="count">{filteredBookings.length} kết quả</span>
-        <button className="secondary" onClick={loadOperationalData} disabled={activeBusy}>↻ Làm mới</button>
-      </div>
+    <div className="toolbar">
+      <label className="search"><span>⌕</span>
+        <input aria-label="Tìm kiếm" placeholder="Tìm kiếm…" value={query} onChange={e=>setQuery(e.target.value)} />
+      </label>
+      <span className="count">{filteredBookings.length} kết quả</span>
+      <button className="secondary" onClick={loadOperationalData} disabled={activeBusy}>↻ Làm mới</button>
+    </div>
+    <MainSubArea>
+      <section className="content-panel">
       {activeBusy ? (
         <div className="empty" role="status">Đang tải dữ liệu…</div>
       ) : activeError ? (
@@ -432,7 +439,7 @@ useEffect(()=>{
             <thead><tr><th>UUID</th><th>Sân</th><th>Khách</th><th>Thời gian</th><th>Tiền sân sau giảm</th><th>Thao tác</th></tr></thead>
             <tbody>
               {filteredBookings.map((b,i) => (
-                <tr key={b.bookingId ?? i}>
+                <tr key={b.bookingId ?? i} {...rowProps(pendingBooking?.bookingId===b.bookingId||(checkoutOpen&&checkoutSlip?.bookingId===b.bookingId),()=>{if(b.status==='PENDING')setPendingBooking(b);else createCheckoutSlip(b.bookingId)})}>
                   <td><code title={b.bookingId}>{(b.bookingId ?? b.shortId)?.slice(0,8) ?? '—'}</code>{b.bookingId&&<button className="secondary" style={{marginLeft:8,padding:'4px 8px'}} aria-label="Sao chép UUID đầy đủ" title="Sao chép UUID đầy đủ để mua hàng hoặc kết toán" onClick={async()=>{try{await navigator.clipboard.writeText(b.bookingId);setNotice('Đã sao chép UUID đầy đủ.');}catch{setError('Không thể sao chép UUID.');}}}>Sao chép</button>}</td>
                   <td>{b.courtSchedules?.length?[...new Map(b.courtSchedules.map(r=>[r.courtId,r])).values()].map(r=><div key={r.courtId}>{r.courtName}</div>):'—'}</td>
                   <td>{b.customerName||'—'} ({b.customerPhone||'—'})</td>
@@ -446,61 +453,62 @@ useEffect(()=>{
         </div>
       )}
     </section>
+    {pendingBooking&&<InlinePanel onClose={()=>setPendingBooking(null)} valid={filteredBookings.some(b=>b.bookingId===pendingBooking.bookingId)} panelKey={pendingBooking.bookingId}><section aria-label="Chi tiết đặt sân chờ thanh toán"><div className="dialog-head"><h2>Đặt sân chờ thanh toán</h2><button aria-label="Đóng chi tiết chờ thanh toán" onClick={()=>setPendingBooking(null)}>X</button></div><dl className="invoice-detail-meta"><div><dt>Mã đặt sân</dt><dd>{pendingBooking.bookingId}</dd></div><div><dt>Khách hàng</dt><dd>{pendingBooking.customerName||'—'}</dd></div><div><dt>Số điện thoại</dt><dd>{pendingBooking.customerPhone||'—'}</dd></div><div><dt>Chi tiết sân</dt><dd>{pendingBooking.courtDetails||'—'}</dd></div><div><dt>Tiền sân</dt><dd>{money(pendingBooking.finalAmount??pendingBooking.courtFee)}</dd></div></dl><div className="dialog-foot"><button className="primary" disabled={saving} onClick={()=>setReceiptBooking(pendingBooking)}>Thu tiền tại quầy</button></div></section></InlinePanel>}
+    {checkoutOpen&&<InlinePanel onClose={()=>setCheckoutOpen(false)} busy={saving} panelKey={checkoutSlip?.bookingId} valid={!checkoutSlip||filteredBookings.some(b=>b.bookingId===checkoutSlip.bookingId)}><section className="dialog checkout-dialog" role="region" aria-labelledby="checkout-dialog-title">
+     <div className="dialog-head"><h2 id="checkout-dialog-title">Chi tiết thanh toán trả sân</h2><button aria-label="Đóng bill" disabled={saving} onClick={()=>{setCheckoutOpen(false);setError('');}}>✕</button></div>
+     {error&&<div className="alert error" role="alert">{error}</div>}
+     {saving&&!checkoutSlip&&<p role="status">Đang tải bill…</p>}
+     {checkoutSlip?.status==='DRAFT'&&<button className="secondary" disabled={saving} onClick={()=>createCheckoutSlip()}>↻ Cập nhật bill</button>}
+     {!checkoutSlip&&!saving&&<button className="secondary" onClick={()=>createCheckoutSlip()}>Tải lại bill</button>}
+     <div className="checkout-layout">
+      <div className="invoice-paper">
+       {checkoutSlip&&<div className="checkout-slip-content">
+        <div className="checkout-slip-head">
+         <div>
+          <h2>{checkoutSlip.id==='Xem trước'||checkoutSlip.id==='preview'||!checkoutSlip.id?'Thông tin thanh toán':`Phiếu #${checkoutSlip.id}`}</h2>
+          <p className="muted">Mã đặt sân: <strong>{checkoutSlip.bookingId}</strong></p>
+         </div>
+         <span className={'badge '+(checkoutSlip.status==='PAID'?'AVAILABLE':'MAINTENANCE')}>{checkoutSlip.status==='PAID'?'Đã thanh toán':'Chờ thanh toán'}</span>
+        </div>
+        <div className="checkout-bill-rows">
+         <div className="invoice-row"><span>Tiền thuê sân:</span><strong>{money(checkoutSlip.courtFee)}</strong></div>
+         <div className="invoice-row"><span>Tiền hàng / dịch vụ:</span><strong>{money(checkoutSlip.productFee)}</strong></div>
+         <div className="invoice-row"><span>Giảm tiền sân:</span><strong>{Number(checkoutSlip.courtDiscount)>0?`-${money(checkoutSlip.courtDiscount)}`:money(0)}</strong></div>
+         <div className="invoice-row"><span>Giảm sản phẩm:</span><strong>{Number(checkoutSlip.productDiscount)>0?`-${money(checkoutSlip.productDiscount)}`:money(0)}</strong></div>
+         <div className="invoice-row paid-row"><span>Tiền sân đã thanh toán:</span><strong>{money(checkoutPaidCourt)}</strong></div>
+         <div className={'invoice-row due-row '+(checkoutDue>0?'has-due':'zero-due')}><span>Còn phải thu:</span><strong>{money(checkoutDue)}</strong></div>
+        </div>
+        <div className="invoice-total-block">
+         <div className="total-line"><span>TỔNG BILL SAU GIẢM:</span><span>{money(checkoutSlip?.totalAmount)}</span></div>
+        </div>
+       </div>}
+      </div>
+
+      <div className="pos-cart-panel checkout-action-panel">
+       {checkoutSlip?.checkoutMessage&&<div className="checkout-alert-box alert error" role="alert"><span>⚠</span> <span>{checkoutSlip.checkoutMessage}</span></div>}
+       <div className="checkout-action-head">
+        <h3>{checkoutSlip&&checkoutDue===0?'Hoàn tất trả sân':'Thu tiền còn lại'}</h3>
+        <p className="muted">{checkoutSlip&&checkoutDue===0?'Tiền sân đã được ghi nhận. Không có khoản phát sinh cần thu thêm.':'Chọn phương thức và xác nhận thu số tiền còn lại:'}</p>
+       </div>
+       {checkoutDue>0&&<div className="payment-picker">
+        <button type="button" className={'payment-btn '+(checkoutPaymentMethod==='CASH'?'selected':'')} onClick={()=>setCheckoutPaymentMethod('CASH')}>
+         <span>💵 Tiền mặt (CASH)</span>{checkoutPaymentMethod==='CASH'&&<span>✓</span>}
+        </button>
+        <button type="button" className={'payment-btn '+(checkoutPaymentMethod==='VNPAY'?'selected':'')} onClick={()=>setCheckoutPaymentMethod('VNPAY')}>
+         <span>💳 VNPay</span>{checkoutPaymentMethod==='VNPAY'&&<span>✓</span>}
+        </button>
+       </div>}
+       {checkoutDue>0&&<div className="checkout-inputs-group">
+        <label className="checkout-confirm-check"><input type="checkbox" disabled={saving||checkoutSlip?.status==='PAID'} checked={checkoutConfirmed} onChange={e=>setCheckoutConfirmed(e.target.checked)}/><span>Tôi xác nhận đã nhận <strong>{money(checkoutDue)}</strong> còn lại</span></label>
+       </div>}
+       <button className="primary wide checkout-submit-btn" disabled={checkoutSlip?.checkoutEligible===false||(checkoutDue>0&&!checkoutConfirmed)||!checkoutSlip||checkoutSlip.status==='PAID'||saving} onClick={confirmCheckout}>{saving?'Đang xử lý…':checkoutSlip&&checkoutDue===0?'✓ Hoàn tất trả sân':'✓ Xác nhận & thu tiền'}</button>
+      </div>
+     </div>
+    </section></InlinePanel>}
+   </MainSubArea>
   </>
 )}
 {receiptBooking&&<CounterReceipt booking={receiptBooking} api={api} onClose={()=>{setReceiptBooking(null);loadOperationalData();}} onReceived={()=>{setReceiptBooking(null);setNotice('Đã xác nhận thu tiền sân.');loadOperationalData();}}/>}
- {/* CHECKOUT PANEL */}
- {tab==='checkout'&&checkoutOpen&&<div className="overlay"><section className="dialog checkout-dialog" role="dialog" aria-modal="true" aria-labelledby="checkout-dialog-title">
-  <div className="dialog-head"><h2 id="checkout-dialog-title">Chi tiết thanh toán trả sân</h2><button aria-label="Đóng bill" disabled={saving} onClick={()=>{setCheckoutOpen(false);setError('');}}>✕</button></div>
-  {error&&<div className="alert error" role="alert">{error}</div>}
-  {saving&&!checkoutSlip&&<p role="status">Đang tải bill…</p>}
-  {checkoutSlip?.status==='DRAFT'&&<button className="secondary" disabled={saving} onClick={()=>createCheckoutSlip()}>↻ Cập nhật bill</button>}
-  {!checkoutSlip&&!saving&&<button className="secondary" onClick={()=>createCheckoutSlip()}>Tải lại bill</button>}
-  <div className="checkout-layout">
-   <div className="invoice-paper">
-    {checkoutSlip&&<div className="checkout-slip-content">
-     <div className="checkout-slip-head">
-      <div>
-       <h2>{checkoutSlip.id==='Xem trước'||checkoutSlip.id==='preview'||!checkoutSlip.id?'Thông tin thanh toán':`Phiếu #${checkoutSlip.id}`}</h2>
-       <p className="muted">Mã đặt sân: <strong>{checkoutSlip.bookingId}</strong></p>
-      </div>
-      <span className={'badge '+(checkoutSlip.status==='PAID'?'AVAILABLE':'MAINTENANCE')}>{checkoutSlip.status==='PAID'?'Đã thanh toán':'Chờ thanh toán'}</span>
-     </div>
-     <div className="checkout-bill-rows">
-      <div className="invoice-row"><span>Tiền thuê sân:</span><strong>{money(checkoutSlip.courtFee)}</strong></div>
-      <div className="invoice-row"><span>Tiền hàng / dịch vụ:</span><strong>{money(checkoutSlip.productFee)}</strong></div>
-      <div className="invoice-row"><span>Giảm tiền sân:</span><strong>{Number(checkoutSlip.courtDiscount)>0?`-${money(checkoutSlip.courtDiscount)}`:money(0)}</strong></div>
-      <div className="invoice-row"><span>Giảm sản phẩm:</span><strong>{Number(checkoutSlip.productDiscount)>0?`-${money(checkoutSlip.productDiscount)}`:money(0)}</strong></div>
-      <div className="invoice-row paid-row"><span>Tiền sân đã thanh toán:</span><strong>{money(checkoutPaidCourt)}</strong></div>
-      <div className={'invoice-row due-row '+(checkoutDue>0?'has-due':'zero-due')}><span>Còn phải thu:</span><strong>{money(checkoutDue)}</strong></div>
-     </div>
-     <div className="invoice-total-block">
-      <div className="total-line"><span>TỔNG BILL SAU GIẢM:</span><span>{money(checkoutSlip?.totalAmount)}</span></div>
-     </div>
-    </div>}
-   </div>
-
-   <div className="pos-cart-panel checkout-action-panel">
-    {checkoutSlip?.checkoutMessage&&<div className="checkout-alert-box alert error" role="alert"><span>⚠</span> <span>{checkoutSlip.checkoutMessage}</span></div>}
-    <div className="checkout-action-head">
-     <h3>{checkoutSlip&&checkoutDue===0?'Hoàn tất trả sân':'Thu tiền còn lại'}</h3>
-     <p className="muted">{checkoutSlip&&checkoutDue===0?'Tiền sân đã được ghi nhận. Không có khoản phát sinh cần thu thêm.':'Chọn phương thức và xác nhận thu số tiền còn lại:'}</p>
-    </div>
-    {checkoutDue>0&&<div className="payment-picker">
-     <button type="button" className={'payment-btn '+(checkoutPaymentMethod==='CASH'?'selected':'')} onClick={()=>setCheckoutPaymentMethod('CASH')}>
-      <span>💵 Tiền mặt (CASH)</span>{checkoutPaymentMethod==='CASH'&&<span>✓</span>}
-     </button>
-     <button type="button" className={'payment-btn '+(checkoutPaymentMethod==='VNPAY'?'selected':'')} onClick={()=>setCheckoutPaymentMethod('VNPAY')}>
-      <span>💳 VNPay</span>{checkoutPaymentMethod==='VNPAY'&&<span>✓</span>}
-     </button>
-    </div>}
-    {checkoutDue>0&&<div className="checkout-inputs-group">
-     <label className="checkout-confirm-check"><input type="checkbox" disabled={saving||checkoutSlip?.status==='PAID'} checked={checkoutConfirmed} onChange={e=>setCheckoutConfirmed(e.target.checked)}/><span>Tôi xác nhận đã nhận <strong>{money(checkoutDue)}</strong> còn lại</span></label>
-    </div>}
-    <button className="primary wide checkout-submit-btn" disabled={checkoutSlip?.checkoutEligible===false||(checkoutDue>0&&!checkoutConfirmed)||!checkoutSlip||checkoutSlip.status==='PAID'||saving} onClick={confirmCheckout}>{saving?'Đang xử lý…':checkoutSlip&&checkoutDue===0?'✓ Hoàn tất trả sân':'✓ Xác nhận & thu tiền'}</button>
-   </div>
-  </div>
- </section></div>}
 
 
 
@@ -515,24 +523,26 @@ useEffect(()=>{
    <div><span>Số nhà cung cấp</span><strong>{new Set(visibleImportOrders.map(o=>o.supplierId)).size}</strong></div>
    <div><span>Tổng giá trị nhập</span><strong>{money(visibleImportOrders.filter(o=>o.status!=='CANCELLED').reduce((s,o)=>s+Number(o.totalAmount||0),0))}</strong><small>Không gồm phiếu đã hủy</small></div>
   </div>
-  <section className="content-panel">
-   <div className="table-scroll"><table><thead><tr><th>Mã phiếu</th><th>Ngày nhập</th><th>Tổng tiền</th><th>Trạng thái</th></tr></thead><tbody>
-    {!visibleImportOrders.length?<tr><td colSpan="4" style={{textAlign:'center',padding:'30px'}}>Không có phiếu nhập trong kỳ đã chọn.</td></tr>:visibleImportOrders.map(o=><tr key={o.id}>
-     <td><code title={o.id}>{o.id}</code><button className="secondary" style={{marginLeft:12}} disabled={saving} onClick={()=>openImportDetail(o)}>Chi tiết</button></td>
-     <td>{o.importDate}</td>
-     <td><strong>{money(o.totalAmount)}</strong></td>
-     <td><span className={'badge '+(o.status==='RECEIVED'?'AVAILABLE':'MAINTENANCE')}>{({DRAFT:'Chưa duyệt',CONFIRMED:'Đã xác nhận',RECEIVED:'Đã duyệt',CANCELLED:'Đã hủy'})[o.status]||o.status}</span></td>
-    </tr>)}
-   </tbody></table></div>
-  </section>
+  <MainSubArea>
+   <section className="content-panel">
+    <div className="table-scroll"><table><thead><tr><th>Mã phiếu</th><th>Ngày nhập</th><th>Tổng tiền</th><th>Trạng thái</th></tr></thead><tbody>
+     {!visibleImportOrders.length?<tr><td colSpan="4" style={{textAlign:'center',padding:'30px'}}>Không có phiếu nhập trong kỳ đã chọn.</td></tr>:visibleImportOrders.map(o=><tr key={o.id} {...rowProps(selectedImport?.id===o.id,()=>openImportDetail(o))}>
+      <td><code title={o.id}>{o.id}</code><button className="secondary" style={{marginLeft:12}} disabled={saving} onClick={()=>openImportDetail(o)}>Chi tiết</button></td>
+      <td>{o.importDate}</td>
+      <td><strong>{money(o.totalAmount)}</strong></td>
+      <td><span className={'badge '+(o.status==='RECEIVED'?'AVAILABLE':'MAINTENANCE')}>{({DRAFT:'Chưa duyệt',CONFIRMED:'Đã xác nhận',RECEIVED:'Đã duyệt',CANCELLED:'Đã hủy'})[o.status]||o.status}</span></td>
+     </tr>)}
+    </tbody></table></div>
+   </section>
+   {selectedImport&&<InlinePanel onClose={()=>setSelectedImport(null)} busy={saving} panelKey={selectedImport.id} valid={visibleImportOrders.some(o=>o.id===selectedImport.id)}><section className="dialog import-detail-panel" role="region" aria-labelledby="import-detail-title"><div className="dialog-head"><h2 id="import-detail-title">Chi tiết phiếu nhập</h2><button aria-label="Đóng chi tiết phiếu nhập" disabled={saving} onClick={()=>setSelectedImport(null)}>✕</button></div><dl className="invoice-detail-meta"><div className="invoice-meta-col"><div><dt>Mã phiếu</dt><dd><div className="invoice-code-row"><code className="clickable-code" title={`Sao chép mã đầy đủ: ${selectedImport.id}`} onClick={()=>navigator.clipboard?.writeText(selectedImport.id)}>#{selectedImport.id.slice(0,8)}</code><span className="copy-hint" title={selectedImport.id} onClick={()=>navigator.clipboard?.writeText(selectedImport.id)}>(Sao chép)</span></div></dd></div><div><dt>Ngày nhập</dt><dd>{selectedImport.importDate}</dd></div></div><div className="invoice-meta-col"><div><dt>Nhà cung cấp</dt><dd><strong>{suppliers.find(s=>s.id===selectedImport.supplierId)?.name||'—'}</strong></dd></div><div><dt>Trạng thái</dt><dd><span className={'badge '+(selectedImport.status==='RECEIVED'?'AVAILABLE':selectedImport.status==='CANCELLED'?'CLOSED':'MAINTENANCE')}>{({DRAFT:'Chờ duyệt',CONFIRMED:'Đã xác nhận',RECEIVED:'Đã nhập kho',CANCELLED:'Đã hủy'})[selectedImport.status]||selectedImport.status}</span></dd></div></div></dl><h3>Mặt hàng nhập</h3><div className="table-scroll invoice-table-card"><table className="import-detail-table"><thead><tr><th>Mặt hàng</th><th style={{textAlign:'right'}}>SL</th><th style={{textAlign:'right'}}>Đơn giá</th><th style={{textAlign:'right'}}>Thành tiền</th></tr></thead><tbody>{(!selectedImport.details||!selectedImport.details.length)?<tr><td colSpan="4" style={{textAlign:'center',padding:'14px'}}>Không có chi tiết mặt hàng.</td></tr>:selectedImport.details.map((d,idx)=>{const name=data.products.find(p=>p.id===d.productId)?.name||d.productName||(d.productId?.slice(0,8)?`#${d.productId.slice(0,8)}`:'Sản phẩm');const qty=Number(d.quantity)||0;const price=Number(d.importPrice)||0;const lineTotal=qty*price;return <tr key={d.id||idx}><td title={name}>{name}</td><td style={{textAlign:'right'}}>{qty}</td><td style={{textAlign:'right'}}>{money(price)}</td><td style={{textAlign:'right'}}><strong>{money(lineTotal)}</strong></td></tr>;})}</tbody></table></div><div className="invoice-row import-total-row"><span>Tổng tiền:</span><strong>{money(selectedImport.totalAmount)}</strong></div>{error&&<p className="alert error" role="alert">{error}</p>}{selectedImport.status==='DRAFT'&&<div className="dialog-foot"><button className="primary" disabled={saving} onClick={()=>handleApproveImportOrder(selectedImport.id)}>{saving?'Đang duyệt…':'Duyệt nhập kho'}</button></div>}</section></InlinePanel>}
+  </MainSubArea>
 
-  {importModalOpen&&<div className="overlay"><section className="dialog" role="dialog" aria-modal="true" aria-labelledby="import-title"><div className="dialog-head"><h2 id="import-title">Tạo phiếu nhập</h2><button aria-label="Đóng phiếu nhập" disabled={saving} onClick={()=>setImportModalOpen(false)}>✕</button></div><form onSubmit={handleCreateImportOrder}><fieldset className="form-grid import-fields" disabled={saving}>
+  {importModalOpen&&<InlinePanel onClose={()=>setImportModalOpen(false)} busy={saving} ><section className="dialog" role="region" aria-labelledby="import-title"><div className="dialog-head"><h2 id="import-title">Tạo phiếu nhập</h2><button aria-label="Đóng phiếu nhập" disabled={saving} onClick={()=>setImportModalOpen(false)}>✕</button></div><form onSubmit={handleCreateImportOrder}><fieldset className="form-grid import-fields" disabled={saving}>
    <label className="field">Nhà cung cấp<input aria-label="Nhà cung cấp" placeholder="Nhập tên nhà cung cấp" maxLength={255} value={importForm.supplierName} onChange={e=>setImportForm({...importForm,supplierName:e.target.value})} required/></label>
    <label className="field">Loại sản phẩm<input aria-label="Loại sản phẩm" placeholder="Nhập tên sản phẩm nhập kho" maxLength={255} value={importForm.productName} onChange={e=>setImportForm({...importForm,productName:e.target.value})} required/></label>
    <label className="field">Số lượng<input aria-label="Số lượng" type="number" min="1" max="2147483647" step="1" value={importForm.quantity} onChange={e=>setImportForm({...importForm,quantity:e.target.value})} required/></label>
    <label className="field">Tổng tiền<input aria-label="Tổng tiền" type="number" min="0" max="99999999.99" step="0.01" value={importForm.totalAmount} onChange={e=>setImportForm({...importForm,totalAmount:e.target.value})} required/></label>
-  </fieldset>{error&&<p className="alert error" role="alert">{error}</p>}<div className="dialog-foot"><button type="button" className="secondary" disabled={saving} onClick={()=>setImportModalOpen(false)}>Hủy</button><button className="primary" disabled={saving||!importForm.supplierName.trim()||!importForm.productName.trim()||!importForm.quantity||importForm.totalAmount===''}>{saving?'Đang tạo…':'Tạo phiếu nhập'}</button></div></form></section></div>}
-  {selectedImport&&<div className="overlay"><section className="dialog" role="dialog" aria-modal="true" aria-labelledby="import-detail-title"><div className="dialog-head"><h2 id="import-detail-title">Chi tiết phiếu nhập</h2><button aria-label="Đóng chi tiết phiếu nhập" disabled={saving} onClick={()=>setSelectedImport(null)}>✕</button></div><p className="invoice-reference">Mã phiếu: {selectedImport.id}</p><p>Nhà cung cấp: {suppliers.find(s=>s.id===selectedImport.supplierId)?.name||'—'}</p><p>Ngày nhập: {selectedImport.importDate}</p><p>Trạng thái: {({DRAFT:'Chờ duyệt',CONFIRMED:'Đã xác nhận',RECEIVED:'Đã nhập kho',CANCELLED:'Đã hủy'})[selectedImport.status]||selectedImport.status}</p><div className="table-scroll"><table><thead><tr><th>Loại sản phẩm</th><th>Số lượng</th><th>Tổng tiền</th></tr></thead><tbody>{[...new Set((selectedImport.details||[]).map(d=>d.productId))].map(id=>{const lines=selectedImport.details.filter(d=>d.productId===id);return <tr key={id}><td>{data.products.find(p=>p.id===id)?.name||id}</td><td>{lines.reduce((s,d)=>s+d.quantity,0)}</td><td>{money(lines.reduce((s,d)=>s+d.quantity*Number(d.importPrice),0))}</td></tr>})}</tbody></table></div><div className="invoice-row"><span>Tổng tiền:</span><strong>{money(selectedImport.totalAmount)}</strong></div>{error&&<p className="alert error" role="alert">{error}</p>}<div className="dialog-foot"><button className="secondary" disabled={saving} onClick={()=>setSelectedImport(null)}>Đóng</button>{selectedImport.status==='DRAFT'&&<button className="primary" disabled={saving} onClick={()=>handleApproveImportOrder(selectedImport.id)}>{saving?'Đang duyệt…':'Duyệt nhập kho'}</button>}</div></section></div>}
+  </fieldset>{error&&<p className="alert error" role="alert">{error}</p>}<div className="dialog-foot"><button type="button" className="secondary" disabled={saving} onClick={()=>setImportModalOpen(false)}>Hủy</button><button className="primary" disabled={saving||!importForm.supplierName.trim()||!importForm.productName.trim()||!importForm.quantity||importForm.totalAmount===''}>{saving?'Đang tạo…':'Tạo phiếu nhập'}</button></div></form></section></InlinePanel>}
 
 
  </div>}
@@ -548,9 +558,9 @@ useEffect(()=>{
 
  </div><footer>BCM · Master Data & Operations Desk <span>Sân cầu · Khung giờ · Danh mục · Hàng hóa · POS · Trả sân · Kho</span></footer></main>
 
- {modal&&<div className="overlay"><section className="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><div className="dialog-head"><h2 id="dialog-title">{modal.id?'Chỉnh sửa':'Thêm mới'} · {title}</h2><button aria-label="Đóng" disabled={saving} onClick={()=>{setModal(null);setError('')}}>✕</button></div><form onSubmit={save}><div className="form-grid">{tab==='courts'?<>{select('district','Quận / Huyện',[['','Chọn quận / huyện'],...[...new Set(priceBranches.map(b=>b.district))].sort((a,b)=>a.localeCompare(b,'vi',{numeric:true})).map(d=>[d,d]),...(!modal.id?[['__new_district__','＋ Thêm quận / huyện mới']]:[])],{disabled:courtAssignmentLocked})}{!modal.id&&form.district==='__new_district__'&&field('newDistrict','Tên quận / huyện mới','text',{maxLength:150,placeholder:'Ví dụ: Bình Tân'})}{select('branchId','Chi nhánh',[['','Chọn chi nhánh'],...(!modal.id?[['__new__','＋ Tạo chi nhánh mới']]:[]),...priceBranches.filter(b=>b.district===form.district).map(b=>[b.id,b.name])],{disabled:!form.district||courtAssignmentLocked})}{!modal.id&&form.branchId==='__new__'&&field('branchName','Tên chi nhánh mới','text',{maxLength:200})}{modal.id?select('courtNumber','Số sân',[[form.courtNumber,`Sân ${String(form.courtNumber).padStart(2,'0')}`]],{disabled:true}):select('courtCount','Số lượng sân',Array.from({length:1000},(_,i)=>[i+1,`${i+1} sân`]))}{modal.id&&field('name','Tên sân','text',{maxLength:255})}{field('address',!modal.id&&form.branchId==='__new__'?'Địa chỉ chi nhánh mới':'Địa chỉ chi nhánh','text',{maxLength:500,readOnly:modal.id||form.branchId!=='__new__',required:!modal.id&&form.branchId==='__new__'})}{!modal.id?<p className="form-help" role="status">{form.branchId?`Sẽ tạo ${form.courtCount} sân, từ Sân ${String(courtBatchStart).padStart(2,'0')} đến Sân ${String(courtBatchStart+Number(form.courtCount)-1).padStart(2,'0')}. `:''}Tên sân được đặt tự động theo chi nhánh. Loại sân, trạng thái và giá bên dưới áp dụng cho tất cả sân mới. Mỗi lần thêm tối đa 1.000 sân; có thể thêm tiếp vào cùng chi nhánh.</p>:<p className="form-help">Chi nhánh và số sân được giữ cố định để bảo toàn lịch sử. Quận và địa chỉ lấy từ chi nhánh.</p>}{select('type','Loại sân',['STANDARD_MAT','WOODEN_FLOOR'].map(v=>[v,labels[v]]))}{select('status','Trạng thái',['AVAILABLE','MAINTENANCE'].map(v=>[v,labels[v]]))}{field('basePrice','Giá gốc (VNĐ / khung giờ)','number',{min:0.01,max:99999999.99,step:0.01})}</>:tab==='time-slots'?<>{field('startTime','Giờ bắt đầu','time')}{field('endTime','Giờ kết thúc','time')}{field('priceMultiplier','Hệ số giá','number',{min:0.01,max:9.99,step:0.01})}<p className="form-help">Mặc định 17:00–21:00 ×1.5, giờ khác ×1.0. Có thể điều chỉnh hệ số riêng. Khung giờ không được chồng lấn.</p></>:tab==='categories'?field('categoryName','Tên danh mục','text',{maxLength:255}):<>{field('name','Tên hàng hóa / dịch vụ','text',{maxLength:255})}{select('categoryId','Danh mục',data.categories.map(c=>[c.id,c.categoryName]))}{select('type','Loại',['GOODS','SERVICE'].map(v=>[v,labels[v]]))}{field('unit','Đơn vị tính','text',{maxLength:50})}{field('price','Giá niêm yết (VNĐ)','number',{min:0,max:99999999.99,step:0.01,disabled:isImportProduct(form)})}{field('stockQuantity',modal.id?'Tồn kho hiện tại':'Tồn ban đầu','number',{min:0,max:2147483647,step:1,disabled:!!modal.id||form.type==='SERVICE'})}<p className="form-help">Tồn ban đầu chỉ nhập khi tạo sản phẩm. Dịch vụ không theo dõi tồn kho. Điều chỉnh tồn sau này thuộc phân hệ kho.</p></>}</div>{error&&<div className="alert error" role="alert">{error}</div>}
+ {modal&&<InlinePanel onClose={()=>{setModal(null);setError('')}} busy={saving} panelKey={modal.id} valid={!modal.id||tab==='courts'||rows.some(r=>r.id===modal.id)}><section className="dialog" role="region" aria-labelledby="dialog-title"><div className="dialog-head"><h2 id="dialog-title">{modal.id?'Chỉnh sửa':'Thêm mới'} · {title}</h2><button aria-label="Đóng" disabled={saving} onClick={()=>{setModal(null);setError('')}}>✕</button></div><form onSubmit={save}><div className="form-grid">{tab==='courts'?<>{select('district','Quận / Huyện',[['','Chọn quận / huyện'],...[...new Set(priceBranches.map(b=>b.district))].sort((a,b)=>a.localeCompare(b,'vi',{numeric:true})).map(d=>[d,d]),...(!modal.id?[['__new_district__','＋ Thêm quận / huyện mới']]:[])],{disabled:courtAssignmentLocked})}{!modal.id&&form.district==='__new_district__'&&field('newDistrict','Tên quận / huyện mới','text',{maxLength:150,placeholder:'Ví dụ: Bình Tân'})}{select('branchId','Chi nhánh',[['','Chọn chi nhánh'],...(!modal.id?[['__new__','＋ Tạo chi nhánh mới']]:[]),...priceBranches.filter(b=>b.district===form.district).map(b=>[b.id,b.name])],{disabled:!form.district||courtAssignmentLocked})}{!modal.id&&form.branchId==='__new__'&&field('branchName','Tên chi nhánh mới','text',{maxLength:200})}{modal.id?select('courtNumber','Số sân',[[form.courtNumber,`Sân ${String(form.courtNumber).padStart(2,'0')}`]],{disabled:true}):select('courtCount','Số lượng sân',Array.from({length:1000},(_,i)=>[i+1,`${i+1} sân`]))}{modal.id&&field('name','Tên sân','text',{maxLength:255})}{field('address',!modal.id&&form.branchId==='__new__'?'Địa chỉ chi nhánh mới':'Địa chỉ chi nhánh','text',{maxLength:500,readOnly:modal.id||form.branchId!=='__new__',required:!modal.id&&form.branchId==='__new__'})}{!modal.id?<p className="form-help" role="status">{form.branchId?`Sẽ tạo ${form.courtCount} sân, từ Sân ${String(courtBatchStart).padStart(2,'0')} đến Sân ${String(courtBatchStart+Number(form.courtCount)-1).padStart(2,'0')}. `:''}Tên sân được đặt tự động theo chi nhánh. Loại sân, trạng thái và giá bên dưới áp dụng cho tất cả sân mới. Mỗi lần thêm tối đa 1.000 sân; có thể thêm tiếp vào cùng chi nhánh.</p>:<p className="form-help">Chi nhánh và số sân được giữ cố định để bảo toàn lịch sử. Quận và địa chỉ lấy từ chi nhánh.</p>}{select('type','Loại sân',['STANDARD_MAT','WOODEN_FLOOR'].map(v=>[v,labels[v]]))}{select('status','Trạng thái',['AVAILABLE','MAINTENANCE'].map(v=>[v,labels[v]]))}{field('basePrice','Giá gốc (VNĐ / khung giờ)','number',{min:0.01,max:99999999.99,step:0.01})}</>:tab==='time-slots'?<>{field('startTime','Giờ bắt đầu','time')}{field('endTime','Giờ kết thúc','time')}{field('priceMultiplier','Hệ số giá','number',{min:0.01,max:9.99,step:0.01})}<p className="form-help">Mặc định 17:00–21:00 ×1.5, giờ khác ×1.0. Có thể điều chỉnh hệ số riêng. Khung giờ không được chồng lấn.</p></>:tab==='categories'?field('categoryName','Tên danh mục','text',{maxLength:255}):<>{field('name','Tên hàng hóa / dịch vụ','text',{maxLength:255})}{select('categoryId','Danh mục',data.categories.map(c=>[c.id,c.categoryName]))}{select('type','Loại',['GOODS','SERVICE'].map(v=>[v,labels[v]]))}{field('unit','Đơn vị tính','text',{maxLength:50})}{field('price','Giá niêm yết (VNĐ)','number',{min:0,max:99999999.99,step:0.01,disabled:isImportProduct(form)})}{field('stockQuantity',modal.id?'Tồn kho hiện tại':'Tồn ban đầu','number',{min:0,max:2147483647,step:1,disabled:!!modal.id||form.type==='SERVICE'})}<p className="form-help">Tồn ban đầu chỉ nhập khi tạo sản phẩm. Dịch vụ không theo dõi tồn kho. Điều chỉnh tồn sau này thuộc phân hệ kho.</p></>}</div>{error&&<div className="alert error" role="alert">{error}</div>}
 
-<div className="dialog-foot"><button type="button" className="secondary" disabled={saving} onClick={()=>{setModal(null);setError('')}}>Hủy</button><button className="primary" disabled={saving}>{saving?'Đang lưu…':'Lưu thay đổi'}</button></div></form></section></div>}
+<div className="dialog-foot"><button type="button" className="secondary" disabled={saving} onClick={()=>{setModal(null);setError('')}}>Hủy</button><button className="primary" disabled={saving}>{saving?'Đang lưu…':'Lưu thay đổi'}</button></div></form></section></InlinePanel>}
 
 
  {deleteTarget&&<div className="overlay"><section className="dialog small" role="dialog" aria-modal="true" aria-labelledby="delete-title"><h2 id="delete-title">Xóa dữ liệu?</h2><p>Bạn muốn xóa <strong>{deleteTarget.name||deleteTarget.categoryName||deleteTarget.startTime+' – '+deleteTarget.endTime}</strong> khỏi danh sách?</p>{error&&<div className="alert error" role="alert">{error}</div>}
@@ -558,6 +568,6 @@ useEffect(()=>{
 <div className="dialog-foot"><button className="secondary" disabled={saving} onClick={()=>{setDeleteTarget(null);setError('')}}>Hủy</button><button className="primary delete" disabled={saving} onClick={remove}>{saving?'Đang xóa…':'Xác nhận xóa'}</button></div></section></div>}
 
 
- {priceApprovalTarget&&<div className="overlay"><section className="dialog small" role="dialog" aria-modal="true" aria-labelledby="approve-price-title"><div className="dialog-head"><h2 id="approve-price-title">Duyệt giá niêm yết</h2><button aria-label="Đóng duyệt giá" disabled={saving} onClick={()=>setPriceApprovalTarget(null)}>✕</button></div><p>{priceApprovalTarget.name}</p><form onSubmit={approveProductPrice}><label className="field">Giá niêm yết (VNĐ)<input aria-label="Giá niêm yết cần duyệt" type="number" min="0.01" max="99999999.99" step="0.01" value={approvalPrice} disabled={saving} required onChange={e=>setApprovalPrice(e.target.value)}/></label>{error&&<p role="alert" className="alert error">{error}</p>}<div className="dialog-foot"><button type="button" className="secondary" disabled={saving} onClick={()=>setPriceApprovalTarget(null)}>Hủy</button><button className="primary" disabled={saving||!approvalPrice||Number(approvalPrice)<=0}>{saving?'Đang duyệt…':'Duyệt & cho phép bán'}</button></div></form></section></div>}
- </div>;
+ {priceApprovalTarget&&<InlinePanel onClose={()=>setPriceApprovalTarget(null)} busy={saving} valid={rows.some(r=>r.id===priceApprovalTarget.id)}><section className="dialog small" role="region" aria-labelledby="approve-price-title"><div className="dialog-head"><h2 id="approve-price-title">Duyệt giá niêm yết</h2><button aria-label="Đóng duyệt giá" disabled={saving} onClick={()=>setPriceApprovalTarget(null)}>✕</button></div><p>{priceApprovalTarget.name}</p><form onSubmit={approveProductPrice}><label className="field">Giá niêm yết (VNĐ)<input aria-label="Giá niêm yết cần duyệt" type="number" min="0.01" max="99999999.99" step="0.01" value={approvalPrice} disabled={saving} required onChange={e=>setApprovalPrice(e.target.value)}/></label>{error&&<p role="alert" className="alert error">{error}</p>}<div className="dialog-foot"><button type="button" className="secondary" disabled={saving} onClick={()=>setPriceApprovalTarget(null)}>Hủy</button><button className="primary" disabled={saving||!approvalPrice||Number(approvalPrice)<=0}>{saving?'Đang duyệt…':'Duyệt & cho phép bán'}</button></div></form></section></InlinePanel>}
+ </div></MainSub>;
 }

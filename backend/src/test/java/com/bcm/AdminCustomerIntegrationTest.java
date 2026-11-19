@@ -28,6 +28,9 @@ class AdminCustomerIntegrationTest {
   }
   for(String column:java.util.List.of("user_id uuid","position varchar(100)","full_name varchar(255)","phone varchar(20)","updated_at timestamp"))
    jdbc.execute("alter table staffs add column if not exists "+column);
+  for(String role:java.util.List.of("ADMIN","STAFF","CUSTOMER"))
+   jdbc.update("insert into roles(id,role_name,created_at) select ?,?,current_timestamp where not exists (select 1 from roles where role_name=?)",
+     UUID.randomUUID(),role,role);
   // Historical fixture only; production seeding no longer creates a guest login.
   if(jdbc.queryForObject("select count(*) from users where email='guest@bcm.com'",Long.class)==0){
    UUID uid=UUID.randomUUID();

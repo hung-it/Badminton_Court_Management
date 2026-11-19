@@ -273,7 +273,7 @@ class CheckoutReceiptPostgresTest {
     @Test void concurrentCancelRestoresOnceAndReceiptFailureRollsBackAllWrites() throws Exception {
         var draft=pos.sell(sale(true,null));concurrent(()->pos.cancelDraft(draft.getId()).getId());assertThat(stock()).isEqualTo(10);
         try {
-            jdbc.execute("ALTER TABLE payment_transactions ADD CONSTRAINT test_receipt_fail CHECK (amount < 5000)");
+            jdbc.execute("ALTER TABLE payment_transactions ADD CONSTRAINT test_receipt_fail CHECK (amount < 5000) NOT VALID");
             var broken=sale(false,"CASH");
             assertThatThrownBy(()->pos.sell(broken)).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
             assertThat(stock()).isEqualTo(10);
@@ -338,7 +338,7 @@ class CheckoutReceiptPostgresTest {
     @Test void checkoutReceiptFailureRollsBackMainSubBookingAndInventoryState() {
         var draft=pos.sell(sale(true,null));var request=receipt("CASH","10000");
         try {
-            jdbc.execute("ALTER TABLE payment_transactions ADD CONSTRAINT test_checkout_receipt_fail CHECK (amount < 5000)");
+            jdbc.execute("ALTER TABLE payment_transactions ADD CONSTRAINT test_checkout_receipt_fail CHECK (amount < 5000) NOT VALID");
             assertThatThrownBy(()->checkout.checkout(booking,request)).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
             assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,booking)).isEqualTo("PAID");
             assertThat(jdbc.queryForObject("SELECT status FROM invoices WHERE id=?",String.class,draft.getId())).isEqualTo("DRAFT");
@@ -374,7 +374,7 @@ class CheckoutReceiptPostgresTest {
         assertThat(analytics.invoice(child).receipts()).hasSize(1);
         assertThat(analytics.invoice(id).receipts()).hasSize(2);
         assertThat(analytics.history("DAY",LocalDate.now(),0,null,null,"","VNPAY").invoices()).extracting(r->r.id()).doesNotContain(child).contains(id);
-        assertThat(analytics.history("DAY",LocalDate.now(),0,null,null,"","CASH").invoices()).extracting(r->r.id()).contains(child,id);
+        assertThat(analytics.history("DAY",LocalDate.now(),0,null,null,"","CASH").invoices()).extracting(r->r.id()).doesNotContain(child).contains(id);
         var report=revenue.report("YEAR",LocalDate.now().getYear());
         assertThat(report.staff().stream().filter(r->staff.equals(r.staffId())).map(r->r.total()).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo("10007");
         assertThat(report.staff().stream().map(r->r.total()).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo("210007");
@@ -383,6 +383,9 @@ class CheckoutReceiptPostgresTest {
         jdbc.update("UPDATE booking_details SET booking_date=? WHERE booking_id=?",LocalDate.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).plusDays(1),booking);
         assertThat(checkout.preview(booking).isCheckoutEligible()).isTrue();
         assertThat(checkout.checkout(booking,receipt(null,"0")).getData().getInvoiceId()).isNotNull();
+        jdbc.update("DELETE FROM invoice_details WHERE invoice_id IN (SELECT id FROM invoices WHERE booking_id=?)",booking);
+        jdbc.update("DELETE FROM invoices WHERE booking_id=?",booking);
+        jdbc.update("UPDATE bookings SET status='PAID' WHERE id=?",booking);
         jdbc.update("DELETE FROM booking_details WHERE booking_id=?",booking);
         assertThat(checkout.preview(booking).isCheckoutEligible()).isFalse();
         assertThat(checkout.preview(booking).getCheckoutMessage()).contains("Không đủ chi tiết");

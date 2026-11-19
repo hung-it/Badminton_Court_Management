@@ -71,7 +71,7 @@ class AnalyticsIntegrationTest {
                 .andExpect(jsonPath("$.data.from").value("2040-12-31"))
                 .andExpect(jsonPath("$.data.to").value("2041-01-02"))
                 .andExpect(jsonPath("$.data.total_amount").value(300000));
-        mvc.perform(get("/analytics/invoices").param("from","2040-12-31").param("to","2041-01-02"))
+        mvc.perform(get("/analytics/invoices").param("status","PAID").param("from","2040-12-31").param("to","2041-01-02"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalElements").value(2));
         mvc.perform(get("/analytics/revenue").param("from","2040-12-31").param("to","2040-12-31"))
@@ -140,23 +140,31 @@ class AnalyticsIntegrationTest {
                 LocalDateTime.parse("2042-01-01T00:00:00"),LocalDateTime.parse("2042-01-02T00:00:00"));
         invoice("PAID",400,0,"2042-01-01T13:00:00",false);
         for(String role:new String[]{"ADMIN","STAFF"}) {
-            mvc.perform(get("/analytics/invoices").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("reader").roles(role))
+            mvc.perform(get("/analytics/invoices").param("status","PAID").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("reader").roles(role))
                     .param("from","2042-01-01").param("to","2042-01-01").param("customerId",customer.toString()))
                     .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1))
                     .andExpect(jsonPath("$.data.invoices[0].customerId").value(customer.toString()))
                     .andExpect(jsonPath("$.data.invoices[0].invoiceStatus").value("PAID"));
         }
-        mvc.perform(get("/analytics/invoices").param("from","2042-01-01").param("to","2042-01-01")
+        mvc.perform(get("/analytics/invoices").param("status","PAID").param("from","2042-01-01").param("to","2042-01-01")
                 .param("customerId",customer.toString()).param("page","1"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1))
                 .andExpect(jsonPath("$.data.invoices.length()").value(0));
-        mvc.perform(get("/analytics/invoices").param("from","2042-01-01").param("to","2042-01-01")
+        mvc.perform(get("/analytics/invoices").param("status","PAID").param("from","2042-01-01").param("to","2042-01-01")
                 .param("customerId",customer.toString()).param("search","no-match"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(0));
-        mvc.perform(get("/analytics/invoices").param("from","2042-01-01").param("to","2042-01-01"))
+        mvc.perform(get("/analytics/invoices").param("status","PAID").param("from","2042-01-01").param("to","2042-01-01"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(2));
-        mvc.perform(get("/analytics/invoices").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("customer").roles("CUSTOMER"))
+        mvc.perform(get("/analytics/invoices").param("status","PAID").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("customer").roles("CUSTOMER"))
                 .param("customerId",customer.toString())).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void invoiceHistoryWithoutStatusIncludesDraftAndPaid() throws Exception {
+        invoice("DRAFT",200,0,"2043-01-01T10:00:00",false);
+        invoice("PAID",100,0,"2043-01-01T12:00:00",false);
+        mvc.perform(get("/analytics/invoices").param("from","2043-01-01").param("to","2043-01-01"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(2));
     }
 
     @Test

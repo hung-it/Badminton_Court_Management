@@ -26,6 +26,8 @@ import java.util.Map;
 @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
 public class PosController {
 
+    private final com.bcm.service.CourtPromotionService promotionPrograms;
+    @GetMapping("/promotion-programs") public ApiResponse<?> promotionPrograms(){return ApiResponse.success(promotionPrograms.programs(true));}
     private final PosService posService;
     private final com.bcm.service.PosDraftService drafts;
     private final com.bcm.service.ProductPriceService productPrices;
